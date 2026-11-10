@@ -690,7 +690,7 @@ const kssSectionLines = (input: AgendaDeckInput) => {
 
 export const buildAgendaDeckFilename = (week: number, year: number, meetingDate?: string, theme?: WeeklyPptxTheme) =>
   [
-    "ACOB General Meeting",
+    "EVC General Meeting",
     formatMeetingDateForFilename(week, year, meetingDate),
     `W${week}`,
     theme === "dark" ? "Dark Theme" : null,
