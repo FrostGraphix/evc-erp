@@ -82,7 +82,7 @@ export function JobDescriptionDialog({ profile, isOpen, onOpenChange }: JobDescr
             <div>
               {/* Eager: the letterhead is print-only, so a lazy image would never load before printing. */}
               <Image
-                src="/acob-logo.webp"
+                src="/images/evc-logo-light.png"
                 alt="EVC"
                 width={200}
                 height={64}

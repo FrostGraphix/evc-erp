@@ -12,7 +12,7 @@ import {
 import { escapeHtml } from "@/lib/email-templates/utils"
 
 /**
- * The standard ACOB email signature — the single source for its HTML, used by
+ * The standard EVC email signature — the single source for its HTML, used by
  * the Signature Creator and by the profile's "set up email" dialog so the two
  * can never drift apart.
  */

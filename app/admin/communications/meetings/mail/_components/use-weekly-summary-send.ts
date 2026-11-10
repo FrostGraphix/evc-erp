@@ -121,7 +121,7 @@ async function fetchActionPointsAttachment(params: {
     blob: exportBlob,
     filename: readFilenameFromDisposition(
       response.headers.get("Content-Disposition"),
-      `ACOB Action Points - Week ${params.week}.pdf`
+      `EVC Action Points - Week ${params.week}.pdf`
     ),
   }
 }
@@ -156,7 +156,7 @@ async function fetchWeeklyReportAttachment(params: {
     blob: exportBlob,
     filename: readFilenameFromDisposition(
       response.headers.get("Content-Disposition"),
-      `ACOB Weekly Reports - Week ${params.week}.pdf`
+      `EVC Weekly Reports - Week ${params.week}.pdf`
     ),
   }
 }

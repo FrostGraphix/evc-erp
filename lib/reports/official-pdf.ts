@@ -78,8 +78,8 @@ export async function resolveOfficialReportExportMeta(
   const departmentLabel = department ? `${department} - ` : ""
   const filename =
     type === "weekly_report"
-      ? `ACOB Weekly Reports - ${departmentLabel}${meetingDateLabel} - W${week}.${extension}`
-      : `ACOB Action Points - ${departmentLabel}${meetingDateLabel} - W${week}.${extension}`
+      ? `EVC Weekly Reports - ${departmentLabel}${meetingDateLabel} - W${week}.${extension}`
+      : `EVC Action Points - ${departmentLabel}${meetingDateLabel} - W${week}.${extension}`
   const storagePath = buildGeneratedReportExportPath({
     meetingYear: year,
     meetingWeek: week,

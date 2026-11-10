@@ -99,7 +99,7 @@ function wrapText(text: string, maxWidth: number, font: PDFFont, fontSize: numbe
 
 async function fetchLogoBytes(): Promise<Uint8Array | null> {
   try {
-    const res = await fetch("/images/exports/acob-lighting-full.png")
+    const res = await fetch("/images/evc-logo-light.png")
     if (res.ok) {
       const buf = await res.arrayBuffer()
       return new Uint8Array(buf)

@@ -51,7 +51,7 @@ export function BirthdayPoster() {
 
   return (
     <section className="bd1">
-      <img src="/images/acob-logo-dark.webp" alt="EVC Logo" className="bd1-logo" />
+      <img src="/images/evc-logo-dark.png" alt="EVC Logo" className="bd1-logo" />
 
       <header className="bd1-top">
         <span className="bd1-presents">The EVC Family presents</span>
@@ -144,7 +144,7 @@ export function BirthdayPoster() {
           <strong>{rangeLabel}</strong>
         </div>
         <p className="bd1-ticket-wish">
-          Wishing you joy, grace, peace, and a beautiful year ahead — thank you for all you bring to ACOB.
+          Wishing you joy, grace, peace, and a beautiful year ahead — thank you for all you bring to EVC.
         </p>
       </div>
 

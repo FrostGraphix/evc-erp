@@ -125,7 +125,7 @@ export function BirthdayClotheslineStage({
   return (
     <section className={cn("bd4", layout === "cards" && "bd4--static")}>
       <header className="bd4-head">
-        <img src="/images/acob-logo-dark.webp" alt="EVC Logo" className="bd4-logo" />
+        <img src="/images/evc-logo-dark.png" alt="EVC Logo" className="bd4-logo" />
       </header>
 
       {error ? (
@@ -191,7 +191,7 @@ export function BirthdayClotheslineStage({
           <p className="bd4-happy">Happy Birthday</p>
           <h1 className="bd4-names">{formatNamesList(celebrants.map((c) => displayName(c.firstName)))}</h1>
           <p className="bd4-wish">
-            The ACOB Family celebrates you — wishing you joy, grace, peace, and a beautiful year ahead.
+            The EVC Family celebrates you — wishing you joy, grace, peace, and a beautiful year ahead.
           </p>
           <span className="bd4-range">{rangeLabel}</span>
         </footer>

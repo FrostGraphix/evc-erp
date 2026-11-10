@@ -91,7 +91,7 @@ function buildWeeklyReportDisplayName(week: number, year: number, meetingDate?: 
         year: "numeric",
       }).format(effectiveDate)
 
-  return `ACOB Weekly Reports - ${formattedDate} - W${week}.pdf`
+  return `EVC Weekly Reports - ${formattedDate} - W${week}.pdf`
 }
 
 interface Props {

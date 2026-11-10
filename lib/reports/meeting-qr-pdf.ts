@@ -50,7 +50,7 @@ export async function generateQrWithMatrixLogo(text: string): Promise<string> {
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve()
       img.onerror = () => reject()
-      img.src = "/images/exports/matrix-mark.png"
+      img.src = "/images/evc-mark.png"
     })
 
     const size = canvas.width * 0.22

@@ -17,7 +17,7 @@ export function BirthdayPicker({ state }: { state: BirthdayCelebrantsState }) {
     <div className="birthday-setup-container">
       <div className="birthday-setup-card">
         <img
-          src="/images/acob-logo-dark.webp"
+          src="/images/evc-logo-dark.png"
           alt="EVC Logo"
           className="birthday-logo birthday-logo--setup"
         />

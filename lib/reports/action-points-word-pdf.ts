@@ -16,7 +16,7 @@ const HEADING_FONT_SIZE = 12
 const TITLE_FONT_SIZE = 14
 const DATE_FONT_SIZE = 12
 const TEXT_COLOR = rgb(0.16, 0.16, 0.16)
-const LOGO_FILE = join(process.cwd(), "public", "images", "signature", "acob-10th-anniversary.png")
+const LOGO_FILE = join(process.cwd(), "public", "images", "evc-logo-light.png")
 
 const wrapText = (text: string, maxWidth: number, font: PDFFontLike, fontSize: number) => {
   const words = String(text || "")

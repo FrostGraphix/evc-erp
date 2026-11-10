@@ -13,8 +13,8 @@ import { join } from "node:path"
 import { normalizeDepartmentName } from "@/shared/departments"
 
 // ─── Colour palette (mirrors edge function) ────────────────────────────────
-const GREEN = rgb(0.102, 0.478, 0.29)
-const DARK = rgb(0.059, 0.176, 0.122)
+const GREEN = rgb(0.949, 0.396, 0.133) // EVC Orange #f26522
+const DARK = rgb(0.08, 0.08, 0.08)
 const WHITE = rgb(1, 1, 1)
 const SLATE = rgb(0.2, 0.255, 0.333)
 const MUTED = rgb(0.392, 0.455, 0.545)
@@ -118,7 +118,7 @@ async function drawLogoInHeader(
 
 // ─── Logo fetching ───────────────────────────────────────────────────────────
 
-const ANNIVERSARY_LOGO_PATH = "/images/signature/acob-10th-anniversary.png"
+const ANNIVERSARY_LOGO_PATH = "/images/evc-logo-light.png"
 
 export async function fetchLogoBytes(url: string): Promise<Uint8Array | null> {
   try {

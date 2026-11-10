@@ -21,8 +21,8 @@ import {
   groupActionItemsByDepartment,
 } from "./shared"
 
-const PDF_GREEN: [number, number, number] = [26, 122, 74]
-const PDF_DARK: [number, number, number] = [15, 45, 31]
+const PDF_GREEN: [number, number, number] = [242, 101, 34] // EVC Orange #f26522
+const PDF_DARK: [number, number, number] = [24, 24, 27]
 const PDF_SLATE: [number, number, number] = [51, 65, 85]
 const PDF_MUTED: [number, number, number] = [100, 116, 139]
 const PDF_WHITE: [number, number, number] = [255, 255, 255]

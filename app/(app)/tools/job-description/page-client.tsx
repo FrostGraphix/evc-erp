@@ -183,7 +183,7 @@ export default function JobDescriptionPage() {
           <div className="hidden print:mb-8 print:block print:border-b print:pb-4">
             <div className="flex items-start justify-between">
               <div>
-                <Image src="/acob-logo.webp" alt="EVC" width={180} height={64} className="h-16 w-auto" />
+                <Image src="/images/evc-logo-light.png" alt="EVC" width={180} height={64} className="h-16 w-auto" />
               </div>
               <div className="text-right text-sm">
                 {profile?.first_name && profile?.last_name && (

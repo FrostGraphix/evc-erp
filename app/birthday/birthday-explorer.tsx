@@ -26,7 +26,7 @@ export function BirthdayExplorer() {
   return (
     <>
       <div className="birthday-hero__copy">
-        <img src="/images/acob-logo-dark.webp" alt="EVC Logo" className="birthday-logo" />
+        <img src="/images/evc-logo-dark.png" alt="EVC Logo" className="birthday-logo" />
 
         <div className="birthday-kicker">
           <Sparkles className="h-4 w-4" />
@@ -37,7 +37,7 @@ export function BirthdayExplorer() {
           <p className="birthday-script birthday-script--hero">Happy Birthday</p>
           <h1 className="birthday-title">{celebrantsTitle || "Choose a range"}</h1>
           <p className="birthday-subtitle">
-            ACOB Family celebrates all of you and appreciates your contributions to the growth of the organisation.
+            EVC Family celebrates all of you and appreciates your contributions to the growth of the organisation.
           </p>
         </div>
 
