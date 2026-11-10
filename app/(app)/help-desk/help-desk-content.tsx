@@ -1,0 +1,718 @@
+"use client"
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DataTable, DataTablePage } from "@/components/ui/data-table"
+import type { DataTableColumn, DataTableFilter, DataTableTab } from "@/components/ui/data-table"
+import { Headset, Play, CheckCircle2, LifeBuoy, MessageSquare, Star, Building2 } from "lucide-react"
+import { StatCard } from "@/components/ui/stat-card"
+import { StatGrid } from "@/components/ui/stat-grid"
+import { CreateTicketDialog, type CreateTicketForm } from "@/components/help-desk/create-ticket-dialog"
+import { RatingInput } from "@/components/ui/rating-input"
+import type { HelpDeskTicket, HelpDeskContentProps } from "@/components/help-desk/help-desk-types"
+import type { HelpDeskTicketDetailResponse } from "@/components/help-desk/help-desk-types"
+import { UserHelpDeskTicketDetailsDialog } from "@/components/help-desk/user-ticket-details-dialog"
+import { PriorityBadge, TicketStatusBadge } from "@/components/dashboard/help-desk/ticket-badges"
+import { formatName } from "@/lib/utils"
+import { formatWATDate } from "@/lib/utils/date"
+import { apiFetch } from "@/lib/api-client"
+import { TicketAttachmentsPanel } from "@/components/help-desk/ticket-attachments-panel"
+
+type ErrorPayload = {
+  error?: string
+  message?: string
+}
+type CommentCreateResponse = {
+  id: string
+  comment?: string | null
+  body?: string | null
+  created_at?: string | null
+  author_id?: string | null
+  actor_id?: string | null
+}
+
+type TicketTab = "my_requests" | "assigned_to_me" | "department_assigned"
+
+const DEPARTMENT_FLOW_STATUSES = new Set(["department_queue", "department_assigned", "pending_lead_review"])
+
+function belongsToTab(ticket: HelpDeskTicket, tab: TicketTab, userId: string, userDepartment: string | null) {
+  if (tab === "my_requests") return ticket.requester_id === userId
+  if (tab === "assigned_to_me") return ticket.assigned_to === userId
+  if (tab === "department_assigned") {
+    return (
+      Boolean(userDepartment && ticket.service_department === userDepartment) &&
+      (String(ticket.handling_mode || "") === "queue" ||
+        String(ticket.handling_mode || "") === "department" ||
+        DEPARTMENT_FLOW_STATUSES.has(String(ticket.status || "")))
+    )
+  }
+  return false
+}
+
+function buildFetchDebugLabel(source: string, status: number, payload: unknown) {
+  const p = payload as ErrorPayload
+  const detail = p?.error || p?.message || (typeof payload === "string" ? payload : "") || "Unknown error"
+  return `${source} failed (${status}): ${detail}`
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+function isDepartmentTicket(ticket: HelpDeskTicket) {
+  return ticket.handling_mode === "queue" || DEPARTMENT_FLOW_STATUSES.has(ticket.status)
+}
+
+function canUserChangeTicketStatus(ticket: HelpDeskTicket, userId: string) {
+  if (isDepartmentTicket(ticket)) return false
+  return ticket.assigned_to === userId
+}
+
+export function HelpDeskContent({
+  userId,
+  userDepartment,
+  initialDepartments,
+  initialTickets,
+  initialError,
+}: HelpDeskContentProps) {
+  const [tickets, setTickets] = useState<HelpDeskTicket[]>(initialTickets)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDetailSaving, setIsDetailSaving] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [availableDepartments] = useState<string[]>(initialDepartments || [])
+  const [activeTab, setActiveTab] = useState<TicketTab>("my_requests")
+  const [ratingDrafts, setRatingDrafts] = useState<Record<string, string>>({})
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
+  const [selectedTicketStatus, setSelectedTicketStatus] = useState("")
+  const [selectedTicketDetail, setSelectedTicketDetail] = useState<HelpDeskTicketDetailResponse | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [detailsError, setDetailsError] = useState<string | null>(null)
+  const [detailComment, setDetailComment] = useState("")
+  const [form, setForm] = useState<CreateTicketForm>({
+    title: "",
+    description: "",
+    service_department: "IT and Communications",
+    priority: "medium",
+    assigned_to: null,
+  })
+
+  useEffect(() => {
+    if (initialError) {
+      toast.error(initialError)
+    }
+  }, [initialError])
+
+  const filteredByTab = useMemo(
+    () => tickets.filter((ticket) => belongsToTab(ticket, activeTab, userId, userDepartment)),
+    [tickets, activeTab, userId, userDepartment]
+  )
+
+  const myOpenTickets = useMemo(
+    () => filteredByTab.filter((t) => !["resolved", "closed", "cancelled"].includes(t.status)).length,
+    [filteredByTab]
+  )
+  const resolvedCount = useMemo(
+    () => filteredByTab.filter((ticket) => ticket.status === "resolved").length,
+    [filteredByTab]
+  )
+
+  const departmentOptions = useMemo(() => {
+    const options = new Set<string>()
+    options.add(form.service_department)
+    for (const department of availableDepartments) {
+      if (department) options.add(department)
+    }
+    for (const ticket of tickets) {
+      if (ticket.service_department) options.add(ticket.service_department)
+    }
+    return Array.from(options).filter((department) => Boolean(department))
+  }, [availableDepartments, form.service_department, tickets])
+
+  const avgCsat = useMemo(() => {
+    const rated = filteredByTab.filter((t) => t.csat_rating)
+    if (!rated.length) return "-"
+    return (rated.reduce((sum, t) => sum + Number(t.csat_rating), 0) / rated.length).toFixed(1)
+  }, [filteredByTab])
+
+  const tabCounts = useMemo(
+    () => ({
+      my_requests: tickets.filter((ticket) => belongsToTab(ticket, "my_requests", userId, userDepartment)).length,
+      assigned_to_me: tickets.filter((ticket) => belongsToTab(ticket, "assigned_to_me", userId, userDepartment)).length,
+      department_assigned: tickets.filter((ticket) =>
+        belongsToTab(ticket, "department_assigned", userId, userDepartment)
+      ).length,
+    }),
+    [tickets, userId, userDepartment]
+  )
+
+  const tabs: DataTableTab[] = useMemo(
+    () => [
+      { key: "my_requests", label: `My Requests (${tabCounts.my_requests})` },
+      { key: "assigned_to_me", label: `Assigned To Me (${tabCounts.assigned_to_me})` },
+      { key: "department_assigned", label: `Department Assigned (${tabCounts.department_assigned})` },
+    ],
+    [tabCounts]
+  )
+
+  const statusOptions = useMemo(
+    () =>
+      Array.from(new Set(tickets.map((ticket) => ticket.status).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b))
+        .map((status) => ({ value: status, label: formatName(status) })),
+    [tickets]
+  )
+
+  const departmentFilterOptions = useMemo(
+    () =>
+      Array.from(new Set(tickets.map((ticket) => ticket.service_department).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b))
+        .map((department) => ({ value: department, label: department })),
+    [tickets]
+  )
+
+  const columns: DataTableColumn<HelpDeskTicket>[] = [
+    {
+      key: "ticket_number",
+      label: "Ticket",
+      sortable: true,
+      accessor: (ticket) => ticket.ticket_number,
+      render: (ticket) => <span className="font-mono text-xs font-bold">{ticket.ticket_number}</span>,
+      hideOnMobile: true,
+    },
+    {
+      key: "title",
+      label: "Title",
+      sortable: true,
+      resizable: true,
+      initialWidth: 280,
+      accessor: (ticket) => ticket.title,
+      render: (ticket) => (
+        <div className="flex flex-col">
+          <button
+            type="button"
+            onClick={() => void openTicketDetails(ticket.id)}
+            className="line-clamp-1 text-left font-medium hover:underline focus-visible:outline-none"
+          >
+            {ticket.title}
+          </button>
+          <span className="text-muted-foreground text-xs uppercase">{ticket.service_department}</span>
+        </div>
+      ),
+    },
+    {
+      key: "priority",
+      label: "Priority",
+      sortable: true,
+      accessor: (ticket) => ticket.priority,
+      render: (ticket) => <PriorityBadge priority={ticket.priority} />,
+    },
+    {
+      key: "status",
+      label: "Status",
+      sortable: true,
+      accessor: (ticket) => ticket.status,
+      render: (ticket) => <TicketStatusBadge status={ticket.status} />,
+    },
+    {
+      key: "comments",
+
+      label: "Comments",
+      sortable: true,
+      accessor: (ticket) => ticket.comment_count || 0,
+      render: (ticket) =>
+        (ticket.comment_count || 0) > 0 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void openTicketDetails(ticket.id)
+                }}
+                aria-label="View comments"
+              >
+                <Badge variant="outline" className="hover:bg-muted/80 cursor-pointer gap-1 text-xs">
+                  <MessageSquare className="h-3 w-3" />
+                  {ticket.comment_count}
+                </Badge>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              View {ticket.comment_count} comment{ticket.comment_count === 1 ? "" : "s"} & details
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="text-muted-foreground text-xs">-</span>
+        ),
+    },
+    {
+      key: "created_at",
+      label: "Created",
+      sortable: true,
+      accessor: (ticket) => ticket.created_at,
+      render: (ticket) => <span className="text-muted-foreground text-xs">{formatWATDate(ticket.created_at)}</span>,
+      hideOnMobile: true,
+    },
+  ]
+
+  const filters: DataTableFilter<HelpDeskTicket>[] = useMemo(
+    () => [
+      {
+        key: "status",
+        label: "Status",
+        options: statusOptions,
+      },
+      {
+        key: "priority",
+        label: "Priority",
+        options: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High" },
+          { value: "urgent", label: "Urgent" },
+        ],
+      },
+      {
+        key: "service_department",
+        label: "Department",
+        options: departmentFilterOptions,
+      },
+    ],
+    [statusOptions, departmentFilterOptions]
+  )
+
+  async function refreshTickets() {
+    const [mineRes, deptRes] = await Promise.all([
+      apiFetch("/api/help-desk/tickets?scope=mine", { cache: "no-store" }),
+      apiFetch("/api/help-desk/tickets?scope=service_department", { cache: "no-store" }),
+    ])
+    const mineJson = await mineRes.json().catch(() => ({}))
+    const deptJson = await deptRes.json().catch(() => ({}))
+
+    if (!mineRes.ok) {
+      toast.error(buildFetchDebugLabel("Tickets refresh", mineRes.status, mineJson))
+      return
+    }
+    if (!deptRes.ok) {
+      toast.error(buildFetchDebugLabel("Department tickets refresh", deptRes.status, deptJson))
+      return
+    }
+    const merged = Array.from(
+      new Map(
+        [...(mineJson.data || []), ...(deptJson.data || [])].map((ticket: HelpDeskTicket) => [ticket.id, ticket])
+      ).values()
+    ) as HelpDeskTicket[]
+    setTickets(merged)
+  }
+
+  async function createTicket(e: React.FormEvent) {
+    e.preventDefault()
+
+    if (!form.title.trim()) {
+      toast.error("Title is required")
+      return
+    }
+    if (userDepartment && form.service_department === userDepartment) {
+      toast.error("You cannot submit help desk requests to your own department.")
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const res = await apiFetch("/api/help-desk/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      })
+
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error || "Failed to create ticket")
+      }
+
+      toast.success("Ticket submitted")
+      setCreateOpen(false)
+      setForm({
+        title: "",
+        description: "",
+        service_department: "IT and Communications",
+        priority: "medium",
+        assigned_to: null,
+      })
+      await refreshTickets()
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to create ticket"))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function setStatus(ticketId: string, status: string) {
+    try {
+      const res = await apiFetch(`/api/help-desk/tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error || "Failed to update")
+      }
+
+      toast.success("Ticket updated")
+      await refreshTickets()
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Update failed"))
+    }
+  }
+
+  async function rateTicket(ticketId: string, rating: number) {
+    try {
+      const res = await apiFetch(`/api/help-desk/tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "closed", rating }),
+      })
+
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error || "Failed to close ticket with rating")
+      }
+
+      toast.success("Ticket closed and service rating recorded")
+      await refreshTickets()
+      setDetailsOpen(false)
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to submit rating"))
+    }
+  }
+
+  const loadTicketDetails = useCallback(async (ticketId: string) => {
+    setDetailsLoading(true)
+    setDetailsError(null)
+    try {
+      const res = await apiFetch(`/api/help-desk/tickets/${ticketId}`, { cache: "no-store" })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        const message = (json as ErrorPayload | null)?.error || "Failed to load ticket details"
+        throw new Error(message)
+      }
+      const detail = (json as { data?: HelpDeskTicketDetailResponse } | null)?.data || null
+      setSelectedTicketDetail(detail)
+      setSelectedTicketStatus(String(detail?.ticket?.status || ""))
+    } catch (error: unknown) {
+      setDetailsError(getErrorMessage(error, "Failed to load ticket details"))
+    } finally {
+      setDetailsLoading(false)
+    }
+  }, [])
+
+  const openTicketDetails = useCallback(
+    async (ticketId: string) => {
+      setSelectedTicketId(ticketId)
+      setDetailsOpen(true)
+      setDetailComment("")
+      await loadTicketDetails(ticketId)
+    },
+    [loadTicketDetails]
+  )
+
+  async function updateTicketStatusFromModal(status: string) {
+    if (!selectedTicketId) return
+
+    // The API requires a reason on rejection; catch it here so the user is told
+    // what to do before the round-trip rather than after it.
+    if (status === "rejected" && !detailComment.trim()) {
+      toast.error("Add a comment explaining why this ticket is being rejected.")
+      return
+    }
+
+    setSelectedTicketStatus(status)
+    setIsDetailSaving(true)
+    try {
+      const res = await apiFetch(`/api/help-desk/tickets/${selectedTicketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, status_note: detailComment.trim() || null }),
+      })
+      const payload = (await res.json().catch(() => null)) as ErrorPayload | null
+      if (!res.ok) throw new Error(payload?.error || "Failed to update ticket")
+      toast.success("Ticket updated")
+      setDetailComment("")
+      await Promise.all([refreshTickets(), loadTicketDetails(selectedTicketId)])
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to update ticket"))
+    } finally {
+      setIsDetailSaving(false)
+    }
+  }
+
+  async function addTicketCommentFromModal() {
+    if (!selectedTicketId || !detailComment.trim()) return
+    setIsDetailSaving(true)
+    try {
+      const res = await apiFetch(`/api/help-desk/tickets/${selectedTicketId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: detailComment.trim() }),
+      })
+      const payload = (await res.json().catch(() => null)) as (ErrorPayload & { data?: CommentCreateResponse }) | null
+      if (!res.ok) throw new Error(payload?.error || "Failed to add comment")
+      const created = payload?.data || null
+      toast.success("Comment added")
+      setDetailComment("")
+      if (created) {
+        setSelectedTicketDetail((previous) => {
+          if (!previous || previous.ticket.id !== selectedTicketId) return previous
+          return {
+            ...previous,
+            comments: [...(previous.comments || []), created],
+          }
+        })
+      }
+      setTickets((previous) =>
+        previous.map((ticket) =>
+          ticket.id === selectedTicketId ? { ...ticket, comment_count: (ticket.comment_count || 0) + 1 } : ticket
+        )
+      )
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to add comment"))
+    } finally {
+      setIsDetailSaving(false)
+    }
+  }
+
+  return (
+    <DataTablePage
+      title="Help Desk"
+      description="Submit and track support tickets."
+      icon={Headset}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={(tab) => setActiveTab(tab as TicketTab)}
+      spacing="tight"
+      actionsPlacement="inline-always"
+      actions={
+        <div className="flex items-center gap-2">
+          <CreateTicketDialog
+            open={createOpen}
+            onOpenChange={setCreateOpen}
+            form={form}
+            onFormChange={setForm}
+            onSubmit={createTicket}
+            isSaving={isSaving}
+            departmentOptions={departmentOptions}
+            userDepartment={userDepartment}
+          />
+        </div>
+      }
+      stats={
+        <StatGrid>
+          <StatCard
+            variant="compact"
+            title="Open Tickets"
+            value={myOpenTickets}
+            icon={LifeBuoy}
+            iconBgColor="bg-blue-500/10"
+            iconColor="text-blue-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Resolved"
+            value={resolvedCount}
+            icon={CheckCircle2}
+            iconBgColor="bg-emerald-500/10"
+            iconColor="text-emerald-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Avg CSAT"
+            value={avgCsat}
+            icon={Star}
+            iconBgColor="bg-violet-500/10"
+            iconColor="text-violet-500"
+          />
+        </StatGrid>
+      }
+    >
+      <DataTable<HelpDeskTicket>
+        data={filteredByTab}
+        columns={columns}
+        getRowId={(ticket) => ticket.id}
+        filters={filters}
+        pagination={{ pageSize: 50 }}
+        searchPlaceholder="Search ticket number, title, or department..."
+        searchFn={(ticket, query) =>
+          `${ticket.ticket_number} ${ticket.title} ${ticket.service_department}`.toLowerCase().includes(query)
+        }
+        rowActions={[
+          {
+            label: "Start",
+            icon: Play,
+            onClick: (ticket) => void setStatus(ticket.id, "in_progress"),
+            hidden: (ticket) => !(canUserChangeTicketStatus(ticket, userId) && ticket.status === "assigned"),
+          },
+          {
+            label: "Resolve",
+            icon: CheckCircle2,
+            onClick: (ticket) => void setStatus(ticket.id, "resolved"),
+            hidden: (ticket) => !(canUserChangeTicketStatus(ticket, userId) && ticket.status === "in_progress"),
+          },
+        ]}
+        stickyToolbar
+        viewToggle
+        contactsView
+        // Seven columns are worth a table where they fit and unreadable where they
+        // do not, so the opening view follows the width.
+        defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+        mobileRow={{
+          // Urgency first: an urgent ticket needs answering whatever else is open.
+          title: (ticket) => ticket.title,
+          subtitle: (ticket) =>
+            [
+              ticket.ticket_number,
+              ticket.service_department,
+              (ticket.comment_count || 0) > 0
+                ? `${ticket.comment_count} comment${ticket.comment_count === 1 ? "" : "s"}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          trailing: (ticket) => <TicketStatusBadge status={ticket.status} />,
+          detail: {
+            title: (ticket) => ticket.title,
+            subtitle: (ticket) => `${ticket.ticket_number} · ${ticket.service_department}`,
+            badges: (ticket) => (
+              <>
+                <TicketStatusBadge status={ticket.status} />
+                <PriorityBadge priority={ticket.priority} />
+              </>
+            ),
+            fields: (ticket) => [
+              { label: "Ticket Number", value: ticket.ticket_number, copyable: true },
+              { label: "Service Dept", value: ticket.service_department },
+              { label: "Priority", value: ticket.priority },
+              { label: "Created", value: formatWATDate(ticket.created_at) },
+              { label: "Description", value: ticket.description, fullWidth: true },
+            ],
+            actions: (ticket) => [
+              {
+                label: "View Full Ticket",
+                onClick: () => void openTicketDetails(ticket.id),
+              },
+            ],
+          },
+        }}
+        emptyTitle="No tickets"
+        emptyDescription="Tickets you raise or are assigned appear here."
+        emptyIcon={Headset}
+        skeletonRows={6}
+        cardRenderer={(ticket) => (
+          <div
+            className="group bg-card text-card-foreground border-border/60 hover:border-primary/40 h-full cursor-pointer rounded-xl border p-4 shadow-sm transition-all"
+            onClick={() => void openTicketDetails(ticket.id)}
+          >
+            <div className="mb-2 flex items-start justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground font-mono text-xs font-bold">{ticket.ticket_number}</span>
+                {(ticket.comment_count || 0) > 0 && (
+                  <Badge variant="outline" className="gap-1 text-xs">
+                    <MessageSquare className="h-3 w-3" />
+                    {ticket.comment_count}
+                  </Badge>
+                )}
+              </div>
+              <PriorityBadge priority={ticket.priority} />
+            </div>
+            <h4 className="line-clamp-2 text-sm font-semibold">{ticket.title}</h4>
+            <p className="text-muted-foreground mt-1 mb-3 flex items-center gap-1.5 text-xs">
+              <Building2 className="h-3.5 w-3.5 shrink-0" />
+              {ticket.service_department}
+            </p>
+            <div className="flex items-center justify-between border-t pt-2">
+              <TicketStatusBadge status={ticket.status} />
+              <span className="text-muted-foreground text-xs">{formatWATDate(ticket.created_at)}</span>
+            </div>
+          </div>
+        )}
+        urlSync
+      />
+
+      <UserHelpDeskTicketDetailsDialog
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        detail={selectedTicketDetail}
+        isLoading={detailsLoading}
+        loadError={detailsError}
+        onRetry={async () => {
+          if (!selectedTicketId) return
+          await loadTicketDetails(selectedTicketId)
+        }}
+        selectedStatus={selectedTicketStatus}
+        onStatusChange={updateTicketStatusFromModal}
+        isSaving={isDetailSaving}
+        canChangeStatus={
+          selectedTicketDetail?.ticket ? canUserChangeTicketStatus(selectedTicketDetail.ticket, userId) : false
+        }
+        showDepartmentRestriction={
+          selectedTicketDetail?.ticket
+            ? isDepartmentTicket(selectedTicketDetail.ticket) &&
+              !canUserChangeTicketStatus(selectedTicketDetail.ticket, userId)
+            : false
+        }
+        newComment={detailComment}
+        setNewComment={setDetailComment}
+        onAddComment={addTicketCommentFromModal}
+        isPostingComment={isDetailSaving}
+        attachmentsSlot={<TicketAttachmentsPanel ticketId={selectedTicketId} currentUserId={userId} />}
+        ratingSlot={
+          selectedTicketDetail?.ticket &&
+          selectedTicketDetail.ticket.requester_id === userId &&
+          selectedTicketDetail.ticket.status === "resolved" ? (
+            <div className="space-y-3 rounded-lg border p-3">
+              <div className="space-y-1.5">
+                <span className="text-muted-foreground text-xs font-semibold">Service Rating (1–5) *</span>
+                <RatingInput
+                  value={
+                    ratingDrafts[selectedTicketDetail.ticket.id]
+                      ? Number(ratingDrafts[selectedTicketDetail.ticket.id])
+                      : null
+                  }
+                  onChange={(val) =>
+                    setRatingDrafts((previous) => ({ ...previous, [selectedTicketDetail.ticket.id]: String(val) }))
+                  }
+                  min={1}
+                  max={5}
+                />
+              </div>
+              <Button
+                size="sm"
+                disabled={!ratingDrafts[selectedTicketDetail.ticket.id]}
+                onClick={async () => {
+                  const ticketId = selectedTicketDetail.ticket.id
+                  const selected = Number(ratingDrafts[ticketId])
+                  if (!selected || Number.isNaN(selected)) return
+                  await rateTicket(ticketId, selected)
+                  setRatingDrafts((previous) => {
+                    const next = { ...previous }
+                    delete next[ticketId]
+                    return next
+                  })
+                }}
+              >
+                Close Ticket with Rating
+              </Button>
+            </div>
+          ) : null
+        }
+      />
+    </DataTablePage>
+  )
+}

@@ -1,0 +1,694 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import { formatWATDateTime, formatWATDateTimeRange, toLocalISODate } from "@/lib/utils/date"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { QUERY_KEYS } from "@/lib/query-keys"
+import {
+  CalendarClock,
+  Car,
+  Paperclip,
+  Pencil,
+  Plus,
+  Trash2,
+  Clock,
+  CheckCircle2,
+  FileText,
+  MessageSquare,
+  User,
+} from "lucide-react"
+import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/patterns/status-badge"
+import { Button, buttonVariants } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Calendar } from "@/components/ui/calendar"
+import { Input } from "@/components/ui/input"
+import { DataTable, DataTablePage } from "@/components/ui/data-table"
+import type { DataTableColumn, DataTableFilter } from "@/components/ui/data-table"
+import { StatCard } from "@/components/ui/stat-card"
+import { StatGrid } from "@/components/ui/stat-grid"
+import { apiFetch } from "@/lib/api-client"
+import { FleetDialog } from "./_components/fleet-dialog"
+
+export type FleetResource = {
+  id: string
+  name: string
+  resource_type: string
+  description?: string | null
+  is_active: boolean
+}
+
+type FleetAttachment = {
+  id: string
+  file_name: string
+  mime_type: string
+  file_size: number
+}
+
+type FleetBooking = {
+  id: string
+  resource_id: string
+  requester_id: string
+  start_at: string
+  end_at: string
+  reason: string
+  status: "pending" | "approved" | "rejected" | "cancelled"
+  admin_note?: string | null
+  created_at: string
+  /** When the approver decided (approved or rejected). */
+  reviewed_at?: string | null
+  resource?: FleetResource | null
+  requester?: {
+    id: string
+    full_name?: string | null
+    department?: string | null
+  } | null
+  reviewer?: {
+    id: string
+    full_name?: string | null
+    department?: string | null
+    designation?: string | null
+  } | null
+  attachments?: FleetAttachment[]
+}
+
+export type FleetSchedule = {
+  id: string
+  resource_id: string
+  start_at: string
+  end_at: string
+  status: "pending" | "approved"
+}
+
+type FleetBookingRow = FleetBooking & {
+  resourceName: string
+  timeRange: string
+}
+
+function formatDateTime(value: string) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return formatWATDateTime(parsed, { day: "2-digit", month: "short", year: "numeric" })
+}
+
+export function toLocalDateTimeInput(value?: string) {
+  if (!value) return ""
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+async function fetchFleetResources(): Promise<FleetResource[]> {
+  const response = await apiFetch("/api/fleet/resources")
+  if (!response.ok) throw new Error("Failed to load resources")
+  const payload = await response.json()
+  return payload.data || []
+}
+
+async function fetchFleetBookings(
+  scope: string = "all"
+): Promise<{ bookings: FleetBooking[]; schedule: FleetSchedule[] }> {
+  const response = await apiFetch(`/api/fleet/bookings?scope=${scope}`)
+  if (!response.ok) throw new Error("Failed to load resource bookings")
+  const payload = await response.json()
+  return { bookings: payload.data || [], schedule: payload.resource_schedule || [] }
+}
+
+const FLEET_TABS = [
+  { key: "all", label: "General Bookings" },
+  { key: "my", label: "My Requests" },
+]
+
+export function FleetContent() {
+  const queryClient = useQueryClient()
+  const [activeTab, setActiveTab] = useState<"all" | "my">("all")
+  const [open, setOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [cancelingId, setCancelingId] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [resourceId, setResourceId] = useState("")
+  const [startAt, setStartAt] = useState("")
+  const [endAt, setEndAt] = useState("")
+  const [reason, setReason] = useState("")
+  const [files, setFiles] = useState<File[]>([])
+
+  const resetModalState = () => {
+    setOpen(false)
+    setEditingId(null)
+    setResourceId("")
+    setStartAt("")
+    setEndAt("")
+    setReason("")
+    setFiles([])
+  }
+
+  const handleOpenEdit = (row: FleetBookingRow) => {
+    setEditingId(row.id)
+    setResourceId(row.resource_id)
+    setStartAt(toLocalDateTimeInput(row.start_at))
+    setEndAt(toLocalDateTimeInput(row.end_at))
+    setReason(row.reason)
+    setFiles([])
+    setOpen(true)
+  }
+
+  const hasInvalidWindow = useMemo(() => {
+    if (!startAt || !endAt) return false
+    const start = new Date(startAt).getTime()
+    const end = new Date(endAt).getTime()
+    if (Number.isNaN(start) || Number.isNaN(end)) return false
+    return end <= start
+  }, [startAt, endAt])
+
+  const canSubmit = resourceId && startAt && endAt && reason.trim().length >= 10 && !hasInvalidWindow
+
+  const { data: resources = [] } = useQuery({
+    queryKey: QUERY_KEYS.fleetResources(),
+    queryFn: fetchFleetResources,
+  })
+
+  const {
+    data: bookingsData,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: [...QUERY_KEYS.fleetBookings(), activeTab],
+    queryFn: () => fetchFleetBookings(activeTab),
+  })
+
+  const bookings = useMemo(() => bookingsData?.bookings ?? [], [bookingsData?.bookings])
+
+  const selectedResourceSchedule = useMemo(() => {
+    if (!resourceId) return []
+    return (bookingsData?.schedule ?? []).filter(
+      (slot) => slot.resource_id === resourceId && (editingId ? slot.id !== editingId : true)
+    )
+  }, [resourceId, bookingsData?.schedule, editingId])
+
+  /**
+   * Days the selected resource is already taken, so the picker can grey them
+   * out the way the leave calendar marks department-booked days. A slot can
+   * span several days, so every day it touches counts.
+   */
+  const bookedDayKeys = useMemo(() => {
+    const keys = new Set<string>()
+    for (const slot of selectedResourceSchedule) {
+      const start = new Date(slot.start_at)
+      const end = new Date(slot.end_at)
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue
+      for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+        keys.add(toLocalISODate(cursor))
+      }
+    }
+    return keys
+  }, [selectedResourceSchedule])
+
+  const selectedRange = useMemo(() => {
+    const from = startAt ? new Date(startAt) : undefined
+    const to = endAt ? new Date(endAt) : undefined
+    if (!from || Number.isNaN(from.getTime())) return undefined
+    return { from, to: to && !Number.isNaN(to.getTime()) ? to : undefined }
+  }, [startAt, endAt])
+
+  /** Keeps the time part when the calendar changes only the day. */
+  const withDate = (existing: string, day: Date, fallbackTime: string) => {
+    const time = existing.includes("T") ? existing.slice(11, 16) : fallbackTime
+    return `${toLocalISODate(day)}T${time}`
+  }
+
+  const currentWindowConflicts = useMemo(() => {
+    if (!resourceId || !startAt || !endAt) return []
+    const start = new Date(startAt).getTime()
+    const end = new Date(endAt).getTime()
+    if (Number.isNaN(start) || Number.isNaN(end)) return []
+    return selectedResourceSchedule.filter((slot) => {
+      const slotStart = new Date(slot.start_at).getTime()
+      const slotEnd = new Date(slot.end_at).getTime()
+      return slotStart < end && slotEnd > start
+    })
+  }, [resourceId, startAt, endAt, selectedResourceSchedule])
+
+  const { mutate: submitBooking, isPending: submitting } = useMutation({
+    mutationFn: async (formData: FormData) => {
+      const response = await apiFetch("/api/fleet/bookings", { method: "POST", body: formData })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || "Failed to submit booking")
+      return payload
+    },
+    onSuccess: () => {
+      toast.success("Booking application submitted")
+      resetModalState()
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.fleetBookings() })
+    },
+    onError: (mutationError) => {
+      toast.error(mutationError instanceof Error ? mutationError.message : "Failed to submit booking")
+    },
+  })
+
+  const { mutate: updateBooking, isPending: updating } = useMutation({
+    mutationFn: async (payload: { resource_id: string; start_at: string; end_at: string; reason: string }) => {
+      const response = await apiFetch(`/api/fleet/bookings/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const resPayload = await response.json()
+      if (!response.ok) throw new Error(resPayload.error || "Failed to update booking")
+      return resPayload
+    },
+    onSuccess: () => {
+      toast.success("Booking updated")
+      resetModalState()
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.fleetBookings() })
+    },
+    onError: (mutationError) => {
+      toast.error(mutationError instanceof Error ? mutationError.message : "Failed to update booking")
+    },
+  })
+
+  function handleSubmit() {
+    if (!canSubmit) {
+      if (hasInvalidWindow) {
+        toast.error("End date and time must be after the start date and time.")
+        return
+      }
+      toast.error("Please complete all required fields. Reason must be at least 10 characters.")
+      return
+    }
+
+    if (editingId) {
+      updateBooking({
+        resource_id: resourceId,
+        start_at: new Date(startAt).toISOString(),
+        end_at: new Date(endAt).toISOString(),
+        reason: reason.trim(),
+      })
+    } else {
+      const formData = new FormData()
+      formData.append("resource_id", resourceId)
+      formData.append("start_at", new Date(startAt).toISOString())
+      formData.append("end_at", new Date(endAt).toISOString())
+      formData.append("reason", reason.trim())
+      files.forEach((file) => formData.append("attachments", file))
+      submitBooking(formData)
+    }
+  }
+
+  async function handleDelete(bookingId: string) {
+    setCancelingId(bookingId)
+    try {
+      const response = await apiFetch(`/api/fleet/bookings/${bookingId}`, { method: "DELETE" })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to delete booking")
+      }
+      toast.success("Booking deleted successfully")
+      setDeleteConfirmId(null)
+      await refetch()
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.fleetBookings() })
+    } catch (cancelError) {
+      toast.error(cancelError instanceof Error ? cancelError.message : "Failed to delete booking")
+    } finally {
+      setCancelingId(null)
+    }
+  }
+
+  const rows = useMemo<FleetBookingRow[]>(
+    () =>
+      bookings.map((booking) => ({
+        ...booking,
+        resourceName: booking.resource?.name || "Resource",
+        timeRange: formatWATDateTimeRange(booking.start_at, booking.end_at),
+      })),
+    [bookings]
+  )
+
+  const statusPill = (row: FleetBookingRow) => (
+    <StatusBadge status={row.status} className="text-xs whitespace-nowrap capitalize" />
+  )
+
+  const columns = useMemo<DataTableColumn<FleetBookingRow>[]>(
+    () => [
+      {
+        key: "resource",
+        label: "Resource",
+        sortable: true,
+        accessor: (row) => row.resourceName,
+        render: (row) => <span className="font-medium">{row.resourceName}</span>,
+      },
+      {
+        key: "requester",
+        label: "Requested By",
+        sortable: true,
+        accessor: (row) => row.requester?.full_name || "Self",
+        render: (row) => (
+          <div className="text-xs">
+            <p className="font-medium">{row.requester?.full_name || "Self"}</p>
+            {row.requester?.department ? <p className="text-muted-foreground">{row.requester.department}</p> : null}
+          </div>
+        ),
+      },
+      {
+        key: "timeRange",
+        label: "Schedule",
+        sortable: true,
+        accessor: (row) => row.timeRange,
+      },
+      {
+        key: "status",
+        label: "Status",
+        sortable: true,
+        accessor: (row) => row.status,
+        render: (row) => statusPill(row),
+      },
+      {
+        key: "attachments",
+        label: "Files",
+        sortable: true,
+        accessor: (row) => row.attachments?.length || 0,
+        render: (row) => (
+          <span className="inline-flex items-center gap-1">
+            <Paperclip className="h-3.5 w-3.5" />
+            {(row.attachments || []).length}
+          </span>
+        ),
+        hideOnMobile: true,
+      },
+      {
+        key: "created_at",
+        label: "Submitted",
+        sortable: true,
+        accessor: (row) => row.created_at,
+        render: (row) => formatDateTime(row.created_at),
+        hideOnMobile: true,
+      },
+      {
+        key: "reviewer",
+        label: "Decision By",
+        sortable: true,
+        accessor: (row) => row.reviewer?.full_name || "-",
+        render: (row) =>
+          row.reviewer?.full_name ? (
+            <div className="text-xs">
+              <p className="font-medium">{row.reviewer.full_name}</p>
+              {row.reviewer.department ? <p className="text-muted-foreground">{row.reviewer.department}</p> : null}
+              {row.reviewed_at ? <p className="text-muted-foreground">{formatDateTime(row.reviewed_at)}</p> : null}
+            </div>
+          ) : row.status === "cancelled" ? (
+            <span className="text-muted-foreground text-xs">{row.admin_note || "Cancelled"}</span>
+          ) : (
+            <span className="text-muted-foreground text-xs">Not yet reviewed</span>
+          ),
+        hideOnMobile: true,
+      },
+    ],
+    []
+  )
+
+  const filters = useMemo<DataTableFilter<FleetBookingRow>[]>(
+    () => [
+      {
+        key: "status",
+        label: "Status",
+        options: [
+          { value: "pending", label: "Pending" },
+          { value: "approved", label: "Approved" },
+          { value: "rejected", label: "Rejected" },
+          { value: "cancelled", label: "Cancelled" },
+        ],
+      },
+      {
+        key: "resource",
+        label: "Resource",
+        mode: "custom",
+        options: Array.from(new Set(rows.map((row) => row.resourceName))).map((name) => ({ value: name, label: name })),
+        filterFn: (row, selected) => selected.includes(row.resourceName),
+      },
+    ],
+    [rows]
+  )
+
+  const stats = useMemo(
+    () => ({
+      total: rows.length,
+      pending: rows.filter((row) => row.status === "pending").length,
+      approved: rows.filter((row) => row.status === "approved").length,
+      occupiedSlots: selectedResourceSchedule.length,
+    }),
+    [rows, selectedResourceSchedule.length]
+  )
+
+  return (
+    <DataTablePage
+      title="Resource Booking"
+      description="Book shared resources like transport and spaces without time clashes."
+      icon={Car}
+      tabs={FLEET_TABS}
+      activeTab={activeTab}
+      onTabChange={(tab) => setActiveTab(tab as "all" | "my")}
+      spacing="tight"
+      actionsPlacement="inline-always"
+      actions={
+        <Button onClick={() => setOpen(true)} size="sm">
+          <Plus className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">New Application</span>
+        </Button>
+      }
+      stats={
+        <StatGrid>
+          <StatCard
+            variant="compact"
+            title="Applications"
+            value={stats.total}
+            icon={Car}
+            iconBgColor="bg-blue-500/10"
+            iconColor="text-blue-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Pending"
+            value={stats.pending}
+            icon={Clock}
+            iconBgColor="bg-amber-500/10"
+            iconColor="text-amber-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Approved"
+            value={stats.approved}
+            icon={CheckCircle2}
+            iconBgColor="bg-emerald-500/10"
+            iconColor="text-emerald-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Occupied Slots"
+            value={stats.occupiedSlots}
+            icon={CalendarClock}
+            iconBgColor="bg-violet-500/10"
+            iconColor="text-violet-500"
+          />
+        </StatGrid>
+      }
+    >
+      <DataTable<FleetBookingRow>
+        data={rows}
+        columns={columns}
+        filters={filters}
+        getRowId={(row) => row.id}
+        pagination={{ pageSize: 50 }}
+        searchPlaceholder="Search resource, reason, or schedule..."
+        searchFn={(row, query) => `${row.resourceName} ${row.reason} ${row.timeRange}`.toLowerCase().includes(query)}
+        isLoading={isLoading}
+        error={error instanceof Error ? error.message : null}
+        onRetry={() => {
+          void refetch()
+        }}
+        forceRowActionsDropdown
+        rowActions={[
+          {
+            label: "Edit",
+            icon: Pencil,
+            onClick: (row) => handleOpenEdit(row),
+            hidden: (row) => row.status !== "pending",
+          },
+          {
+            label: "Delete",
+            icon: Trash2,
+            variant: "destructive",
+            onClick: (row) => setDeleteConfirmId(row.id),
+            hidden: (row) => row.status !== "pending" || cancelingId === row.id,
+          },
+        ]}
+        stickyToolbar
+        viewToggle
+        contactsView
+        // Seven columns, four of them people and timestamps: a table where it
+        // fits, the row list where it does not.
+        defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+        mobileRow={{
+          title: (row) => row.resourceName,
+          subtitle: (row) => `${row.timeRange} · ${row.requester?.full_name || "Self"}`,
+          trailing: (row) => statusPill(row),
+          detail: {
+            title: (row) => row.resourceName,
+            subtitle: (row) => (
+              <span className="text-muted-foreground text-xs">
+                {row.timeRange} · requested by {row.requester?.full_name || "Self"}
+              </span>
+            ),
+            badges: (row) => statusPill(row),
+            // Everything the removed expandable row carried, plus the decision
+            // timestamp it only half-showed.
+            fields: (row) => [
+              { icon: FileText, label: "Reason", value: row.reason, copyable: true },
+              {
+                icon: MessageSquare,
+                label: "Admin note",
+                value: row.admin_note,
+                copyable: true,
+              },
+              {
+                icon: User,
+                label: row.status === "rejected" ? "Rejected by" : "Approved by",
+                value: row.reviewer?.full_name
+                  ? `${row.reviewer.full_name}${row.reviewer.department ? ` — ${row.reviewer.department}` : ""}${
+                      row.reviewed_at ? ` · ${formatDateTime(row.reviewed_at)}` : ""
+                    }`
+                  : "Not yet reviewed",
+                copyable: false,
+                muted: !row.reviewer?.full_name,
+              },
+              {
+                icon: CalendarClock,
+                label: "Submitted",
+                value: formatDateTime(row.created_at),
+                copyable: false,
+              },
+              {
+                icon: Paperclip,
+                label: "Attachments",
+                value: `${(row.attachments || []).length} file${(row.attachments || []).length === 1 ? "" : "s"}`,
+                copyable: false,
+              },
+            ],
+            actions: (row) =>
+              row.status === "pending"
+                ? [
+                    {
+                      label: "Edit",
+                      icon: Pencil,
+                      variant: "outline" as const,
+                      onClick: () => handleOpenEdit(row),
+                    },
+                    {
+                      label: "Delete",
+                      icon: Trash2,
+                      variant: "destructive" as const,
+                      onClick: () => setDeleteConfirmId(row.id),
+                    },
+                  ]
+                : [],
+          },
+        }}
+        emptyTitle="No bookings"
+        emptyAction={
+          <Button size="sm" onClick={() => setOpen(true)}>
+            Book a resource
+          </Button>
+        }
+        emptyDescription="Applications you submit, and those you can see, appear here."
+        emptyIcon={Car}
+        skeletonRows={6}
+        cardRenderer={(row) => (
+          <div className="group bg-card text-card-foreground border-border/60 hover:border-primary/40 h-full space-y-3 rounded-xl border p-4 shadow-sm transition-all">
+            <div className="flex items-start justify-between gap-2 border-b pb-2">
+              <div className="min-w-0">
+                <span className="text-foreground block text-sm font-semibold">{row.resourceName}</span>
+                <span className="text-muted-foreground block text-xs">{row.requester?.full_name || "Self"}</span>
+              </div>
+              {statusPill(row)}
+            </div>
+            <div className="space-y-1 text-xs">
+              <p className="text-muted-foreground flex items-center gap-1.5">
+                <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+                {row.timeRange}
+              </p>
+              <p className="text-foreground line-clamp-2 font-medium">{row.reason}</p>
+            </div>
+          </div>
+        )}
+        urlSync
+      />
+
+      <FleetDialog
+        open={open}
+        resetModalState={resetModalState}
+        editingId={editingId}
+        resourceId={resourceId}
+        setResourceId={setResourceId}
+        resources={resources}
+        selectedRange={selectedRange}
+        setStartAt={setStartAt}
+        setEndAt={setEndAt}
+        withDate={withDate}
+        startAt={startAt}
+        endAt={endAt}
+        bookedDayKeys={bookedDayKeys}
+        hasInvalidWindow={hasInvalidWindow}
+        reason={reason}
+        setReason={setReason}
+        setFiles={setFiles}
+        currentWindowConflicts={currentWindowConflicts}
+        handleSubmit={handleSubmit}
+        canSubmit={canSubmit}
+        submitting={submitting}
+        updating={updating}
+      />
+
+      <AlertDialog open={deleteConfirmId !== null} onOpenChange={(isOpen) => !isOpen && setDeleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Resource Booking Request?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this pending resource booking request? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelingId !== null}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              disabled={cancelingId !== null}
+              onClick={(e) => {
+                e.preventDefault()
+                if (deleteConfirmId) void handleDelete(deleteConfirmId)
+              }}
+            >
+              {cancelingId !== null ? "Deleting..." : "Delete Booking"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </DataTablePage>
+  )
+}

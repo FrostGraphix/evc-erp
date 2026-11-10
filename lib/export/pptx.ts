@@ -1,0 +1,1875 @@
+/** Weekly report PowerPoint exports (pptxgenjs, loaded on demand). Split out of lib/export-utils.ts (audit 5.10). */
+import { shuffle } from "@/lib/utils/random"
+import { normalizeDepartmentName } from "@/shared/departments"
+
+import type { WeeklyDeptTaskSummary, WeeklyTaskSummaryOptions } from "@/lib/reports/weekly-task-summary"
+
+import {
+  PptxSlide,
+  PptxTextRun,
+  PptxPresentation,
+  PptxConstructor,
+  loadPptxGenJS,
+  WeeklyReport,
+  formatExportMeetingDateLabel,
+  buildWeeklyReportFilename,
+  sortReportsByDepartment,
+  autoNumberLines,
+  ACOB_GREEN,
+  ACOB_GREEN_LIGHT,
+  ACOB_GREEN_DEEP,
+  ACOB_DARK,
+  ACOB_SLATE,
+  ACOB_MUTED,
+  ACOB_WHITE,
+  ACOB_OFFWHITE,
+  SECTION_TASKS,
+  SECTION_CHALLENGES,
+  EXPORT_LOGOS,
+  logoBoxByHeight,
+  logoBoxByWidth,
+  WeeklyPptxTheme,
+  WeeklyDeptOrder,
+} from "./shared"
+
+export const getWeeklyPptxThemeColors = (theme: WeeklyPptxTheme = "light") => {
+  if (theme === "dark") {
+    return {
+      canvas: "111111",
+      header: ACOB_GREEN_DEEP,
+      headerMuted: ACOB_GREEN_LIGHT,
+      ghostOnAccent: "14603A",
+      accent: ACOB_GREEN,
+      footer: ACOB_GREEN_DEEP,
+      textPrimary: "F5F5F5",
+      textMuted: "A3A3A3",
+      textInverse: ACOB_WHITE,
+      card: "1C1C1C",
+      cardBorder: "2C2C2C",
+      separator: "3A3A3A",
+      sectionText: "E5E7EB",
+      titleFill: ACOB_GREEN,
+      ghost: "1B2A22",
+    }
+  }
+
+  return {
+    canvas: ACOB_OFFWHITE,
+    header: ACOB_GREEN_DEEP,
+    headerMuted: ACOB_GREEN_LIGHT,
+    ghostOnAccent: "14603A",
+    accent: ACOB_GREEN,
+    footer: ACOB_GREEN_DEEP,
+    textPrimary: ACOB_DARK,
+    textMuted: ACOB_MUTED,
+    textInverse: ACOB_WHITE,
+    card: ACOB_WHITE,
+    cardBorder: "E2E8F0",
+    separator: "E2E8F0",
+    sectionText: ACOB_SLATE,
+    titleFill: ACOB_GREEN,
+    ghost: ACOB_GREEN_LIGHT,
+  }
+}
+
+/**
+ * Adds the ACOB cover slide.
+ *
+ * Editorial left-aligned layout: a green rail runs down the left edge and turns
+ * along the bottom into the footer, the ACOB wordmark sits above a left-anchored
+ * title stack, and the week number is set oversized and ghosted behind the right
+ * half of the slide as a graphic element.
+ */
+export const addCoverSlide = (
+  pres: PptxPresentation,
+  week: number,
+  year: number,
+  subtitle?: string,
+  theme: WeeklyPptxTheme = "light",
+  meetingDate?: string,
+  heading = "Weekly Report"
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  const isDark = theme === "dark"
+  const slide = pres.addSlide()
+
+  slide.background = { color: isDark ? colors.canvas : ACOB_WHITE }
+
+  const railW = 0.3
+  const contentX = 1.05
+
+  // ── Ghosted week numeral (drawn first so everything else sits on top) ──────
+  slide.addText(String(week), {
+    x: 6.9,
+    y: 0.55,
+    w: 5.9,
+    h: 4.4,
+    fontSize: 200,
+    bold: true,
+    color: colors.ghost,
+    align: "right",
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  // ── Green rail: left edge, continuing into the bottom footer strip ────────
+  // Matches the footer so the two read as one continuous L, not two greens.
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: 0,
+    y: 0,
+    w: railW,
+    h: 7.5,
+    fill: { color: colors.footer },
+    line: { color: colors.footer },
+  })
+
+  // ── Matrix mark, top right ────────────────────────────────────────────────
+  const markLogo = isDark ? EXPORT_LOGOS.matrixMarkInverse : EXPORT_LOGOS.matrixMark
+  const markBox = logoBoxByHeight(markLogo, 0.6)
+  try {
+    slide.addImage({
+      path: markLogo.path,
+      x: 13.33 - 0.6 - markBox.w,
+      y: 0.55,
+      ...markBox,
+    })
+  } catch {
+    /* skip */
+  }
+
+  // ── ACOB LIGHTING wordmark ────────────────────────────────────────────────
+  const wordmark = isDark ? EXPORT_LOGOS.acobInverse : EXPORT_LOGOS.acobFull
+  const wordmarkBox = logoBoxByWidth(wordmark, 4.3)
+  try {
+    slide.addImage({
+      path: wordmark.path,
+      x: contentX,
+      y: 1.0,
+      ...wordmarkBox,
+    })
+  } catch {
+    slide.addText("EVC", {
+      x: contentX,
+      y: 1.0,
+      w: 8,
+      h: wordmarkBox.h,
+      fontSize: 22,
+      bold: true,
+      color: colors.textPrimary,
+      valign: "middle",
+      fontFace: "Calibri",
+    })
+  }
+
+  // ── Title stack ───────────────────────────────────────────────────────────
+  slide.addText("GENERAL MEETING", {
+    x: contentX,
+    y: 2.55,
+    w: 8,
+    h: 0.36,
+    fontSize: 15,
+    bold: true,
+    color: colors.accent,
+    charSpacing: 4,
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  // Optical alignment: large Calibri carries a little left side bearing, so the
+  // hero is nudged left to line its glyph edge up with the eyebrow above it.
+  slide.addText(heading, {
+    x: contentX - 0.09,
+    y: 2.95,
+    w: 9,
+    h: 1.2,
+    fontSize: 60,
+    bold: true,
+    color: colors.textPrimary,
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: contentX,
+    y: 4.28,
+    w: 2.6,
+    h: 0.05,
+    fill: { color: colors.accent },
+    line: { color: colors.accent },
+  })
+
+  slide.addText(formatExportMeetingDateLabel(week, year, meetingDate), {
+    x: contentX,
+    y: 4.55,
+    w: 8,
+    h: 0.44,
+    fontSize: 18,
+    color: colors.textMuted,
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  // ── "WEEK N" pill ─────────────────────────────────────────────────────────
+  const pillW = 1.85
+  const pillY = 5.2
+  const pillH = 0.44
+  slide.addShape(pres.ShapeType?.roundRect ?? "roundRect", {
+    x: contentX,
+    y: pillY,
+    w: pillW,
+    h: pillH,
+    rectRadius: 0.22,
+    fill: { color: colors.accent },
+    line: { color: colors.accent },
+  })
+  slide.addText(`WEEK ${week}`, {
+    x: contentX,
+    y: pillY,
+    w: pillW,
+    h: pillH,
+    fontSize: 14,
+    bold: true,
+    color: colors.textInverse,
+    charSpacing: 1,
+    align: "center",
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  // Optional subtitle (dept name for single-report export)
+  if (subtitle) {
+    slide.addText(subtitle, {
+      x: contentX + pillW + 0.22,
+      y: pillY,
+      w: 6,
+      h: pillH,
+      fontSize: 15,
+      color: colors.accent,
+      italic: true,
+      valign: "middle",
+      fontFace: "Calibri",
+    })
+  }
+
+  // ── Bottom green strip ────────────────────────────────────────────────────
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: 0,
+    y: 6.9,
+    w: "100%",
+    h: 0.6,
+    fill: { color: colors.footer },
+    line: { color: colors.footer },
+  })
+  slide.addText("Confidential — EVC Internal Use Only", {
+    x: 0,
+    y: 6.9,
+    w: "100%",
+    h: 0.6,
+    fontSize: 10,
+    color: colors.textInverse,
+    align: "center",
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  return slide
+}
+
+/** Width of a title slide's heading: from the left margin to just short of the ghosted numeral. */
+export const TITLE_SLIDE_TEXT_W = 8.2
+
+/**
+ * Largest size (54pt down to 28pt) at which a mixed-case title slide heading
+ * fits on one line in TITLE_SLIDE_TEXT_W. Estimated from average bold Calibri
+ * glyph widths, since pptxgenjs cannot measure text and "shrink to fit" only
+ * applies once PowerPoint re-lays the box out.
+ */
+export const fitTitleSlideFontSize = (text: string) => {
+  const emPerChar = 0.52
+  const fitted = Math.floor((TITLE_SLIDE_TEXT_W * 72) / (Math.max(text.length, 1) * emPerChar))
+  return Math.max(28, Math.min(54, fitted))
+}
+
+/**
+ * Department title heading at the full 54pt where it fits, wrapping a long name
+ * onto a second line rather than shrinking it (only names too long for two
+ * lines get smaller). Lines are broken here, not left to PowerPoint, so the
+ * eyebrow above and the rule below can be placed around the real line count.
+ */
+export const planDepartmentHeading = (department: string) => {
+  const words = department.toUpperCase().split(/\s+/).filter(Boolean)
+  // Average bold Calibri capital, measured from rendered slides.
+  const emPerChar = 0.54
+  const wrap = (fontSize: number) => {
+    const maxChars = Math.floor((TITLE_SLIDE_TEXT_W * 72) / (emPerChar * fontSize))
+    const lines: string[] = []
+    for (const word of words) {
+      const last = lines[lines.length - 1]
+      if (last !== undefined && `${last} ${word}`.length <= maxChars) lines[lines.length - 1] = `${last} ${word}`
+      else lines.push(word)
+    }
+    return lines
+  }
+  let fontSize = 54
+  let lines = wrap(fontSize)
+  while (lines.length > 2 && fontSize > 36) {
+    fontSize -= 2
+    lines = wrap(fontSize)
+  }
+  // The rule under the heading stays at 4.57", so a two-line heading grows upwards.
+  const height = lines.length === 1 ? 1.25 : (lines.length * fontSize * 1.15) / 72 + 0.15
+  const y = 4.42 - height
+  return { text: lines.join("\n"), fontSize, y, height, eyebrowY: y - 0.42 }
+}
+
+/**
+ * Adds a department title slide (full-bleed green).
+ */
+const addDeptTitleSlide = (
+  pres: PptxPresentation,
+  department: string,
+  _submittedBy: string,
+  pageNumber?: number,
+  theme: WeeklyPptxTheme = "light",
+  position?: { index: number; total: number }
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  const slide = pres.addSlide()
+  slide.background = { color: colors.titleFill }
+
+  const contentX = 1.05
+  const pad = (n: number) => String(n).padStart(2, "0")
+
+  // ── Ghosted running-order numeral, mirroring the cover's week number ───────
+  if (position) {
+    slide.addText(pad(position.index), {
+      x: 6.9,
+      y: 1.58,
+      w: 5.6,
+      h: 4.2,
+      fontSize: 190,
+      bold: true,
+      color: colors.ghostOnAccent,
+      align: "right",
+      valign: "middle",
+      fontFace: "Calibri",
+    })
+  }
+
+  const heading = planDepartmentHeading(department)
+
+  // ── Eyebrow ───────────────────────────────────────────────────────────────
+  slide.addText(position ? `DEPARTMENT ${pad(position.index)} OF ${pad(position.total)}` : "DEPARTMENT", {
+    x: contentX,
+    y: heading.eyebrowY,
+    w: 8,
+    h: 0.36,
+    fontSize: 14,
+    bold: true,
+    color: colors.headerMuted,
+    charSpacing: 4,
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  // Kept clear of the ghosted numeral: a long name used to run into the number,
+  // or wrap below the rule underneath it.
+  slide.addText(heading.text, {
+    x: contentX - 0.08,
+    y: heading.y,
+    w: TITLE_SLIDE_TEXT_W,
+    h: heading.height,
+    fontSize: heading.fontSize,
+    bold: true,
+    color: colors.textInverse,
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: contentX,
+    y: 4.57,
+    w: 2.6,
+    h: 0.05,
+    fill: { color: colors.textInverse },
+    line: { color: colors.textInverse },
+  })
+
+  // ── Footer band: wordmark and page number, where the content slides put them ──
+  const { footerY, footerH } = WEEKLY_CONTENT_LAYOUT
+  const wordmarkBox = logoBoxByHeight(EXPORT_LOGOS.acobInverse, 0.28)
+  try {
+    slide.addImage({
+      path: EXPORT_LOGOS.acobInverse.path,
+      x: 0.3,
+      y: footerY + (footerH - wordmarkBox.h) / 2,
+      ...wordmarkBox,
+    })
+  } catch {
+    /* skip */
+  }
+
+  if (typeof pageNumber === "number") {
+    slide.addText(String(pageNumber), {
+      x: 0,
+      y: footerY,
+      w: "100%",
+      h: footerH,
+      fontSize: 10,
+      bold: true,
+      color: colors.textInverse,
+      align: "center",
+      valign: "middle",
+      fontFace: "Calibri",
+    })
+  }
+
+  return slide
+}
+
+/**
+ * Adds a numbered department index slide (shown after the cover in bulk export).
+ */
+export const addDeptIndexSlide = (
+  pres: PptxPresentation,
+  departments: string[],
+  week: number,
+  year: number,
+  pageNumberForDepartment: (index: number) => number = (index) => index + 3,
+  theme: WeeklyPptxTheme = "light"
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  const slide = pres.addSlide()
+  slide.background = { color: colors.canvas }
+  const { headerH, footerY, footerH } = WEEKLY_CONTENT_LAYOUT
+
+  // Header
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: 0,
+    y: 0,
+    w: "100%",
+    h: headerH,
+    fill: { color: colors.header },
+    line: { color: colors.header },
+  })
+  slide.addText("Departments in This Report", {
+    x: 0.3,
+    y: 0,
+    w: 10,
+    h: headerH,
+    fontSize: 16,
+    bold: true,
+    color: colors.textInverse,
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+  slide.addText(`Week ${week}, ${year}`, {
+    x: 10,
+    y: 0,
+    w: 3,
+    h: headerH,
+    fontSize: 12,
+    color: theme === "dark" ? colors.textMuted : ACOB_GREEN_LIGHT,
+    valign: "middle",
+    align: "right",
+    fontFace: "Calibri",
+  })
+
+  // Numbered list
+  const startY = 1.0
+  const rowH = 0.5
+  departments.forEach((dept, i) => {
+    const y = startY + i * rowH
+    // Number badge
+    slide.addShape(pres.ShapeType?.ellipse ?? "ellipse", {
+      x: 0.5,
+      y: y + 0.05,
+      w: 0.38,
+      h: 0.38,
+      fill: { color: colors.accent },
+      line: { color: colors.accent },
+    })
+    slide.addText(`${i + 1}`, {
+      x: 0.5,
+      y: y + 0.05,
+      w: 0.38,
+      h: 0.38,
+      fontSize: 11,
+      bold: true,
+      color: colors.textInverse,
+      align: "center",
+      valign: "middle",
+      fontFace: "Calibri",
+    })
+    slide.addText(dept, {
+      x: 1.05,
+      y: y,
+      w: 10.5,
+      h: 0.45,
+      fontSize: 16,
+      color: colors.textPrimary,
+      valign: "middle",
+      fontFace: "Calibri",
+    })
+    slide.addText(String(pageNumberForDepartment(i)), {
+      x: 11.5,
+      y: y,
+      w: 1.3,
+      h: 0.45,
+      fontSize: 14,
+      bold: true,
+      color: colors.accent,
+      valign: "middle",
+      align: "right",
+      fontFace: "Calibri",
+    })
+    // subtle separator line
+    if (i < departments.length - 1) {
+      slide.addShape(pres.ShapeType?.line ?? "line", {
+        x: 0.5,
+        y: y + rowH - 0.05,
+        w: 12.3,
+        h: 0,
+        line: { color: colors.separator, width: 0.5 },
+      })
+    }
+  })
+
+  // Bottom strip
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: 0,
+    y: footerY,
+    w: "100%",
+    h: footerH,
+    fill: { color: colors.footer },
+    line: { color: colors.footer },
+  })
+  return slide
+}
+
+const PPTX_WEEKLY_BODY_FONT_SIZE = 14
+// Floor for shrink-to-fit. Anything under ~10pt is unreadable when projected,
+// so an over-long report should visibly overflow (and get trimmed) rather than
+// silently render at a size nobody in the room can read.
+const PPTX_WEEKLY_MIN_BODY_FONT_SIZE = 10
+const PPTX_WEEKLY_SECTION_TITLE_SIZE = 12
+const PPTX_WEEKLY_LINE_HEIGHT_RATIO = 1.15
+const PPTX_WEEKLY_AVG_CHAR_WIDTH_RATIO = 0.48
+const PPTX_WEEKLY_LINE_SPACING_MULTIPLE = 1.3
+// Measured off PowerPoint renders of real reports (Calibri): ~0.43-0.45em per
+// character and a 1.2em line before the 1.3 multiple. The older 0.48 / 1.15
+// pair over-counted wrapping and chose a smaller font than the box needed.
+// 0.445 sits at the wide end of that range so the estimate errs towards fitting.
+const PPTX_FIT_CHAR_WIDTH_RATIO = 0.445
+const PPTX_FIT_LINE_HEIGHT_RATIO = 1.2
+// Leftover height is spread between items, capped so a short list does not
+// end up with gaps wider than the lines themselves.
+const PPTX_FIT_MAX_PARA_SPACE_RATIO = 0.75
+
+// Content slides keep their chrome slim: the header, footer and side margins
+// were trimmed so the report text gets the room (~0.5in more height, ~0.25in
+// more width). Cover, department title and index slides keep their own layout.
+export const WEEKLY_CONTENT_LAYOUT = {
+  headerH: 0.5,
+  marginX: 0.12,
+  slideW: 13.33,
+  footerY: 7.08,
+  footerH: 0.42,
+}
+
+export const applyWeeklySlideTransition = (slide: PptxSlide) => {
+  // PptxGenJS transition support varies by viewer/version; keep this guarded.
+  try {
+    slide.transition = {
+      type: "fade",
+      duration: 0.4,
+    }
+  } catch {
+    /* no-op */
+  }
+}
+
+const getWeeklyContentBoxes = () => {
+  const { headerH, marginX, slideW, footerY } = WEEKLY_CONTENT_LAYOUT
+  const bodyBottomSafety = 0.08
+  // Card chrome above the body text: title row + hairline + gap (see addSectionCard).
+  const CARD_HEADER_H = 0.72
+  const textBottomSafety = 0.1
+  const usableW = slideW - marginX * 2
+  const col1W = usableW * (3 / 5)
+  const col2W = usableW * (2 / 5) - 0.15
+  const col2X = marginX + col1W + 0.15
+
+  const startY = headerH + 0.08
+  const availH = footerY - startY - bodyBottomSafety
+  const row1H = availH * (4 / 6)
+  const row2H = availH * (2 / 6) - 0.15
+  const row1Y = startY
+  const row2Y = startY + row1H + 0.15
+  const page2Gap = 0.08
+  const page2TopH = (availH - page2Gap) * 0.75
+  const page2BottomH = (availH - page2Gap) * 0.25
+
+  return {
+    row1Left: {
+      x: marginX,
+      y: row1Y,
+      w: col1W,
+      h: row1H,
+      textW: col1W - 0.3,
+      textH: Math.max(0.6, row1H - CARD_HEADER_H - textBottomSafety),
+    },
+    row1Right: {
+      x: col2X,
+      y: row1Y,
+      w: col2W,
+      h: row1H,
+      textW: col2W - 0.3,
+      textH: Math.max(0.6, row1H - CARD_HEADER_H - textBottomSafety),
+    },
+    row2Full: {
+      x: marginX,
+      y: row2Y,
+      w: usableW,
+      h: row2H,
+      textW: usableW - 0.3,
+      textH: Math.max(0.6, row2H - CARD_HEADER_H - textBottomSafety),
+    },
+    continuation: {
+      x: marginX,
+      y: startY,
+      w: usableW,
+      h: availH,
+      textW: usableW - 0.3,
+      textH: Math.max(0.6, availH - CARD_HEADER_H - textBottomSafety),
+    },
+    page2Top: {
+      x: marginX,
+      y: startY,
+      w: usableW,
+      h: page2TopH,
+      textW: usableW - 0.3,
+      textH: Math.max(0.6, page2TopH - CARD_HEADER_H - textBottomSafety),
+    },
+    page2Bottom: {
+      x: marginX,
+      y: startY + page2TopH + page2Gap,
+      w: usableW,
+      h: page2BottomH,
+      textW: usableW - 0.3,
+      textH: Math.max(0.6, page2BottomH - CARD_HEADER_H - textBottomSafety),
+    },
+  }
+}
+
+type WeeklySectionPlan = {
+  key: "work_done" | "tasks_new_week" | "challenges"
+  title: string
+  color: string
+  text: string
+  fontSize: number
+  /** Extra points after each item, spreading leftover card height between them. */
+  paraSpaceAfter: number
+  allowAutoShrink: boolean
+}
+
+export type WeeklyPptxMode = "compact" | "full"
+
+const withListItemSpacing = (text: string): string => {
+  const lines = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.length > 0)
+  if (lines.length === 0) return ""
+  return lines.join("\n")
+}
+
+const countWrappedLines = (text: string, maxCharsPerLine: number): number => {
+  const sourceLines = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+  let total = 0
+
+  const wrapPlainLineCount = (line: string, limit: number): number => {
+    if (!line) return 1
+    if (line.length <= limit) return 1
+    const words = line.split(/\s+/)
+    let lines = 0
+    let current = ""
+    words.forEach((w) => {
+      const candidate = current ? `${current} ${w}` : w
+      if (candidate.length <= limit) {
+        current = candidate
+      } else {
+        if (current) lines += 1
+        if (w.length > limit) {
+          lines += Math.ceil(w.length / limit)
+          current = ""
+        } else {
+          current = w
+        }
+      }
+    })
+    if (current) lines += 1
+    return Math.max(1, lines)
+  }
+
+  sourceLines.forEach((raw) => {
+    const line = raw.trimEnd()
+    if (!line) {
+      total += 1
+      return
+    }
+    const numberedMatch = line.match(/^(\d+\.)\s+(.*)$/)
+    if (!numberedMatch) {
+      total += wrapPlainLineCount(line, maxCharsPerLine)
+      return
+    }
+    const prefix = `${numberedMatch[1]} `
+    const body = numberedMatch[2] || ""
+    const bodyLimit = Math.max(10, maxCharsPerLine - prefix.length)
+    total += wrapPlainLineCount(body, bodyLimit)
+  })
+
+  return total
+}
+
+const fitCharsPerLine = (boxWIn: number, fontSize: number) =>
+  Math.max(10, Math.floor((boxWIn * 72) / (fontSize * PPTX_FIT_CHAR_WIDTH_RATIO)))
+
+const fitLineHeightPt = (fontSize: number) => fontSize * PPTX_FIT_LINE_HEIGHT_RATIO * PPTX_WEEKLY_LINE_SPACING_MULTIPLE
+
+/** Largest font, in half-point steps, whose wrapped text fits the box. */
+const chooseSectionFontSize = (
+  text: string,
+  boxWIn: number,
+  boxHIn: number,
+  maxFont = PPTX_WEEKLY_BODY_FONT_SIZE,
+  minFont = PPTX_WEEKLY_MIN_BODY_FONT_SIZE
+): number => {
+  for (let fontSize = maxFont; fontSize >= minFont; fontSize -= 0.5) {
+    const maxLines = Math.max(1, Math.floor((boxHIn * 72) / fitLineHeightPt(fontSize)))
+    if (countWrappedLines(text, fitCharsPerLine(boxWIn, fontSize)) <= maxLines) return fontSize
+  }
+  return minFont
+}
+
+/**
+ * Only for text that had to shrink below the normal size: font steps are
+ * coarse — the next half point up can wrap two more lines and overflow — so a
+ * compressed report often stops short of the card's bottom. Hand that height
+ * back as space between items, keeping half a line in reserve against the
+ * estimate running short. Text that fits at the normal size is left as it is.
+ */
+const chooseParagraphSpacing = (text: string, boxWIn: number, boxHIn: number, fontSize: number): number => {
+  if (fontSize >= PPTX_WEEKLY_BODY_FONT_SIZE) return 0
+  const items = text.split("\n").filter((line) => line.trim().length > 0).length
+  if (items < 2) return 0
+  const lineH = fitLineHeightPt(fontSize)
+  const used = countWrappedLines(text, fitCharsPerLine(boxWIn, fontSize)) * lineH
+  const spare = boxHIn * 72 - used - lineH / 2
+  if (spare <= 0) return 0
+  return Math.min(fontSize * PPTX_FIT_MAX_PARA_SPACE_RATIO, Math.floor((spare / (items - 1)) * 2) / 2)
+}
+
+const buildWeeklySectionPlan = (
+  key: WeeklySectionPlan["key"],
+  title: string,
+  color: string,
+  rawText: string,
+  fallbackText: string,
+  boxWIn: number,
+  boxHIn: number,
+  minFont = PPTX_WEEKLY_MIN_BODY_FONT_SIZE,
+  allowAutoShrink = true
+): WeeklySectionPlan => {
+  const normalized = autoNumberLines(rawText) || fallbackText
+  const text = withListItemSpacing(normalized)
+  const fontSize = chooseSectionFontSize(text, boxWIn, boxHIn, PPTX_WEEKLY_BODY_FONT_SIZE, minFont)
+  return {
+    key,
+    title,
+    color,
+    text,
+    fontSize,
+    paraSpaceAfter: chooseParagraphSpacing(text, boxWIn, boxHIn, fontSize),
+    allowAutoShrink,
+  }
+}
+
+type WeeklyDepartmentLayout = {
+  workDone: WeeklyContentBox
+  tasks: WeeklyContentBox
+  challenges: WeeklyContentBox
+  /** Column to the right of Work Done (full mode with counts): staff list over action points, 2:1. */
+  taskCounts?: WeeklyContentBox
+  actionPoints?: WeeklyContentBox
+}
+
+const PPTX_TASK_COUNT_COL_W = 0.6
+const PPTX_TASK_SIDE_COLUMN_W = 2
+// The side column is a reference panel, not the thing being read out, so it
+// stays smaller than the Work Done text beside it.
+const PPTX_TASK_SIDE_MAX_FONT = 12
+const PPTX_TASK_SIDE_TITLE_SIZE = 10
+const PPTX_TASK_SIDE_COLUMN_GAP = 0.12
+const PPTX_TASK_CARD_GAP = 0.08
+// Card chrome above the body text, as in getWeeklyContentBoxes.
+const PPTX_TASK_CARD_HEADER_H = 0.72
+
+const formatTaskRatio = (counts: { completed: number; assigned: number }) => `${counts.completed} / ${counts.assigned}`
+
+const weeklyLineHeightIn = (fontSize: number) =>
+  (fontSize * PPTX_WEEKLY_LINE_HEIGHT_RATIO * PPTX_WEEKLY_LINE_SPACING_MULTIPLE) / 72
+
+const charsPerLineAt = (widthIn: number, fontSize: number) =>
+  Math.max(4, Math.floor((widthIn * 72) / (fontSize * PPTX_WEEKLY_AVG_CHAR_WIDTH_RATIO)))
+
+/**
+ * "Kleopatra Aiyede" -> "Kleopatra A.", so names fit the narrow summary
+ * column. Falls back to the full name where two people in the department
+ * would otherwise read the same.
+ */
+const withShortNames = (summary: WeeklyDeptTaskSummary): WeeklyDeptTaskSummary => {
+  const shorten = (name: string) => {
+    const parts = name.trim().split(/\s+/)
+    return parts.length < 2 ? name : `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`
+  }
+  const uses = new Map<string, number>()
+  summary.people.forEach((p) => uses.set(shorten(p.name), (uses.get(shorten(p.name)) ?? 0) + 1))
+  return {
+    ...summary,
+    people: summary.people.map((p) => ({ ...p, name: uses.get(shorten(p.name)) === 1 ? shorten(p.name) : p.name })),
+  }
+}
+
+const resolveTaskSummary = (
+  report: WeeklyReport,
+  options?: WeeklyTaskSummaryOptions
+): WeeklyDeptTaskSummary | undefined => {
+  if (!options) return undefined
+  const department = normalizeDepartmentName(report.department)
+  const summary = options.summaries.get(department) ?? {
+    department,
+    completed: 0,
+    assigned: 0,
+    people: [],
+    actionPoints: { total: 0, completed: 0, inProgress: 0, notStarted: 0 },
+  }
+  return withShortNames(summary)
+}
+
+const getWeeklyDepartmentLayout = (withTaskSummary = false): WeeklyDepartmentLayout => {
+  const boxes = getWeeklyContentBoxes()
+  if (!withTaskSummary) {
+    return { workDone: boxes.continuation, tasks: boxes.page2Top, challenges: boxes.page2Bottom }
+  }
+
+  const card = boxes.continuation
+  const mainW = card.w - PPTX_TASK_SIDE_COLUMN_W - PPTX_TASK_SIDE_COLUMN_GAP
+  // The column splits exactly where slide 2's Tasks for New Week / Challenges
+  // cards do, so Action Points lines up with Challenges there — and the split
+  // is the same on both slides, so it does not jump between them. Three
+  // action-point rows still fit the shorter card.
+  const tasksH = boxes.page2Top.h
+  const actionsH = boxes.page2Bottom.h
+  const column = (y: number, h: number): WeeklyContentBox => ({
+    x: card.x + mainW + PPTX_TASK_SIDE_COLUMN_GAP,
+    y,
+    w: PPTX_TASK_SIDE_COLUMN_W,
+    h,
+    textW: PPTX_TASK_SIDE_COLUMN_W - 0.3,
+    textH: Math.max(0.6, h - PPTX_TASK_CARD_HEADER_H - 0.1),
+  })
+  // The same column repeats on the Tasks for the New Week slide, so both slides
+  // the room actually reads from keep the numbers in view.
+  const narrow = (box: WeeklyContentBox): WeeklyContentBox => ({ ...box, w: mainW, textW: mainW - 0.3 })
+  return {
+    workDone: narrow(card),
+    tasks: narrow(boxes.page2Top),
+    challenges: narrow(boxes.page2Bottom),
+    taskCounts: column(card.y, tasksH),
+    actionPoints: column(card.y + tasksH + PPTX_TASK_CARD_GAP, actionsH),
+  }
+}
+
+const getZeroTasksColor = (theme: WeeklyPptxTheme) => (theme === "dark" ? "F87171" : "B91C1C")
+
+const getTaskRatioColor = (counts: { completed: number; assigned: number }, theme: WeeklyPptxTheme) => {
+  // Nothing assigned is not the person falling short, so it is grey, not red.
+  if (counts.assigned === 0) return getWeeklyPptxThemeColors(theme).textMuted
+  if (counts.completed === 0) return getZeroTasksColor(theme)
+  return getWeeklyPptxThemeColors(theme).accent
+}
+
+const truncateToChars = (text: string, maxChars: number) =>
+  text.length <= maxChars ? text : `${text.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`
+
+const getReportSectionPlans = (
+  report: WeeklyReport,
+  layout: WeeklyDepartmentLayout = getWeeklyDepartmentLayout()
+): WeeklySectionPlan[] => {
+  return [
+    buildWeeklySectionPlan(
+      "work_done",
+      "WORK DONE",
+      ACOB_GREEN,
+      report.work_done,
+      "No data provided.",
+      layout.workDone.textW,
+      layout.workDone.textH
+    ),
+    buildWeeklySectionPlan(
+      "tasks_new_week",
+      "TASKS FOR NEW WEEK",
+      SECTION_TASKS,
+      report.tasks_new_week,
+      "No data provided.",
+      layout.tasks.textW,
+      layout.tasks.textH
+    ),
+    buildWeeklySectionPlan(
+      "challenges",
+      "CHALLENGES",
+      SECTION_CHALLENGES,
+      report.challenges,
+      "No challenges reported.",
+      layout.challenges.textW,
+      layout.challenges.textH
+    ),
+  ]
+}
+
+const addWeeklyHeaderAndFooter = (
+  pres: PptxPresentation,
+  slide: PptxSlide,
+  department: string,
+  nextDept?: string,
+  pageNumber?: number,
+  theme: WeeklyPptxTheme = "light",
+  slidePosition?: { index: number; total: number }
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  const { headerH, footerY, footerH } = WEEKLY_CONTENT_LAYOUT
+
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: 0,
+    y: 0,
+    w: "100%",
+    h: headerH,
+    fill: { color: colors.header },
+    line: { color: colors.header },
+  })
+
+  // Department name, followed inline by its position within this department's
+  // run of slides ("1 OF 2"). The footer is reserved for the *next* department,
+  // so the two never have to share one label.
+  const headerRuns: Array<{ text: string; options: Record<string, unknown> }> = [
+    {
+      text: department.toUpperCase(),
+      options: { fontSize: 16, bold: true, color: colors.textInverse, fontFace: "Calibri" },
+    },
+  ]
+  if (slidePosition && slidePosition.total > 1) {
+    headerRuns.push({
+      text: `    ${slidePosition.index} OF ${slidePosition.total}`,
+      options: { fontSize: 11, bold: true, color: colors.headerMuted, fontFace: "Calibri" },
+    })
+  }
+
+  slide.addText(headerRuns, {
+    x: 0.3,
+    y: 0,
+    w: 9,
+    h: headerH,
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  // Matrix mark, top right. The header bar is dark in both themes, so this is
+  // always the inverse (flat white) variant.
+  const markBox = logoBoxByHeight(EXPORT_LOGOS.matrixMarkInverse, 0.36)
+  try {
+    slide.addImage({
+      path: EXPORT_LOGOS.matrixMarkInverse.path,
+      x: 13.33 - 0.3 - markBox.w,
+      y: (headerH - markBox.h) / 2,
+      ...markBox,
+    })
+  } catch {
+    /* skip */
+  }
+
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: 0,
+    y: footerY,
+    w: "100%",
+    h: footerH,
+    fill: { color: colors.footer },
+    line: { color: colors.footer },
+  })
+
+  // ACOB LIGHTING wordmark, bottom left. The footer strip is green in both
+  // themes, so this is always the inverse (white text) variant.
+  const wordmarkBox = logoBoxByHeight(EXPORT_LOGOS.acobInverse, 0.28)
+  try {
+    slide.addImage({
+      path: EXPORT_LOGOS.acobInverse.path,
+      x: 0.3,
+      y: footerY + (footerH - wordmarkBox.h) / 2,
+      ...wordmarkBox,
+    })
+  } catch {
+    /* skip */
+  }
+
+  if (nextDept) {
+    slide.addText(`NEXT: ${nextDept.toUpperCase()}`, {
+      x: 7,
+      y: footerY,
+      w: 6.1,
+      h: footerH,
+      fontSize: 10,
+      color: colors.textInverse,
+      align: "right",
+      valign: "middle",
+      fontFace: "Calibri",
+      bold: true,
+    })
+  }
+
+  if (typeof pageNumber === "number") {
+    slide.addText(String(pageNumber), {
+      x: 0,
+      y: footerY,
+      w: "100%",
+      h: footerH,
+      fontSize: 10,
+      color: colors.textInverse,
+      align: "center",
+      valign: "middle",
+      fontFace: "Calibri",
+      bold: true,
+    })
+  }
+}
+
+type WeeklyContentBox = { x: number; y: number; w: number; h: number; textW: number; textH: number }
+
+/** Inline count after a card title, e.g. "TASKS DONE  14 / 20". */
+type WeeklyTitleSuffix = {
+  text: string
+  color: string
+  /** Narrow cards: no letter-spacing on the title row, so label and total fit side by side. */
+  compact?: boolean
+}
+
+const addSectionCardChrome = (
+  pres: PptxPresentation,
+  slide: PptxSlide,
+  box: WeeklyContentBox,
+  title: string,
+  color: string,
+  theme: WeeklyPptxTheme = "light",
+  titleSuffix?: WeeklyTitleSuffix,
+  titleSize = PPTX_WEEKLY_SECTION_TITLE_SIZE,
+  /** A small muted line under the title, inside the header (above the hairline). */
+  subtitle?: string
+): number => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+    fill: { color: colors.card },
+    line: { color: colors.cardBorder, width: 1 },
+  })
+
+  // Colour spine down the card's left edge, echoing the rail on the cover and
+  // department slides. Replaces the old filled title bar, which forced the
+  // section label down to 8pt — half the size of the body text under it.
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: box.x,
+    y: box.y,
+    w: 0.07,
+    h: box.h,
+    fill: { color },
+    line: { color, width: 0 },
+  })
+
+  const titleRuns: PptxTextRun[] = [{ text: title, options: { color } }]
+  if (titleSuffix) {
+    titleRuns.push({
+      // Non-breaking spaces so a tight row never splits "19 / 36" across lines.
+      text: `${titleSuffix.compact ? "  " : "   "}${titleSuffix.text}`.replace(/ /g, "\u00A0"),
+      options: { color: titleSuffix.color },
+    })
+  }
+  slide.addText(titleRuns, {
+    x: box.x + 0.26,
+    y: box.y + (subtitle ? 0.06 : 0.11),
+    w: box.w - 0.46,
+    h: 0.3,
+    fontSize: titleSize,
+    bold: true,
+    charSpacing: titleSuffix?.compact ? 0 : 2,
+    valign: "middle",
+    fontFace: "Calibri",
+  })
+
+  if (subtitle) {
+    slide.addText(subtitle, {
+      x: box.x + 0.26,
+      y: box.y + 0.32,
+      w: box.w - 0.46,
+      h: 0.22,
+      fontSize: 9,
+      color: colors.textMuted,
+      valign: "middle",
+      fontFace: "Calibri",
+    })
+  }
+
+  // Hairline under the title, separating label from content.
+  const hairlineY = subtitle ? 0.6 : 0.46
+  slide.addShape(pres.ShapeType?.rect ?? "rect", {
+    x: box.x + 0.26,
+    y: box.y + hairlineY,
+    w: box.w - 0.5,
+    h: 0.012,
+    fill: { color: colors.separator },
+    line: { color: colors.separator, width: 0 },
+  })
+  // Where the card's body starts, below the header.
+  return hairlineY + 0.16
+}
+
+const addSectionCard = (
+  pres: PptxPresentation,
+  slide: PptxSlide,
+  box: WeeklyContentBox,
+  title: string,
+  color: string,
+  text: string,
+  fontSize: number,
+  allowAutoShrink = true,
+  useManualHangingWrap = false,
+  theme: WeeklyPptxTheme = "light",
+  paraSpaceAfter = 0
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  addSectionCardChrome(pres, slide, box, title, color, theme)
+
+  const wrappedText =
+    useManualHangingWrap && fontSize > 0
+      ? wrapTextByCharsCompact(
+          text,
+          Math.max(10, Math.floor(((box.textW * 72) / (fontSize * PPTX_WEEKLY_AVG_CHAR_WIDTH_RATIO)) * 1.12))
+        ).join("\n")
+      : text
+
+  slide.addText(wrappedText, {
+    x: box.x + 0.26,
+    y: box.y + 0.62,
+    w: box.textW,
+    h: box.textH,
+    fontSize,
+    color: colors.sectionText,
+    valign: "top",
+    fontFace: "Calibri",
+    breakLine: !useManualHangingWrap,
+    lineSpacingMultiple: PPTX_WEEKLY_LINE_SPACING_MULTIPLE,
+    ...(paraSpaceAfter > 0 ? { paraSpaceAfter } : {}),
+    fit: allowAutoShrink ? "shrink" : undefined,
+  })
+}
+
+const wrapTextByCharsCompact = (text: string, maxCharsPerLine: number): string[] => {
+  const sourceLines = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+  const wrapped: string[] = []
+
+  const wrapPlainLine = (line: string, limit: number): string[] => {
+    if (!line) return [""]
+    if (line.length <= limit) return [line]
+    const words = line.split(/\s+/)
+    const out: string[] = []
+    let current = ""
+    words.forEach((w) => {
+      const candidate = current ? `${current} ${w}` : w
+      if (candidate.length <= limit) {
+        current = candidate
+      } else {
+        if (current) out.push(current)
+        if (w.length > limit) {
+          for (let i = 0; i < w.length; i += limit) out.push(w.slice(i, i + limit))
+          current = ""
+        } else {
+          current = w
+        }
+      }
+    })
+    if (current) out.push(current)
+    return out
+  }
+
+  sourceLines.forEach((raw) => {
+    const line = raw.trimEnd()
+    if (!line) {
+      wrapped.push("")
+      return
+    }
+    const numberedMatch = line.match(/^(\d+\.)\s+(.*)$/)
+    if (!numberedMatch) {
+      wrapped.push(...wrapPlainLine(line, maxCharsPerLine))
+      return
+    }
+
+    const prefix = `${numberedMatch[1]} `
+    const body = numberedMatch[2] || ""
+    const bodyLimit = Math.max(10, maxCharsPerLine - prefix.length)
+    const bodyLines = wrapPlainLine(body, bodyLimit)
+    if (bodyLines.length === 0) {
+      wrapped.push(prefix.trimEnd())
+      return
+    }
+    wrapped.push(prefix + bodyLines[0])
+    const continuationPad = " ".repeat(prefix.length + 1)
+    for (let i = 1; i < bodyLines.length; i++) {
+      wrapped.push(continuationPad + bodyLines[i])
+    }
+  })
+
+  return wrapped
+}
+
+const fitTextToPptxBoxCompact = (
+  text: string,
+  boxWIn: number,
+  boxHIn: number,
+  preferredFont = 11,
+  minFont = 7
+): { text: string; fontSize: number } => {
+  const lineHeightRatio = 1.25
+  const avgCharWidthRatio = 0.56
+
+  for (let fontSize = preferredFont; fontSize >= minFont; fontSize -= 0.5) {
+    const charsPerLine = Math.max(10, Math.floor((boxWIn * 72) / (fontSize * avgCharWidthRatio)))
+    const maxLines = Math.max(1, Math.floor((boxHIn * 72) / (fontSize * lineHeightRatio)))
+    const lines = wrapTextByCharsCompact(text, charsPerLine)
+    if (lines.length <= maxLines) {
+      return { text: lines.join("\n"), fontSize }
+    }
+  }
+
+  const finalSize = minFont
+  const charsPerLine = Math.max(10, Math.floor((boxWIn * 72) / (finalSize * avgCharWidthRatio)))
+  const maxLines = Math.max(1, Math.floor((boxHIn * 72) / (finalSize * lineHeightRatio)))
+  const lines = wrapTextByCharsCompact(text, charsPerLine)
+  const clipped = lines.slice(0, Math.max(1, maxLines - 1))
+  clipped.push("... continued")
+  return { text: clipped.join("\n"), fontSize: finalSize }
+}
+
+const addCompactContentSlide = (
+  pres: PptxPresentation,
+  department: string,
+  report: WeeklyReport,
+  nextDept?: string,
+  pageNumber?: number,
+  theme: WeeklyPptxTheme = "light"
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  const slide = pres.addSlide()
+  slide.background = { color: colors.canvas }
+  addWeeklyHeaderAndFooter(pres, slide, department, nextDept, pageNumber, theme)
+
+  const boxes = getWeeklyContentBoxes()
+  const workDoneText = autoNumberLines(report.work_done) || "No data provided."
+  const tasksText = autoNumberLines(report.tasks_new_week) || "No data provided."
+  const challengesText = autoNumberLines(report.challenges) || "No challenges reported."
+
+  const workDoneFitted = fitTextToPptxBoxCompact(workDoneText, boxes.row1Left.textW, boxes.row1Left.textH)
+  const tasksFitted = fitTextToPptxBoxCompact(tasksText, boxes.row1Right.textW, boxes.row1Right.textH)
+  const challengesFitted = fitTextToPptxBoxCompact(challengesText, boxes.row2Full.textW, boxes.row2Full.textH)
+
+  addSectionCard(
+    pres,
+    slide,
+    boxes.row1Left,
+    "WORK DONE",
+    ACOB_GREEN,
+    workDoneFitted.text,
+    workDoneFitted.fontSize,
+    false,
+    false,
+    theme
+  )
+  addSectionCard(
+    pres,
+    slide,
+    boxes.row1Right,
+    "TASKS FOR NEW WEEK",
+    SECTION_TASKS,
+    tasksFitted.text,
+    tasksFitted.fontSize,
+    false,
+    false,
+    theme
+  )
+  addSectionCard(
+    pres,
+    slide,
+    boxes.row2Full,
+    "CHALLENGES",
+    SECTION_CHALLENGES,
+    challengesFitted.text,
+    challengesFitted.fontSize,
+    false,
+    false,
+    theme
+  )
+
+  return slide
+}
+
+/** Largest font, up to the column's cap, that fits every person in one list. */
+const planTaskSummaryRows = (count: number, textH: number) => {
+  for (let fontSize = PPTX_TASK_SIDE_MAX_FONT; fontSize >= PPTX_WEEKLY_MIN_BODY_FONT_SIZE; fontSize -= 1) {
+    const rows = Math.max(1, Math.floor(textH / weeklyLineHeightIn(fontSize)))
+    if (count <= rows) return { fontSize, rows }
+  }
+  const fontSize = PPTX_WEEKLY_MIN_BODY_FONT_SIZE
+  return { fontSize, rows: Math.max(1, Math.floor(textH / weeklyLineHeightIn(fontSize))) }
+}
+
+type SummaryRow = { label: string; value: string; color: string; labelColor?: string }
+
+/**
+ * Label / count rows in two aligned text boxes with identical font and
+ * spacing. Labels are cut short rather than allowed to wrap, which would push
+ * every later label off its count. Returns the height used, in inches.
+ */
+const addSummaryRows = (
+  slide: PptxSlide,
+  box: { x: number; y: number; w: number },
+  rows: SummaryRow[],
+  fontSize: number,
+  labelColor: string
+): number => {
+  if (rows.length === 0) return 0
+  const height = rows.length * weeklyLineHeightIn(fontSize) + 0.05
+  const labelW = box.w - PPTX_TASK_COUNT_COL_W
+  const maxLabelChars = charsPerLineAt(labelW, fontSize)
+  const textOptions = {
+    fontSize,
+    valign: "top",
+    fontFace: "Calibri",
+    lineSpacingMultiple: PPTX_WEEKLY_LINE_SPACING_MULTIPLE,
+    wrap: false,
+    y: box.y,
+    h: height,
+  }
+  slide.addText(
+    rows.map((row) => ({
+      text: truncateToChars(row.label, maxLabelChars),
+      options: { color: row.labelColor ?? labelColor, breakLine: true },
+    })),
+    { ...textOptions, x: box.x, w: labelW, align: "left" }
+  )
+  slide.addText(
+    rows.map((row) => ({ text: row.value, options: { bold: true, color: row.color, breakLine: true } })),
+    { ...textOptions, x: box.x + labelW, w: PPTX_TASK_COUNT_COL_W, align: "right" }
+  )
+  return height
+}
+
+/** A short muted note in place of an empty list (kept to one line in the narrow column). Returns the height used. */
+const addSummaryNote = (slide: PptxSlide, box: { x: number; y: number; w: number }, text: string, color: string) => {
+  const height = weeklyLineHeightIn(PPTX_TASK_SIDE_MAX_FONT) + 0.05
+  slide.addText(text, {
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: height,
+    fontSize: PPTX_TASK_SIDE_MAX_FONT,
+    color,
+    valign: "top",
+    fontFace: "Calibri",
+  })
+  return height
+}
+
+/**
+ * Top card of the column beside Work Done: "TASKS DONE" with one row per
+ * person. The total runs straight after the short label, unspaced, so the two
+ * share the narrow title row without colliding.
+ */
+const addTaskCountsCard = (
+  pres: PptxPresentation,
+  slide: PptxSlide,
+  box: WeeklyContentBox,
+  summary: WeeklyDeptTaskSummary,
+  theme: WeeklyPptxTheme = "light"
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  addSectionCardChrome(
+    pres,
+    slide,
+    box,
+    "TASKS DONE",
+    colors.accent,
+    theme,
+    { text: formatTaskRatio(summary), color: colors.textPrimary, compact: true },
+    PPTX_TASK_SIDE_TITLE_SIZE
+  )
+
+  const at = { x: box.x + 0.26, y: box.y + 0.62, w: box.textW - 0.14 }
+  if (summary.people.length === 0) {
+    addSummaryNote(slide, at, "No tasks this week.", colors.textMuted)
+    return
+  }
+  const { fontSize, rows } = planTaskSummaryRows(summary.people.length, box.textH)
+  const overflow = summary.people.length - rows
+  const shown = overflow > 0 ? summary.people.slice(0, rows - 1) : summary.people
+  const personRows: SummaryRow[] = shown.map((person) => ({
+    label: person.name,
+    value: formatTaskRatio(person),
+    color: getTaskRatioColor(person, theme),
+    labelColor: person.assigned === 0 ? colors.textMuted : undefined,
+  }))
+  if (overflow > 0) personRows.push({ label: `+${overflow + 1} more`, value: "", color: colors.textMuted })
+  addSummaryRows(slide, at, personRows, fontSize, colors.sectionText)
+}
+
+/** Bottom card: the action points set at the last meeting, done / total and by status. */
+const addActionPointsCard = (
+  pres: PptxPresentation,
+  slide: PptxSlide,
+  box: WeeklyContentBox,
+  summary: WeeklyDeptTaskSummary,
+  theme: WeeklyPptxTheme = "light"
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  const ap = summary.actionPoints
+  const bodyTop = addSectionCardChrome(
+    pres,
+    slide,
+    box,
+    "ACTION POINTS",
+    colors.accent,
+    theme,
+    { text: `${ap.completed} / ${ap.total}`, color: colors.textPrimary, compact: true },
+    PPTX_TASK_SIDE_TITLE_SIZE,
+    "(Tasks for Last Week)"
+  )
+
+  // textW leaves almost no right inset; right-aligned counts need a real one.
+  const at = { x: box.x + 0.26, y: box.y + bodyTop, w: box.textW - 0.14 }
+  if (ap.total === 0) {
+    addSummaryNote(slide, at, "None set last meeting.", colors.textMuted)
+    return
+  }
+  addSummaryRows(
+    slide,
+    at,
+    [
+      { label: "Completed", value: String(ap.completed), color: ap.completed > 0 ? colors.accent : colors.textPrimary },
+      { label: "In progress", value: String(ap.inProgress), color: colors.textPrimary },
+      {
+        label: "Not started",
+        value: String(ap.notStarted),
+        color: ap.notStarted > 0 ? getZeroTasksColor(theme) : colors.textPrimary,
+      },
+    ],
+    // Largest size up to 12pt at which the three rows fit the card.
+    planTaskSummaryRows(3, box.h - bodyTop - 0.1).fontSize,
+    colors.sectionText
+  )
+}
+
+const addWorkDoneSlide = (
+  pres: PptxPresentation,
+  department: string,
+  workDonePlan: WeeklySectionPlan,
+  nextDept?: string,
+  pageNumber?: number,
+  theme: WeeklyPptxTheme = "light",
+  slidePosition?: { index: number; total: number },
+  layout: WeeklyDepartmentLayout = getWeeklyDepartmentLayout(),
+  taskSummary?: WeeklyDeptTaskSummary
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  const slide = pres.addSlide()
+  slide.background = { color: colors.canvas }
+  addWeeklyHeaderAndFooter(pres, slide, department, nextDept, pageNumber, theme, slidePosition)
+
+  addSectionCard(
+    pres,
+    slide,
+    layout.workDone,
+    workDonePlan.title,
+    workDonePlan.color,
+    workDonePlan.text,
+    workDonePlan.fontSize,
+    true,
+    false,
+    theme,
+    workDonePlan.paraSpaceAfter
+  )
+  if (taskSummary && layout.taskCounts && layout.actionPoints) {
+    addTaskCountsCard(pres, slide, layout.taskCounts, taskSummary, theme)
+    addActionPointsCard(pres, slide, layout.actionPoints, taskSummary, theme)
+  }
+
+  return slide
+}
+
+const addTasksAndChallengesSlide = (
+  pres: PptxPresentation,
+  department: string,
+  tasksPlan: WeeklySectionPlan,
+  challengesPlan: WeeklySectionPlan,
+  nextDept?: string,
+  pageNumber?: number,
+  theme: WeeklyPptxTheme = "light",
+  slidePosition?: { index: number; total: number },
+  layout: WeeklyDepartmentLayout = getWeeklyDepartmentLayout(),
+  taskSummary?: WeeklyDeptTaskSummary
+) => {
+  const colors = getWeeklyPptxThemeColors(theme)
+  const slide = pres.addSlide()
+  slide.background = { color: colors.canvas }
+  addWeeklyHeaderAndFooter(pres, slide, department, nextDept, pageNumber, theme, slidePosition)
+
+  addSectionCard(
+    pres,
+    slide,
+    layout.tasks,
+    tasksPlan.title,
+    tasksPlan.color,
+    tasksPlan.text,
+    tasksPlan.fontSize,
+    true,
+    false,
+    theme,
+    tasksPlan.paraSpaceAfter
+  )
+  addSectionCard(
+    pres,
+    slide,
+    layout.challenges,
+    challengesPlan.title,
+    challengesPlan.color,
+    challengesPlan.text,
+    challengesPlan.fontSize,
+    true,
+    false,
+    theme,
+    challengesPlan.paraSpaceAfter
+  )
+  if (taskSummary && layout.taskCounts && layout.actionPoints) {
+    addTaskCountsCard(pres, slide, layout.taskCounts, taskSummary, theme)
+    addActionPointsCard(pres, slide, layout.actionPoints, taskSummary, theme)
+  }
+
+  return slide
+}
+
+type DepartmentPptxPlan = {
+  report: WeeklyReport
+  layout: WeeklyDepartmentLayout
+  taskSummary?: WeeklyDeptTaskSummary
+  workDone: WeeklySectionPlan
+  tasks: WeeklySectionPlan
+  challenges: WeeklySectionPlan
+  totalSlides: number
+  startPage?: number
+}
+
+const buildDepartmentPptxPlan = (
+  report: WeeklyReport,
+  taskSummaryOptions?: WeeklyTaskSummaryOptions
+): DepartmentPptxPlan => {
+  const taskSummary = resolveTaskSummary(report, taskSummaryOptions)
+  const layout = getWeeklyDepartmentLayout(Boolean(taskSummary))
+  const [workDone, tasks, challenges] = getReportSectionPlans(report, layout)
+  return {
+    report,
+    layout,
+    taskSummary,
+    workDone,
+    tasks,
+    challenges,
+    totalSlides: 3, // title + work done page + tasks/challenges page
+  }
+}
+
+const renderDepartmentWeeklySlides = (
+  pres: PptxPresentation,
+  departmentPlan: DepartmentPptxPlan,
+  nextDepartmentName?: string,
+  startPageNumber?: number,
+  theme: WeeklyPptxTheme = "light",
+  position?: { index: number; total: number }
+) => {
+  const { report, workDone, tasks, challenges, layout, taskSummary } = departmentPlan
+  const p = Array.isArray(report.profiles) ? report.profiles[0] : report.profiles
+  const name = p ? `${p.first_name} ${p.last_name}` : "Employee"
+
+  let pageCursor = startPageNumber
+  const titleSlide = addDeptTitleSlide(pres, report.department, name, pageCursor, theme, position)
+  applyWeeklySlideTransition(titleSlide)
+  if (typeof pageCursor === "number") pageCursor += 1
+
+  // Both content slides advertise the *next department* in the footer. The
+  // second slide used to show "NEXT: <this dept> 2" instead, which meant you
+  // could not tell what was coming up until you were already on the last slide
+  // of the department. Where you are within the department is now carried by
+  // the "1 OF 2" / "2 OF 2" label in the header.
+  const workDoneSlide = addWorkDoneSlide(
+    pres,
+    report.department,
+    workDone,
+    nextDepartmentName,
+    pageCursor,
+    theme,
+    { index: 1, total: 2 },
+    layout,
+    taskSummary
+  )
+  applyWeeklySlideTransition(workDoneSlide)
+  if (typeof pageCursor === "number") pageCursor += 1
+
+  const tasksChallengesSlide = addTasksAndChallengesSlide(
+    pres,
+    report.department,
+    tasks,
+    challenges,
+    nextDepartmentName,
+    pageCursor,
+    theme,
+    { index: 2, total: 2 },
+    layout,
+    taskSummary
+  )
+  applyWeeklySlideTransition(tasksChallengesSlide)
+}
+
+const renderDepartmentCompactSlides = (
+  pres: PptxPresentation,
+  report: WeeklyReport,
+  nextDepartmentName?: string,
+  contentPageNumber?: number,
+  theme: WeeklyPptxTheme = "light",
+  position?: { index: number; total: number }
+) => {
+  const p = Array.isArray(report.profiles) ? report.profiles[0] : report.profiles
+  const name = p ? `${p.first_name} ${p.last_name}` : "Employee"
+
+  const titleSlide = addDeptTitleSlide(
+    pres,
+    report.department,
+    name,
+    typeof contentPageNumber === "number" ? contentPageNumber - 1 : undefined,
+    theme,
+    position
+  )
+  applyWeeklySlideTransition(titleSlide)
+
+  const contentSlide = addCompactContentSlide(
+    pres,
+    report.department,
+    report,
+    nextDepartmentName,
+    contentPageNumber,
+    theme
+  )
+  applyWeeklySlideTransition(contentSlide)
+}
+
+// ─── Public Export Functions ──────────────────────────────────────────────────
+
+export const exportToPPTX = async (
+  report: WeeklyReport,
+  mode: WeeklyPptxMode = "full",
+  theme: WeeklyPptxTheme = "light",
+  meetingDate?: string,
+  taskSummaryOptions?: WeeklyTaskSummaryOptions
+) => {
+  const PptxConstructor = await loadPptxGenJS()
+  const pres = new PptxConstructor()
+  pres.layout = "LAYOUT_WIDE"
+
+  // Slide 1 — Cover
+  const coverSlide = addCoverSlide(pres, report.week_number, report.year, report.department, theme, meetingDate)
+  applyWeeklySlideTransition(coverSlide)
+
+  if (mode === "compact") {
+    renderDepartmentCompactSlides(pres, report, undefined, 3, theme)
+  } else {
+    const departmentPlan = buildDepartmentPptxPlan(report, taskSummaryOptions)
+    // Slides 2+ — Department title + full-mode content slides
+    renderDepartmentWeeklySlides(pres, departmentPlan, undefined, 2, theme)
+  }
+
+  await pres.writeFile({
+    fileName: buildWeeklyReportFilename({
+      week: report.week_number,
+      year: report.year,
+      meetingDate,
+      extension: "pptx",
+      department: report.department,
+      theme,
+    }),
+  })
+}
+
+export interface WeeklyDepartmentSlidesOptions {
+  week: number
+  year: number
+  mode?: WeeklyPptxMode
+  theme?: WeeklyPptxTheme
+  order?: WeeklyDeptOrder
+  taskSummaryOptions?: WeeklyTaskSummaryOptions
+  /** Page number of the department index slide; departments follow it. */
+  firstPage: number
+  /** What the last department's "NEXT:" points at (the agenda deck's next item). */
+  nextAfterLast?: string
+}
+
+/** How many slides addWeeklyDepartmentSlides will add, for numbering slides that come after. */
+export const countWeeklyDepartmentSlides = (
+  reports: WeeklyReport[],
+  mode: WeeklyPptxMode = "full",
+  taskSummaryOptions?: WeeklyTaskSummaryOptions
+) =>
+  1 +
+  reports.reduce(
+    (total, report) =>
+      total + (mode === "compact" ? 2 : buildDepartmentPptxPlan(report, taskSummaryOptions).totalSlides),
+    0
+  )
+
+/**
+ * Appends the department index slide and every department's slides to `pres`,
+ * returning how many slides were added. Shared by the weekly export and the
+ * general-meeting agenda deck, which places them under "Departmental Updates".
+ */
+export const addWeeklyDepartmentSlides = (
+  pres: PptxPresentation,
+  reports: WeeklyReport[],
+  {
+    week,
+    year,
+    mode = "full",
+    theme = "light",
+    order = "default",
+    taskSummaryOptions,
+    firstPage,
+    nextAfterLast,
+  }: WeeklyDepartmentSlidesOptions
+) => {
+  const sortedReports =
+    order === "alpha"
+      ? [...reports].sort((a, b) =>
+          normalizeDepartmentName(a.department).localeCompare(normalizeDepartmentName(b.department))
+        )
+      : order === "random"
+        ? shuffle(reports)
+        : sortReportsByDepartment(reports)
+  const departments = sortedReports.map((entry) => entry.department)
+
+  let pageCursor = firstPage + 1
+  const departmentStartPages: number[] = []
+  if (mode === "compact") {
+    sortedReports.forEach((_report) => {
+      departmentStartPages.push(pageCursor)
+      pageCursor += 2
+    })
+  } else {
+    const departmentPlans = sortedReports.map((report) => buildDepartmentPptxPlan(report, taskSummaryOptions))
+    departmentPlans.forEach((entry) => {
+      departmentStartPages.push(pageCursor)
+      entry.startPage = pageCursor
+      pageCursor += entry.totalSlides
+    })
+  }
+
+  const indexSlide = addDeptIndexSlide(
+    pres,
+    departments,
+    week,
+    year,
+    (index) => departmentStartPages[index] ?? firstPage + 1 + index * 2,
+    theme
+  )
+  applyWeeklySlideTransition(indexSlide)
+
+  if (mode === "compact") {
+    sortedReports.forEach((report, idx) => {
+      renderDepartmentCompactSlides(
+        pres,
+        report,
+        sortedReports[idx + 1]?.department ?? nextAfterLast,
+        departmentStartPages[idx] + 1,
+        theme,
+        { index: idx + 1, total: sortedReports.length }
+      )
+    })
+  } else {
+    const departmentPlans = sortedReports.map((report, idx) => {
+      const entry = buildDepartmentPptxPlan(report, taskSummaryOptions)
+      entry.startPage = departmentStartPages[idx]
+      return entry
+    })
+    departmentPlans.forEach((departmentPlan, idx) => {
+      renderDepartmentWeeklySlides(
+        pres,
+        departmentPlan,
+        departmentPlans[idx + 1]?.report.department ?? nextAfterLast,
+        departmentPlan.startPage,
+        theme,
+        { index: idx + 1, total: departmentPlans.length }
+      )
+    })
+  }
+
+  return pageCursor - firstPage
+}
+
+export const exportAllToPPTX = async (
+  reports: WeeklyReport[],
+  week: number,
+  year: number,
+  mode: WeeklyPptxMode = "full",
+  theme: WeeklyPptxTheme = "light",
+  meetingDate?: string,
+  order: WeeklyDeptOrder = "default",
+  taskSummaryOptions?: WeeklyTaskSummaryOptions
+) => {
+  const PptxConstructor = await loadPptxGenJS()
+  const pres = new PptxConstructor()
+  pres.layout = "LAYOUT_WIDE"
+
+  // Slide 1 — Cover
+  const coverSlide = addCoverSlide(pres, week, year, undefined, theme, meetingDate)
+  applyWeeklySlideTransition(coverSlide)
+
+  // Slide 2 — Dept index, then each department
+  addWeeklyDepartmentSlides(pres, reports, { week, year, mode, theme, order, taskSummaryOptions, firstPage: 2 })
+
+  await pres.writeFile({
+    fileName: buildWeeklyReportFilename({
+      week,
+      year,
+      meetingDate,
+      extension: "pptx",
+      allDepartments: true,
+      theme,
+    }),
+  })
+}

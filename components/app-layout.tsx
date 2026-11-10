@@ -1,0 +1,71 @@
+import { Sidebar } from "@/components/sidebar"
+import { SkipToContent } from "@/components/skip-to-content"
+import { SidebarContent } from "@/components/sidebar-content"
+import { AcoBot } from "@/components/acobot/acobot"
+import { MissingAvatarBanner } from "@/components/profile/missing-avatar-banner"
+import { MissingAvatarDialog } from "@/components/profile/missing-avatar-dialog"
+import { WhatsNewDialog } from "@/components/whats-new-dialog"
+import { loadWhatsNewSeen } from "@/lib/whats-new-server"
+import { createClient } from "@/lib/supabase/server"
+import { resolveAdminScope } from "@/lib/admin/rbac"
+import { resolveDeptConsoles } from "@/lib/dept/consoles"
+import { redirect } from "next/navigation"
+import type { SupabaseClient } from "@supabase/supabase-js"
+import type { Database } from "@/types/database"
+
+interface AppLayoutProps {
+  children: React.ReactNode
+}
+
+export async function AppLayout({ children }: AppLayoutProps) {
+  const supabase = await createClient()
+  const typedSupabase = supabase as SupabaseClient<Database>
+  const { data, error } = await supabase.auth.getUser()
+
+  if (error || !data?.user) {
+    redirect("/auth/login")
+  }
+
+  // Fetch user profile
+  // The profile is handed to client components as props, so select only what they read: every column
+  // named here is serialised into the page.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, first_name, last_name, full_name, department, role, is_department_lead, lead_departments, avatar_path")
+    .eq("id", data.user.id)
+    .single()
+  const adminScope = await resolveAdminScope(typedSupabase, data.user.id)
+  const canAccessAdmin = Boolean(adminScope)
+
+  // Resolve every dept console for any user who is a dept lead — pure leads AND
+  // admin+lead. Both surfaces are useful independently: admin = global ops,
+  // dept = scoped view. A lead may hold several departments.
+  const deptConsoles = await resolveDeptConsoles(typedSupabase, profile, data.user.id)
+  const { data: isMdDeskMember } = await supabase.rpc("is_md_desk_member")
+  const whatsNewSeen = await loadWhatsNewSeen(supabase, data.user.id)
+
+  const userData = {
+    email: data.user.email,
+    user_metadata: data.user.user_metadata,
+  }
+
+  return (
+    <div className="flex min-h-screen">
+      <SkipToContent />
+      <Sidebar
+        user={userData}
+        profile={profile || undefined}
+        canAccessAdmin={canAccessAdmin}
+        deptConsoles={deptConsoles}
+        showMdDesk={isMdDeskMember === true}
+      />
+      <SidebarContent>
+        <MissingAvatarBanner hasAvatar={Boolean(profile?.avatar_path)} />
+        <MissingAvatarDialog hasAvatar={Boolean(profile?.avatar_path)} />
+        <WhatsNewDialog hasAvatar={Boolean(profile?.avatar_path)} seenIds={whatsNewSeen} />
+        <div className="pb-[max(var(--fab-safe-area),env(safe-area-inset-bottom))]">{children}</div>
+      </SidebarContent>
+      <AcoBot userName={profile?.first_name ?? profile?.full_name ?? null} />
+    </div>
+  )
+}

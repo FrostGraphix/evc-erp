@@ -1,0 +1,555 @@
+"use client"
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { deleteNotifications, markAllNotificationsRead, setNotificationsRead } from "@/lib/notifications/client"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { toast } from "sonner"
+import { createClient } from "@/lib/supabase/client"
+import { cn } from "@/lib/utils"
+import { formatWATDate } from "@/lib/utils/date"
+import { DataTable, DataTablePage } from "@/components/ui/data-table"
+import type { DataTableColumn, DataTableFilter, DataTableTab, RowAction } from "@/components/ui/data-table"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Bell,
+  AlertCircle,
+  CheckCircle,
+  Info,
+  CheckCheck,
+  Package,
+  AlertTriangle,
+  Clock,
+  Star,
+  ChevronRight,
+  RefreshCw,
+  Mail,
+  Megaphone,
+  Trash2,
+  Settings,
+  MessageSquare,
+  FileText,
+  User,
+  Calendar,
+} from "lucide-react"
+import type { Notification } from "./page"
+
+import { logger } from "@/lib/logger"
+import { notificationTier } from "@/lib/notifications/tiers"
+
+const log = logger("notification-notification-content")
+
+type NotificationType = Notification["type"]
+
+const TYPE_ICONS: Record<string, typeof Info> = {
+  task_assigned: User,
+  task_updated: AlertCircle,
+  task_completed: CheckCircle,
+  mention: MessageSquare,
+  feedback: MessageSquare,
+  asset_assigned: Package,
+  approval_request: FileText,
+  approval_granted: CheckCircle,
+  system: Info,
+  announcement: Megaphone,
+  task_due_soon: Clock,
+  task_overdue: AlertTriangle,
+  task_awaiting_review: FileText,
+  task_needs_rating: Star,
+  task_blocked: AlertTriangle,
+  project_delayed: AlertTriangle,
+}
+
+const TYPE_CARD_BG: Record<string, string> = {
+  task_assigned: "bg-info/50",
+  task_updated: "bg-warning/50",
+  task_completed: "bg-success/50",
+  mention: "bg-purple/50",
+  feedback: "bg-purple/50",
+  asset_assigned: "bg-info/50",
+  approval_request: "bg-warning/50",
+  approval_granted: "bg-success/50",
+  system: "bg-muted/50",
+  announcement: "bg-danger/50",
+  task_due_soon: "bg-warning/50",
+  task_overdue: "bg-danger/50",
+  task_awaiting_review: "bg-warning/50",
+  task_needs_rating: "bg-warning/50",
+  task_blocked: "bg-danger/50",
+  project_delayed: "bg-danger/50",
+}
+
+const PRIORITY_BADGE_CLASS: Record<string, string> = {
+  urgent: "border-danger/40 bg-danger/10 text-danger",
+  high: "border-warning/40 bg-warning/10 text-warning",
+  normal: "border-info/40 bg-info/10 text-info",
+  low: "border-success/40 bg-success/10 text-success",
+}
+
+function getPriorityBadgeClass(priority: string | null | undefined): string {
+  return (
+    PRIORITY_BADGE_CLASS[String(priority || "").toLowerCase()] || "border-muted-foreground/30 text-muted-foreground"
+  )
+}
+
+interface NotificationContentProps {
+  initialNotifications: Notification[]
+  userId: string
+}
+
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+  if (diffInSeconds < 60) return "Just now"
+  if (diffInSeconds < 3600) {
+    const minutes = Math.floor(diffInSeconds / 60)
+    return `${minutes} minute${minutes > 1 ? "s" : ""} ago`
+  }
+  if (diffInSeconds < 86400) {
+    const hours = Math.floor(diffInSeconds / 3600)
+    return `${hours} hour${hours > 1 ? "s" : ""} ago`
+  }
+  if (diffInSeconds < 604800) {
+    const days = Math.floor(diffInSeconds / 86400)
+    return `${days} day${days > 1 ? "s" : ""} ago`
+  }
+  return formatWATDate(date, { month: "short", day: "numeric", year: "numeric" })
+}
+
+export function NotificationContent({ initialNotifications, userId }: NotificationContentProps) {
+  const router = useRouter()
+  const [supabase] = useState(() => createClient())
+  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications)
+  const [isLoading, setIsLoading] = useState(false)
+  // Default to the work waiting on the viewer (audit 2.1).
+  const [activeTab, setActiveTab] = useState("action")
+
+  // A fresh server list replaces local edits — adjusted during render, not in an effect.
+  const [syncedInitial, setSyncedInitial] = useState(initialNotifications)
+  if (syncedInitial !== initialNotifications) {
+    setSyncedInitial(initialNotifications)
+    setNotifications(initialNotifications)
+  }
+
+  useEffect(() => {
+    const subscription = supabase
+      .channel("user_notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            setNotifications((prev) => [payload.new as Notification, ...prev])
+            return
+          }
+          if (payload.eventType === "UPDATE") {
+            setNotifications((prev) => prev.map((n) => (n.id === payload.new.id ? (payload.new as Notification) : n)))
+            return
+          }
+          if (payload.eventType === "DELETE") {
+            setNotifications((prev) => prev.filter((n) => n.id !== payload.old.id))
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [supabase, userId])
+
+  const markAsRead = useCallback(async (notificationId: string) => {
+    try {
+      await setNotificationsRead([notificationId], true)
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true, read_at: new Date().toISOString() } : n))
+      )
+    } catch (error: unknown) {
+      log.error("Error marking notification read:", error)
+      toast.error("Failed to mark as read")
+    }
+  }, [])
+
+  const markAsUnread = useCallback(async (notificationId: string) => {
+    try {
+      await setNotificationsRead([notificationId], false)
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: false, read_at: undefined } : n))
+      )
+    } catch (error: unknown) {
+      log.error("Error marking notification unread:", error)
+      toast.error("Failed to mark as unread")
+    }
+  }, [])
+
+  const markAllAsRead = useCallback(async () => {
+    try {
+      await markAllNotificationsRead()
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, read: true, read_at: n.read_at ?? new Date().toISOString() }))
+      )
+      toast.success("All notifications marked as read")
+    } catch (error: unknown) {
+      log.error("Error marking all notifications read:", error)
+      toast.error("Failed to mark all as read")
+    }
+  }, [])
+
+  const deleteNotification = useCallback(async (notificationId: string) => {
+    try {
+      await deleteNotifications([notificationId])
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
+      toast.success("Notification deleted")
+    } catch (error: unknown) {
+      log.error("Error deleting notification:", error)
+      toast.error("Failed to delete notification")
+    }
+  }, [])
+
+  const openNotification = useCallback(
+    async (notification: Notification) => {
+      if (!notification.read) {
+        await markAsRead(notification.id)
+      }
+      if (notification.action_url) {
+        router.push(notification.action_url)
+      }
+    },
+    [markAsRead, router]
+  )
+
+  const counts = useMemo(() => {
+    const byTier = { action: 0, actionUnread: 0, fyi: 0, announcement: 0 }
+    for (const n of notifications) {
+      const tier = notificationTier(n)
+      byTier[tier] += 1
+      if (tier === "action" && !n.read) byTier.actionUnread += 1
+    }
+    return { ...byTier, all: notifications.length, unread: notifications.filter((n) => !n.read).length }
+  }, [notifications])
+
+  // Tiers, not categories: category stays available as a table filter.
+  const tabs: DataTableTab[] = useMemo(
+    () => [
+      { key: "action", label: `Needs you (${counts.actionUnread})`, icon: AlertTriangle },
+      { key: "fyi", label: `Updates (${counts.fyi})`, icon: Bell },
+      { key: "announcement", label: `Announcements (${counts.announcement})`, icon: Mail },
+      { key: "all", label: `All (${counts.all})`, icon: Clock },
+    ],
+    [counts]
+  )
+
+  const filteredData = useMemo(
+    () => (activeTab === "all" ? notifications : notifications.filter((n) => notificationTier(n) === activeTab)),
+    [activeTab, notifications]
+  )
+
+  const columns: DataTableColumn<Notification>[] = useMemo(
+    () => [
+      {
+        key: "read",
+        label: "",
+        accessor: (n) => (n.read ? "read" : "unread"),
+        width: "70px",
+        render: (n) =>
+          n.read ? null : (
+            <Badge className="bg-info/15 text-info border-transparent text-xs font-medium capitalize">New</Badge>
+          ),
+      },
+      {
+        key: "title",
+        label: "Notification",
+        sortable: true,
+        resizable: true,
+        initialWidth: 420,
+        accessor: (n) => n.title,
+        render: (n) => (
+          <div className="flex flex-col">
+            <span className={cn("text-sm", !n.read && "font-semibold")}>{n.title}</span>
+            <span className="text-muted-foreground line-clamp-1 text-xs">{n.message}</span>
+          </div>
+        ),
+      },
+      {
+        key: "category",
+        label: "Category",
+        sortable: true,
+        accessor: (n) => n.category,
+        render: (n) => (
+          <Badge variant="outline" className="capitalize">
+            {n.category}
+          </Badge>
+        ),
+        hideOnMobile: true,
+      },
+      {
+        key: "priority",
+        label: "Priority",
+        sortable: true,
+        accessor: (n) => n.priority,
+        render: (n) => (
+          <Badge variant="outline" className={cn("capitalize", getPriorityBadgeClass(n.priority))}>
+            {n.priority}
+          </Badge>
+        ),
+        hideOnMobile: true,
+      },
+      {
+        key: "timestamp",
+        label: "Time",
+        sortable: true,
+        accessor: (n) => n.created_at,
+        render: (n) => (
+          <span className="text-muted-foreground text-xs whitespace-nowrap">{formatRelativeTime(n.created_at)}</span>
+        ),
+        hideOnMobile: true,
+      },
+    ],
+    []
+  )
+
+  const filters: DataTableFilter<Notification>[] = useMemo(
+    () => [
+      {
+        key: "priority",
+        label: "Priority",
+        options: [
+          { value: "urgent", label: "Urgent" },
+          { value: "high", label: "High" },
+          { value: "normal", label: "Normal" },
+          { value: "low", label: "Low" },
+        ],
+      },
+      {
+        key: "category",
+        label: "Category",
+        options: Array.from(new Set(notifications.map((n) => n.category).filter(Boolean))).map((category) => ({
+          value: category,
+          label: category,
+        })),
+      },
+      {
+        key: "read",
+        label: "Read State",
+        options: [
+          { value: "true", label: "Read" },
+          { value: "false", label: "Unread" },
+        ],
+        mode: "custom",
+        filterFn: (row, selected) => selected.includes(String(row.read)),
+      },
+    ],
+    [notifications]
+  )
+
+  const rowActions = useMemo<RowAction<Notification>[]>(
+    () => [
+      {
+        label: "Open",
+        icon: ChevronRight,
+        onClick: (n) => openNotification(n),
+        hidden: (n) => !n.action_url,
+      },
+      {
+        label: "Mark Read",
+        icon: CheckCheck,
+        onClick: (n) => void markAsRead(n.id),
+        hidden: (n) => n.read,
+      },
+      {
+        label: "Mark Unread",
+        icon: Clock,
+        onClick: (n) => void markAsUnread(n.id),
+        hidden: (n) => !n.read,
+      },
+      {
+        label: "Delete",
+        icon: Trash2,
+        variant: "destructive",
+        onClick: (n) => void deleteNotification(n.id),
+      },
+    ],
+    [deleteNotification, markAsRead, markAsUnread, openNotification]
+  )
+
+  const refreshNotifications = useCallback(() => {
+    setIsLoading(true)
+    router.refresh()
+    setTimeout(() => {
+      setIsLoading(false)
+      toast.success("Notifications refreshed")
+    }, 900)
+  }, [router])
+
+  return (
+    <DataTablePage
+      title="Notifications"
+      description="Stay updated with your tasks, assets, approvals, and mentions."
+      icon={Bell}
+      backLink={{ href: "/profile", label: "Back to Dashboard" }}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      spacing="tight"
+      actions={
+        <div className="flex gap-1.5">
+          <Link href="/notifications/settings">
+            <Button variant="outline" size="sm">
+              <Settings className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Settings</span>
+            </Button>
+          </Link>
+          <Button variant="outline" size="sm" onClick={refreshNotifications} disabled={isLoading}>
+            <RefreshCw className={cn("h-4 w-4 sm:mr-2", isLoading && "animate-spin")} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => void markAllAsRead()} disabled={counts.unread === 0}>
+            <CheckCheck className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Mark all read</span>
+          </Button>
+        </div>
+      }
+    >
+      <DataTable<Notification>
+        data={filteredData}
+        columns={columns}
+        getRowId={(n) => n.id}
+        searchPlaceholder="Search title, message, actor..."
+        searchFn={(n, q) => `${n.title} ${n.message} ${n.actor_name || ""} ${n.category}`.toLowerCase().includes(q)}
+        filters={filters}
+        isLoading={isLoading}
+        rowActions={rowActions}
+        pagination={{ pageSize: 50 }}
+        stickyToolbar
+        viewToggle
+        contactsView
+        defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+        mobileRow={{
+          leading: (n) => {
+            const Icon = TYPE_ICONS[n.type as NotificationType] || Info
+            return (
+              <span className="bg-muted flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+                <Icon className="h-4 w-4" />
+              </span>
+            )
+          },
+          title: (n) => n.title,
+          subtitle: (n) => n.message,
+          trailing: (n) =>
+            !n.read ? (
+              <Badge className="bg-info/15 text-info border-transparent text-xs font-medium">New</Badge>
+            ) : (
+              <span className="text-muted-foreground text-xs whitespace-nowrap">
+                {formatRelativeTime(n.created_at)}
+              </span>
+            ),
+          detail: {
+            title: (n) => n.title,
+            subtitle: (n) => <span className="text-muted-foreground text-xs">{formatRelativeTime(n.created_at)}</span>,
+            badges: (n) => (
+              <>
+                {!n.read && <Badge className="bg-info/15 text-info border-transparent text-xs font-medium">New</Badge>}
+                <Badge variant="outline" className={cn("text-xs capitalize", getPriorityBadgeClass(n.priority))}>
+                  {n.priority}
+                </Badge>
+                <Badge variant="outline" className="text-xs capitalize">
+                  {n.category}
+                </Badge>
+              </>
+            ),
+            fields: (n) => [
+              { icon: Bell, label: "Message", value: n.message },
+              ...(n.actor_name ? [{ icon: User, label: "From", value: n.actor_name }] : []),
+              { icon: Calendar, label: "Received", value: formatWATDate(n.created_at) },
+            ],
+            actions: (n) => [
+              ...(n.action_url
+                ? [
+                    {
+                      label: "Open",
+                      icon: ChevronRight,
+                      variant: "default" as const,
+                      onClick: () => void openNotification(n),
+                    },
+                  ]
+                : []),
+              ...(n.read
+                ? [
+                    {
+                      label: "Mark unread",
+                      icon: Clock,
+                      variant: "outline" as const,
+                      onClick: () => void markAsUnread(n.id),
+                    },
+                  ]
+                : [
+                    {
+                      label: "Mark read",
+                      icon: CheckCheck,
+                      variant: "outline" as const,
+                      onClick: () => void markAsRead(n.id),
+                    },
+                  ]),
+              {
+                label: "Delete",
+                icon: Trash2,
+                variant: "destructive" as const,
+                onClick: () => void deleteNotification(n.id),
+              },
+            ],
+          },
+        }}
+        cardRenderer={(n) => {
+          const iconKey = n.type as NotificationType
+          const Icon = TYPE_ICONS[iconKey] || Info
+          const typeBg = TYPE_CARD_BG[iconKey] || "bg-muted/50"
+          return (
+            <div
+              className={cn(
+                "group hover:border-primary relative flex cursor-pointer flex-col gap-3 rounded-xl border-2 p-4 transition-all",
+                typeBg,
+                n.read && "opacity-70"
+              )}
+              onClick={() => void openNotification(n)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="bg-background flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="flex flex-1 flex-col truncate">
+                  <span className={cn("truncate text-sm", !n.read && "font-bold")}>{n.title}</span>
+                  <span className="text-muted-foreground mt-1 line-clamp-2 text-xs">{n.message}</span>
+                </div>
+                {n.action_url && (
+                  <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0 transition-transform group-hover:translate-x-1" />
+                )}
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex gap-2">
+                  <Badge variant="outline" className="px-1.5 py-0 text-xs">
+                    {n.category}
+                  </Badge>
+                  {!n.read && (
+                    <Badge className="bg-info/15 text-info border-transparent px-1.5 py-0 text-xs font-medium">
+                      New
+                    </Badge>
+                  )}
+                </div>
+                <span className="text-muted-foreground text-xs">{formatRelativeTime(n.created_at)}</span>
+              </div>
+            </div>
+          )
+        }}
+        urlSync
+      />
+    </DataTablePage>
+  )
+}

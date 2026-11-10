@@ -1,0 +1,505 @@
+import { NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
+import { createClient } from "@/lib/supabase/server"
+import { getServiceRoleClientOrFallback } from "@/lib/supabase/admin"
+import { logger } from "@/lib/logger"
+import { rateLimit, getClientId } from "@/lib/rate-limit"
+import { leadFirstBlock, stageAttendanceChange } from "@/lib/hr/attendance-appeals"
+import { loadDayContext } from "@/lib/hr/attendance-day-context"
+import { formatEmployeeName } from "@/lib/hr/employee-name"
+import { toLocalISODate, loadAttendancePolicy } from "@/lib/hr/attendance-utils"
+import { requireApiAdminScope, getScopedDepartments } from "@/lib/admin/api-scope"
+import { expandDepartmentScopeForQuery } from "@/lib/admin/rbac"
+import {
+  ATTENDANCE_STATUS_LABELS,
+  DB_WRITABLE_STATUSES,
+  deriveUnifiedAttendanceStatus,
+  type UnifiedAttendanceStatus,
+} from "@/lib/hr/attendance-status"
+import { validateLwpAwpMonthlyQuota } from "@/lib/hr/attendance-quota"
+
+const CreateSchema = z.object({
+  user_id: z.string().uuid(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  clock_in: z
+    .string()
+    .regex(/^\d{2}:\d{2}(:\d{2})?$/)
+    .optional()
+    .nullable(),
+  clock_out: z
+    .string()
+    .regex(/^\d{2}:\d{2}(:\d{2})?$/)
+    .optional()
+    .nullable(),
+  status: z.enum(DB_WRITABLE_STATUSES).optional(),
+  waived: z.boolean().optional(),
+  manual_comment: z.string().trim().min(3, "Manual attendance changes require a comment").max(500),
+})
+
+const log = logger("admin-hr-attendance-records")
+export const dynamic = "force-dynamic"
+
+export async function GET(request: NextRequest) {
+  const rl = await rateLimit(`admin-attendance-records:${getClientId(request)}`, { limit: 30, windowSec: 60 })
+  if (!rl.allowed) return NextResponse.json({ error: "Too many requests" }, { status: 429 })
+
+  try {
+    const scopeResult = await requireApiAdminScope()
+    if (!scopeResult.ok) return scopeResult.response
+    const { scope, supabase } = scopeResult
+    const policy = await loadAttendancePolicy(supabase)
+
+    const depts = getScopedDepartments(scope)
+    const { searchParams } = request.nextUrl
+    const startDate = searchParams.get("start_date")
+    const endDate = searchParams.get("end_date")
+    const userId = searchParams.get("user_id")
+    const includeAll = searchParams.get("include_all") === "1" || searchParams.get("include_all") === "true"
+    // Department lock from the dept console (/dept/[id]/hr/attendance). Narrows
+    // results to a single department even for global roles whose data scope is
+    // otherwise "all" — this is what enforces dept guarding on the dept pages.
+    const departmentParam = (searchParams.get("department") || "").trim()
+
+    const dataClient = getServiceRoleClientOrFallback(supabase)
+
+    // Resolve the set of user IDs visible to this admin/lead
+    let scopedUserIds: string[] | null = null
+    if (depts !== null) {
+      if (depts.length === 0) return NextResponse.json({ records: [] })
+      const { data: scopedProfiles } = await dataClient.from("profiles").select("id").in("department", depts)
+      scopedUserIds = (scopedProfiles ?? []).map((p) => p.id)
+      if (scopedUserIds.length === 0) return NextResponse.json({ records: [] })
+    }
+
+    // Narrow to the requested department, intersected with the caller's scope.
+    if (departmentParam && departmentParam.toLowerCase() !== "all") {
+      const deptVariants = expandDepartmentScopeForQuery([departmentParam])
+      const { data: deptProfiles } = await dataClient.from("profiles").select("id").in("department", deptVariants)
+      const deptUserIds = (deptProfiles ?? []).map((p) => p.id)
+      if (deptUserIds.length === 0) return NextResponse.json({ records: [] })
+      scopedUserIds = scopedUserIds === null ? deptUserIds : scopedUserIds.filter((id) => deptUserIds.includes(id))
+      if (scopedUserIds.length === 0) return NextResponse.json({ records: [] })
+    }
+
+    let attendanceQuery = dataClient
+      .from("attendance_records")
+      .select(
+        "id, user_id, date, clock_in, clock_out, total_hours, status, source, clock_in_source, clock_out_source, waived, manual_comment, updated_at"
+      )
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(500)
+
+    if (startDate) attendanceQuery = attendanceQuery.gte("date", startDate)
+    if (endDate) attendanceQuery = attendanceQuery.lte("date", endDate)
+    // If a specific user_id was requested, honour it only when it falls within scope
+    if (userId) {
+      if (scopedUserIds !== null && !scopedUserIds.includes(userId)) {
+        return NextResponse.json({ records: [] })
+      }
+      attendanceQuery = attendanceQuery.eq("user_id", userId)
+    } else if (scopedUserIds !== null) {
+      attendanceQuery = attendanceQuery.in("user_id", scopedUserIds)
+    }
+
+    const { data, error } = await attendanceQuery
+
+    if (error) {
+      log.error({ err: String(error) }, "Failed to fetch admin attendance records")
+      return NextResponse.json({ error: "Failed to fetch records" }, { status: 500 })
+    }
+
+    const rows = data ?? []
+
+    // Collect unique user IDs and date bounds for context lookups
+    const userIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))]
+    const allDates = rows.map((r) => r.date).sort()
+    // Cover the requested range too, so a day's closing time is known even
+    // before anyone has a record for it.
+    const minDate = [startDate, allDates[0]].filter(Boolean).sort()[0] ?? toLocalISODate()
+    const maxDate = [endDate, allDates[allDates.length - 1]].filter(Boolean).sort().reverse()[0] ?? toLocalISODate()
+
+    const recordIds = rows.map((r) => r.id).filter((id) => id && !id.startsWith("missing-"))
+
+    // Fetch profiles + audit logs (editor attribution) in parallel with the shared day context.
+    const [profileRows, auditLogRows, ctx] = await Promise.all([
+      userIds.length > 0
+        ? dataClient
+            .from("profiles")
+            .select("id, full_name, first_name, last_name, department, attendance_exempt")
+            .in("id", userIds)
+            .then((r) => r.data ?? [])
+        : Promise.resolve([]),
+
+      recordIds.length > 0
+        ? dataClient
+            .from("audit_logs")
+            .select("entity_id, user_id, created_at, metadata")
+            .eq("entity_type", "attendance_record")
+            .in("entity_id", recordIds)
+            .order("created_at", { ascending: false })
+            .then((r) => r.data ?? [])
+        : Promise.resolve([]),
+
+      loadDayContext(dataClient, { userIds, start: minDate, end: maxDate }),
+    ])
+
+    // Build audit log lookups to find the latest manual editor for each record.
+    // Exclude automated system logs (e.g. Hikvision device punches where user_id is the employee).
+    const editorIdByRecordId = new Map<string, string>()
+    for (const log of auditLogRows as Array<{
+      entity_id: string
+      user_id: string
+      metadata?: Record<string, unknown> | null
+    }>) {
+      const isSystemLog =
+        log.metadata?.source === "system" || String(log.metadata?.route ?? "").startsWith("/api/devices/")
+      if (!isSystemLog && !editorIdByRecordId.has(log.entity_id)) {
+        editorIdByRecordId.set(log.entity_id, log.user_id)
+      }
+    }
+
+    const closureCreatorIds: string[] = []
+    const datesToCheck = allDates.length > 0 ? allDates : startDate ? [startDate as string] : []
+    for (const d of datesToCheck) {
+      const cUid = ctx.earlyCloseCreatedBy(d)
+      if (cUid) closureCreatorIds.push(cUid)
+      const rUid = ctx.lateResumptionCreatedBy(d)
+      if (rUid) closureCreatorIds.push(rUid)
+    }
+
+    const editorUserIds = [
+      ...new Set([...Array.from(editorIdByRecordId.values()), ...closureCreatorIds].filter(Boolean)),
+    ]
+    const editorProfileRows =
+      editorUserIds.length > 0
+        ? await dataClient
+            .from("profiles")
+            .select("id, first_name, last_name, full_name")
+            .in("id", editorUserIds)
+            .then((r) => r.data ?? [])
+        : []
+
+    const editorProfileMap = new Map<
+      string,
+      { first_name?: string | null; last_name?: string | null; full_name?: string | null }
+    >()
+    for (const p of editorProfileRows) {
+      editorProfileMap.set(p.id, p)
+    }
+
+    // Build lookup structures
+    const profileMap = new Map<
+      string,
+      { full_name?: string; first_name?: string; last_name?: string; department?: string; attendance_exempt?: boolean }
+    >()
+    for (const p of profileRows) profileMap.set(p.id, p)
+
+    // Query active pending appeals in date range to attach status indicators
+    const pendingAppealMap = new Map<
+      string,
+      { id: string; stage: string; requested_status: string; initiated_by_role: string }
+    >()
+    if (startDate && endDate) {
+      const { data: appeals } = await dataClient
+        .from("attendance_appeals")
+        .select("id, user_id, appeal_date, stage, requested_status, initiated_by_role")
+        .eq("status", "pending")
+        .gte("appeal_date", startDate)
+        .lte("appeal_date", endDate)
+      if (appeals) {
+        for (const a of appeals) {
+          pendingAppealMap.set(`${a.user_id}_${a.appeal_date}`, {
+            id: a.id,
+            stage: a.stage,
+            requested_status: a.requested_status,
+            initiated_by_role: a.initiated_by_role,
+          })
+        }
+      }
+    }
+
+    const records = rows.map((r) => {
+      const p = profileMap.get(r.user_id)
+      const name = formatEmployeeName(p)
+
+      const closeTime = ctx.earlyCloseTime(r.date)
+      const lateRes = ctx.lateResumptionTime(r.date)
+      const derivedStatus = deriveUnifiedAttendanceStatus(
+        {
+          record: r,
+          isHoliday: ctx.isHoliday(r.date),
+          isOnLeave: ctx.isOnLeave(r.user_id, r.date),
+          isOnUnpaidLeave: ctx.isOnUnpaidLeave(r.user_id, r.date),
+          isExempted: Boolean(p?.attendance_exempt) || ctx.isExempt(r.user_id, r.date),
+          isCdsDay: ctx.isCdsDay(r.user_id, r.date),
+          recordDate: r.date,
+          earlyClosure: closeTime ? { closeTime } : null,
+          lateResumption: lateRes ? { resumptionTime: lateRes } : null,
+        },
+        policy
+      )
+      let editorUserId: string | undefined
+      if (derivedStatus === "early_closure") {
+        editorUserId = ctx.earlyCloseCreatedBy(r.date) ?? editorIdByRecordId.get(r.id)
+      } else if (derivedStatus === "late_resumption") {
+        editorUserId = ctx.lateResumptionCreatedBy(r.date) ?? editorIdByRecordId.get(r.id)
+      } else {
+        editorUserId = editorIdByRecordId.get(r.id)
+      }
+      const editorProfile = editorUserId ? editorProfileMap.get(editorUserId) : null
+      const editorFirstName = editorProfile?.first_name || editorProfile?.full_name?.split(" ")[0] || null
+
+      return {
+        id: r.id,
+        user_id: r.user_id,
+        user_name: name,
+        department: p?.department ?? "",
+        date: r.date,
+        clock_in: r.clock_in,
+        clock_out: r.clock_out,
+        total_hours: r.total_hours,
+        status: derivedStatus,
+        source: r.source,
+        clock_in_source: r.clock_in_source ?? null,
+        clock_out_source: r.clock_out_source ?? null,
+        waived: r.waived,
+        manual_comment: r.manual_comment ?? null,
+        updated_at: r.updated_at,
+        editor_first_name: editorFirstName,
+        early_closure_time: closeTime,
+        late_resumption_time: lateRes,
+        pending_appeal: pendingAppealMap.get(`${r.user_id}_${r.date}`) ?? null,
+      }
+    })
+
+    // ── include_all: append every active in-scope employee with no record for the day ──
+    const singleDay = Boolean(startDate && endDate && startDate === endDate)
+    if (includeAll && singleDay && !userId) {
+      const day = startDate as string
+
+      let profileUniverseQuery = dataClient
+        .from("profiles")
+        .select("id, full_name, first_name, last_name, department, attendance_exempt")
+        .eq("employment_status", "active")
+      if (scopedUserIds !== null) profileUniverseQuery = profileUniverseQuery.in("id", scopedUserIds)
+      const { data: universeProfiles } = await profileUniverseQuery
+      const universe = universeProfiles ?? []
+
+      const haveRecord = new Set(records.map((r) => r.user_id))
+      const missing = universe.filter((p) => !haveRecord.has(p.id))
+
+      if (missing.length > 0) {
+        const missingIds = missing.map((p) => p.id)
+        const [dayHolidayRows, dayLeaveRows, dayExemptRows] = await Promise.all([
+          dataClient
+            .from("holiday_calendar")
+            .select("holiday_date")
+            .eq("holiday_date", day)
+            .then((r) => r.data ?? []),
+          dataClient
+            .from("leave_requests")
+            .select("user_id, leave_type:leave_types!leave_requests_leave_type_id_fkey(is_paid)")
+            .in("user_id", missingIds)
+            .eq("status", "approved")
+            .lte("start_date", day)
+            .gte("end_date", day)
+            .then((r) => r.data ?? []),
+          dataClient
+            .from("attendance_exempt_periods")
+            .select("user_id")
+            .in("user_id", missingIds)
+            .lte("start_date", day)
+            .gte("end_date", day)
+            .then((r) => r.data ?? []),
+        ])
+        const isHoliday = dayHolidayRows.length > 0
+        type DayLeaveRow = { user_id: string; leave_type?: { is_paid?: boolean | null } | null }
+        const dayLeaves = dayLeaveRows as unknown as DayLeaveRow[]
+        const onLeaveSet = new Set(dayLeaves.map((r) => r.user_id))
+        const onUnpaidLeaveSet = new Set(dayLeaves.filter((r) => r.leave_type?.is_paid === false).map((r) => r.user_id))
+        const exemptPeriodSet = new Set((dayExemptRows as { user_id: string }[]).map((r) => r.user_id))
+
+        const closeTime = ctx.earlyCloseTime(day)
+        const lateRes = ctx.lateResumptionTime(day)
+
+        for (const p of missing) {
+          const name = formatEmployeeName(p)
+          const derivedStatus = deriveUnifiedAttendanceStatus(
+            {
+              record: null,
+              isHoliday,
+              isOnLeave: onLeaveSet.has(p.id),
+              isOnUnpaidLeave: onUnpaidLeaveSet.has(p.id),
+              isExempted: Boolean(p.attendance_exempt) || exemptPeriodSet.has(p.id),
+              isCdsDay: ctx.isCdsDay(p.id, day),
+              recordDate: day,
+              earlyClosure: closeTime ? { closeTime } : null,
+              lateResumption: lateRes ? { resumptionTime: lateRes } : null,
+            },
+            policy
+          )
+          let missingEditorUserId: string | undefined
+          if (derivedStatus === "early_closure") {
+            missingEditorUserId = ctx.earlyCloseCreatedBy(day) ?? undefined
+          } else if (derivedStatus === "late_resumption") {
+            missingEditorUserId = ctx.lateResumptionCreatedBy(day) ?? undefined
+          }
+          const missingEditorProfile = missingEditorUserId ? editorProfileMap.get(missingEditorUserId) : null
+          const missingEditorFirstName =
+            missingEditorProfile?.first_name || missingEditorProfile?.full_name?.split(" ")[0] || null
+
+          records.push({
+            id: `missing-${p.id}-${day}`,
+            user_id: p.id,
+            user_name: name,
+            department: p.department ?? "",
+            date: day,
+            clock_in: null,
+            clock_out: null,
+            total_hours: null,
+            status: derivedStatus,
+            source: null,
+            clock_in_source: null,
+            clock_out_source: null,
+            waived: false,
+            manual_comment: null,
+            updated_at: null,
+            editor_first_name: missingEditorFirstName,
+            early_closure_time: closeTime,
+            late_resumption_time: lateRes,
+            pending_appeal: pendingAppealMap.get(`${p.id}_${day}`) ?? null,
+          })
+        }
+      }
+    }
+
+    // Newest day first, then by surname within a day. Without the name tiebreak
+    // the roster falls back to Postgres row order, which looks random and shifts
+    // between requests. Synthetic "missing-" rows are appended per employee, so
+    // they need the same ordering as real records.
+    records.sort((a, b) => {
+      const byDate = String(b.date ?? "").localeCompare(String(a.date ?? ""))
+      if (byDate !== 0) return byDate
+      return String(a.user_name ?? "").localeCompare(String(b.user_name ?? ""))
+    })
+
+    // The active policy travels with the payload so client-side day breakdowns
+    // charge the same hours the server does, instead of falling back to defaults.
+    // A single day's closing time - the early closure if one is set, otherwise
+    // the policy's - so the Daily Roster can switch from arrivals to departures then.
+    const closeTime = startDate && startDate === endDate ? (ctx.earlyCloseTime(startDate) ?? policy.endTime) : null
+    return NextResponse.json({ records, policy, close_time: closeTime })
+  } catch (error) {
+    log.error({ err: String(error) }, "Error in GET /api/admin/hr/attendance/records")
+    return NextResponse.json({ error: "An error occurred" }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const rl = await rateLimit(`admin-attendance-create:${getClientId(request)}`, { limit: 20, windowSec: 60 })
+  if (!rl.allowed) return NextResponse.json({ error: "Too many requests" }, { status: 429 })
+
+  try {
+    const scopeResult = await requireApiAdminScope()
+    if (!scopeResult.ok) return scopeResult.response
+    const { scope, supabase } = scopeResult
+    const policy = await loadAttendancePolicy(supabase)
+
+    const parsed = CreateSchema.safeParse(await request.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 })
+    }
+
+    const { user_id, date, clock_in, clock_out, waived, manual_comment } = parsed.data
+    const dataClient = getServiceRoleClientOrFallback(supabase)
+
+    // Validate the target employee is in this admin/lead's scope
+    const depts = getScopedDepartments(scope)
+    if (depts !== null) {
+      const { data: targetProfile } = await dataClient
+        .from("profiles")
+        .select("department")
+        .eq("id", user_id)
+        .maybeSingle()
+      if (!targetProfile || !depts.includes(targetProfile.department || "")) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+    }
+
+    // Check for existing record on this date
+    const { data: existing } = await dataClient
+      .from("attendance_records")
+      .select("id")
+      .eq("user_id", user_id)
+      .eq("date", date)
+      .maybeSingle()
+    if (existing) {
+      return NextResponse.json({ error: "A record already exists for this date" }, { status: 409 })
+    }
+
+    // A day with no record is usually a plain Absent day (absence is derived, not stored).
+    // Giving it a status is a status override, so it follows the two-stage rule like an
+    // edit: it is staged, and the final approval creates the record. A staged change
+    // carries a status and no times, so a status is required and times are refused.
+    const status = parsed.data.status ?? (waived ? "waiver" : undefined)
+    if (!status) {
+      return NextResponse.json({ error: "Choose a status for this day" }, { status: 400 })
+    }
+    if (clock_in || clock_out) {
+      return NextResponse.json(
+        { error: "A new day is staged for approval as a status only and can't carry clock times." },
+        { status: 400 }
+      )
+    }
+    const isLWP = status === "lateness_with_permission" || status === "incomplete_with_permission"
+    if (isLWP) {
+      return NextResponse.json(
+        { error: "LWP/IWP requires at least one clock punch (clock in or clock out)" },
+        { status: 400 }
+      )
+    }
+    if (status === "waiver" && !manual_comment.trim()) {
+      return NextResponse.json({ error: "Waiver requires a reason or comment" }, { status: 400 })
+    }
+
+    const quotaCheck = await validateLwpAwpMonthlyQuota({
+      dataClient,
+      userId: user_id,
+      targetStatus: status,
+      date,
+      // A lead changing a day for their staff is uncapped, like an admin.
+      isAdminLike: scope.isAdminLike || scope.scopeMode === "lead",
+    })
+    if (!quotaCheck.allowed) {
+      return NextResponse.json({ error: quotaCheck.error }, { status: 403 })
+    }
+
+    const leadFirst = leadFirstBlock(scope)
+    if (leadFirst) return NextResponse.json({ error: leadFirst }, { status: 403 })
+
+    const currentStatus = deriveUnifiedAttendanceStatus({ record: null, recordDate: date }, policy)
+    const staged = await stageAttendanceChange(dataClient, {
+      actor: scope,
+      userId: user_id,
+      date,
+      attendanceRecordId: null,
+      currentStatus,
+      requestedStatus: status,
+      reason: manual_comment,
+    })
+    if (!staged.ok) return NextResponse.json({ error: staged.error }, { status: staged.status })
+
+    const statusLabel = ATTENDANCE_STATUS_LABELS[status as UnifiedAttendanceStatus] ?? status
+    return NextResponse.json(
+      {
+        staged: true,
+        message: `Status alteration to ${statusLabel} staged. Awaiting confirmation from ${staged.awaiting}.`,
+      },
+      { status: 201 }
+    )
+  } catch (error) {
+    log.error({ err: String(error) }, "Error in POST /api/admin/hr/attendance/records")
+    return NextResponse.json({ error: "An error occurred" }, { status: 500 })
+  }
+}

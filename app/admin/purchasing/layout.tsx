@@ -1,0 +1,12 @@
+import type { Metadata } from "next"
+import { requireAdminSectionAccess } from "@/lib/admin/rbac"
+
+export const metadata: Metadata = {
+  title: "Admin Purchasing",
+  description: "Manage purchasing in the admin dashboard.",
+}
+
+export default async function Layout({ children }: { children: React.ReactNode }) {
+  await requireAdminSectionAccess("purchasing")
+  return children
+}

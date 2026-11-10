@@ -1,0 +1,700 @@
+"use client"
+
+import Link from "next/link"
+import { useMemo, useState } from "react"
+import { Brain, CheckCircle2, Clock3, Download, ExternalLink, FileText, ShieldCheck, Star, Target } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { DataTable, DataTablePage } from "@/components/ui/data-table"
+import type { DataTableColumn, DataTableFilter, DataTableTab } from "@/components/ui/data-table"
+import { ExportOptionsDialog } from "@/components/admin/export-options-dialog"
+import { StatCard } from "@/components/ui/stat-card"
+import { exportPmsRowsToExcel, exportPmsRowsToPdf } from "@/lib/pms/export"
+import { toLocalISODate, formatWATDate } from "@/lib/utils/date"
+import { CbtAttemptDetail } from "@/components/pms/cbt-attempt-detail"
+import { TASK_STATUS_CONFIG, type TaskStatus } from "@/lib/tasks/constants"
+import { getTaskWeightBadgeClass } from "@/lib/tasks/scoring"
+
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
+import {
+  ATTENDANCE_STATUS_COLORS,
+  ATTENDANCE_STATUS_LABELS,
+  normalizeStoredAttendanceStatus,
+} from "@/lib/hr/attendance-status"
+import type { ReviewCycleOption } from "@/app/(app)/pms/_lib"
+import { useCycleUrlFilters } from "@/app/(app)/pms/_components/cycle-selector"
+
+type IconKey = "kpi" | "goals" | "attendance" | "cbt" | "behaviour" | "reviews"
+type TableColumn = { key: string; label: string }
+type TableRowData = Record<string, unknown> & { __rowId?: string }
+
+interface PmsTablePageProps {
+  title: string
+  description: string
+  backHref: string
+  backLabel: string
+  icon: IconKey
+  tabs?: DataTableTab[]
+  activeTab?: string
+  onTabChange?: (tab: string) => void
+  tableTitle: string
+  tableDescription: string
+  rows: TableRowData[]
+  columns: TableColumn[]
+  searchPlaceholder?: string
+  summaryCards?: Array<{ label: string; value: string | number; tooltip?: string; description?: string }>
+  filterKey?: string
+  filterLabel?: string
+  filterAllLabel?: string
+  /**
+   * Extra single-select filters, each driven by a row field. Used for the PMS
+   * cadence filters (quarter / half / year), which are separate row values
+   * rather than one column.
+   */
+  extraFilters?: { key: string; label: string; allLabel?: string }[]
+  hideSecondaryFilter?: boolean
+  hideFirstColumnFilter?: boolean
+  cbtExpandable?: boolean
+  headerActions?: React.ReactNode
+  cycles?: ReviewCycleOption[]
+  activeCycleId?: string | null
+  children?: React.ReactNode
+}
+
+const iconMap = {
+  kpi: Target,
+  goals: CheckCircle2,
+  attendance: Clock3,
+  cbt: Brain,
+  behaviour: ShieldCheck,
+  reviews: FileText,
+}
+
+function normalizeCell(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-"
+  return String(value)
+}
+
+function renderStatusBadge(rawStatus: unknown) {
+  if (rawStatus === null || rawStatus === undefined || rawStatus === "" || rawStatus === "-") return "-"
+  const strStatus = String(rawStatus)
+  const norm = normalizeStoredAttendanceStatus(strStatus)
+
+  if (norm && ATTENDANCE_STATUS_COLORS[norm]) {
+    const label = ATTENDANCE_STATUS_LABELS[norm] || strStatus
+    return (
+      <Badge
+        className={cn(
+          "rounded-md border px-2 py-0.5 text-xs font-semibold capitalize shadow-none",
+          ATTENDANCE_STATUS_COLORS[norm]
+        )}
+      >
+        {label}
+      </Badge>
+    )
+  }
+
+  let badgeClasses = "bg-muted text-muted-foreground border-muted-foreground/20"
+  const s = strStatus.toLowerCase()
+  if (s === "on_target" || s === "on target") {
+    badgeClasses = "bg-success/10 text-success border-success/20"
+  } else if (s === "needs_attention" || s === "needs attention") {
+    badgeClasses = "bg-warning/10 text-warning border-warning/20"
+  } else if (s === "at_risk" || s === "at risk") {
+    badgeClasses = "bg-danger/10 text-danger border-danger/20"
+  }
+
+  return (
+    <Badge className={cn("rounded-md border px-2 py-0.5 text-xs font-semibold capitalize shadow-none", badgeClasses)}>
+      {strStatus}
+    </Badge>
+  )
+}
+
+export function PmsTablePage({
+  title,
+  description,
+  backHref,
+  backLabel,
+  icon,
+  tabs,
+  activeTab,
+  onTabChange,
+  tableTitle,
+  tableDescription,
+  rows,
+  columns,
+  searchPlaceholder = "Search records...",
+  summaryCards = [],
+  filterKey = "department",
+  filterLabel = "Department",
+  filterAllLabel = "All Departments",
+  extraFilters,
+  hideSecondaryFilter = false,
+  hideFirstColumnFilter = false,
+  cbtExpandable = false,
+  headerActions,
+  cycles,
+  activeCycleId,
+  children,
+}: PmsTablePageProps) {
+  const Icon = iconMap[icon]
+  const [isExportOpen, setIsExportOpen] = useState(false)
+  // Rows currently visible in the table (after search + filters + sort).
+  const [processedRows, setProcessedRows] = useState<TableRowData[]>([])
+
+  const tableColumns = useMemo<DataTableColumn<TableRowData>[]>(() => {
+    return columns.map((column, index) => ({
+      key: column.key,
+      label: column.label,
+      sortable: true,
+      accessor: (row) => normalizeCell(row[column.key]),
+      resizable: index < 2,
+      initialWidth: index === 0 ? 220 : index === 1 ? 260 : undefined,
+      hideOnMobile: index >= 3,
+      render: (row) => {
+        if (column.key === "status") {
+          return renderStatusBadge(row.__rawStatus || row.status)
+        }
+        const value = normalizeCell(row[column.key])
+        return index === 0 ? <span className="font-medium">{value}</span> : value
+      },
+    }))
+  }, [columns])
+
+  const secondaryFilterOptions = useMemo(
+    () =>
+      Array.from(new Set(rows.map((row) => normalizeCell(row[filterKey])).filter((value) => value !== "-"))).map(
+        (value) => ({
+          value,
+          label: value,
+        })
+      ),
+    [filterKey, rows]
+  )
+
+  const firstColumnKey = columns[0]?.key || filterKey
+  const firstColumnLabel = columns[0]?.label || "Type"
+  const firstColumnOptions = useMemo(
+    () =>
+      Array.from(new Set(rows.map((row) => normalizeCell(row[firstColumnKey])).filter((value) => value !== "-"))).map(
+        (value) => ({
+          value,
+          label: value,
+        })
+      ),
+    [firstColumnKey, rows]
+  )
+
+  const cycleFilters = useCycleUrlFilters<TableRowData>({ cycles, activeCycleId })
+
+  const filters = useMemo<DataTableFilter<TableRowData>[]>(() => {
+    const activeFilters: DataTableFilter<TableRowData>[] = []
+    const hasCycles = Boolean(cycles && cycles.length > 0)
+
+    if (hasCycles && cycleFilters.length > 0) {
+      activeFilters.push(...cycleFilters)
+    }
+
+    if (!hideSecondaryFilter && (!hasCycles || filterKey !== "cycle")) {
+      activeFilters.push({
+        key: filterKey,
+        label: filterLabel,
+        placeholder: filterAllLabel,
+        options: secondaryFilterOptions,
+        mode: "custom",
+        filterFn: (row, selected) => {
+          if (!selected || selected.length === 0 || selected.includes("all")) return true
+          return selected.includes(normalizeCell(row[filterKey]))
+        },
+        multi: false,
+      })
+    }
+
+    if (!hideFirstColumnFilter && firstColumnKey !== "date" && (!hasCycles || firstColumnKey !== "cycle")) {
+      activeFilters.push({
+        key: firstColumnKey,
+        label: firstColumnLabel,
+        placeholder: `All ${firstColumnLabel}`,
+        options: firstColumnOptions,
+        mode: "custom",
+        filterFn: (row, selected) => {
+          if (!selected || selected.length === 0 || selected.includes("all")) return true
+          return selected.includes(normalizeCell(row[firstColumnKey]))
+        },
+        multi: false,
+      })
+    }
+
+    for (const extra of extraFilters ?? []) {
+      if (hasCycles && extra.key === "cycle") continue
+
+      const options = Array.from(
+        new Set(rows.map((row) => normalizeCell(row[extra.key])).filter((value) => value !== "-"))
+      )
+        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+        .map((value) => ({ value, label: value }))
+
+      activeFilters.push({
+        key: extra.key,
+        label: extra.label,
+        placeholder: extra.allLabel || `All ${extra.label}`,
+        options,
+        mode: "custom",
+        filterFn: (row, selected) => {
+          if (!selected || selected.length === 0 || selected.includes("all")) return true
+          return selected.includes(normalizeCell(row[extra.key]))
+        },
+        multi: false,
+      })
+    }
+
+    return activeFilters
+  }, [
+    cycles,
+    cycleFilters,
+    extraFilters,
+    rows,
+    filterAllLabel,
+    filterKey,
+    filterLabel,
+    firstColumnKey,
+    firstColumnLabel,
+    firstColumnOptions,
+    secondaryFilterOptions,
+    hideSecondaryFilter,
+    hideFirstColumnFilter,
+  ])
+
+  // Export the rows currently visible in the table (respects search + filters + sort),
+  // falling back to the full set before the table has reported its processed rows.
+  const exportRows = useMemo(() => {
+    const source = processedRows.length ? processedRows : rows
+    return source.map((row, index) =>
+      Object.fromEntries([
+        ["S/N", index + 1],
+        ...columns.map((column) => [column.label, normalizeCell(row[column.key])]),
+      ])
+    )
+  }, [columns, rows, processedRows])
+
+  const shouldRenderTaskExpansion = rows.some((row) => Array.isArray((row as { __tasks?: unknown }).__tasks))
+  const shouldRenderAttendanceExpansion = rows.some((row) =>
+    Array.isArray((row as { __attendanceRecords?: unknown }).__attendanceRecords)
+  )
+
+  return (
+    <DataTablePage
+      title={title}
+      description={description}
+      icon={Icon}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={onTabChange}
+      spacing="tight"
+      actionsPlacement="inline-always"
+      actions={
+        <div className="flex items-center gap-2">
+          {headerActions}
+          <Button variant="outline" onClick={() => setIsExportOpen(true)} disabled={rows.length === 0} size="sm">
+            <Download className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Export</span>
+          </Button>
+        </div>
+      }
+      stats={
+        summaryCards.length > 0 ? (
+          <div
+            className={cn(
+              "grid gap-2 sm:gap-3",
+              summaryCards.length <= 2 && "grid-cols-2",
+              summaryCards.length === 3 && "grid-cols-3",
+              summaryCards.length >= 4 && "grid-cols-3 sm:grid-cols-4"
+            )}
+          >
+            {summaryCards.map((card, index) => {
+              const hideOnMobile = summaryCards.length > 3 && index >= 3
+              return (
+                <StatCard
+                  key={card.label}
+                  variant="compact"
+                  title={card.label}
+                  value={card.value}
+                  icon={Icon}
+                  iconBgColor={index === 0 ? "bg-blue-500/10" : index === 1 ? "bg-emerald-500/10" : "bg-amber-500/10"}
+                  iconColor={index === 0 ? "text-blue-500" : index === 1 ? "text-emerald-500" : "text-amber-500"}
+                  tooltip={card.tooltip}
+                  description={card.description}
+                  className={hideOnMobile ? "hidden sm:block" : undefined}
+                />
+              )
+            })}
+          </div>
+        ) : undefined
+      }
+    >
+      {children ? (
+        children
+      ) : (
+        <DataTable<TableRowData>
+          data={rows.map((row, index) => ({ ...row, __rowId: `row-${index}-${normalizeCell(row[firstColumnKey])}` }))}
+          columns={tableColumns}
+          onProcessedDataChange={setProcessedRows}
+          filters={filters}
+          getRowId={(row) => row.__rowId || normalizeCell(row[firstColumnKey])}
+          pagination={{ pageSize: 50 }}
+          searchPlaceholder={searchPlaceholder}
+          searchFn={(row, query) =>
+            columns.some((column) => normalizeCell(row[column.key]).toLowerCase().includes(query))
+          }
+          stickyToolbar
+          contactsView
+          defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+          mobileRow={{
+            leading: () => null,
+            title: (row) => normalizeCell(row[firstColumnKey]),
+            subtitle: (row) => {
+              if (icon === "attendance") {
+                const inTime = normalizeCell(row.clock_in)
+                const outTime = normalizeCell(row.clock_out)
+                const hours = normalizeCell(row.total_hours)
+                const cycle = normalizeCell(row.cycle)
+
+                const timeRange = inTime !== "-" || outTime !== "-" ? `${inTime} – ${outTime}` : "No clock-in"
+                const parts = [
+                  timeRange,
+                  hours !== "-" && hours !== "Pending" ? hours : null,
+                  cycle !== "-" ? cycle : null,
+                ].filter(Boolean)
+
+                return parts.length > 0 ? parts.join(" · ") : "No clock-in"
+              }
+
+              const second = columns[1]?.key ? normalizeCell(row[columns[1].key]) : null
+              const scoreCol = columns.find((c) => ["cbt_score", "score", "rating", "metric_value"].includes(c.key))
+              const scoreVal = scoreCol ? normalizeCell(row[scoreCol.key]) : null
+              const parts = [
+                second && second !== "-" ? second : null,
+                scoreVal && scoreVal !== "-" ? `${scoreCol?.label || "Score"}: ${scoreVal}` : null,
+              ].filter(Boolean)
+              return parts.length > 0 ? parts.join(" · ") : undefined
+            },
+            trailing: (row) => {
+              const statusVal = row.__rawStatus || row.status
+              const scoreCol = columns.find((c) => ["cbt_score", "score"].includes(c.key))
+              const scoreVal = scoreCol ? normalizeCell(row[scoreCol.key]) : null
+              const hasScore = Boolean(scoreVal && scoreVal !== "-")
+              const hasStatus = Boolean(statusVal && statusVal !== "-")
+
+              if (!hasScore && !hasStatus) return undefined
+
+              return (
+                <div className="flex flex-col items-end gap-1">
+                  {scoreVal && scoreVal !== "-" && (
+                    <span className="text-foreground font-mono text-xs font-bold">
+                      {scoreVal.includes("%") ? scoreVal : `${scoreVal}%`}
+                    </span>
+                  )}
+                  {hasStatus ? renderStatusBadge(statusVal) : null}
+                </div>
+              )
+            },
+            detail: {
+              title: (row) => normalizeCell(row[firstColumnKey]),
+              subtitle: (row) => {
+                if (icon === "attendance") {
+                  const cycle = normalizeCell(row.cycle)
+                  const hours = normalizeCell(row.total_work_hours || row.total_hours)
+                  return (
+                    [cycle !== "-" ? cycle : null, hours !== "-" ? hours : null].filter(Boolean).join(" · ") ||
+                    undefined
+                  )
+                }
+                return undefined
+              },
+              fields: (row) =>
+                columns.slice(1).map((col) => ({
+                  label: col.label,
+                  value:
+                    col.key === "status" ? normalizeCell(row.__rawStatus || row.status) : normalizeCell(row[col.key]),
+                })),
+            },
+          }}
+          expandable={
+            shouldRenderTaskExpansion
+              ? {
+                  canExpand: (row) => Array.isArray((row as { __tasks?: unknown[] }).__tasks),
+                  render: (row) => {
+                    const tasks =
+                      (
+                        row as {
+                          __tasks?: Array<{
+                            id: string
+                            title: string
+                            description?: string | null
+                            status: string
+                            dueDate?: string | null
+                            assignmentType?: string | null
+                            weight?: number | null
+                            rating?: number | null
+                          }>
+                        }
+                      ).__tasks || []
+                    if (tasks.length === 0) {
+                      return (
+                        <p className="text-muted-foreground text-sm">No tasks in this group for the selected cycle.</p>
+                      )
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        <p className="text-muted-foreground text-xs font-semibold">Assigned Tasks</p>
+                        <div className="overflow-x-auto rounded-lg border">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/40">
+                              <tr>
+                                <th className="px-3 py-2 text-left text-xs font-bold">Task</th>
+                                <th className="px-3 py-2 text-left text-xs font-bold">Status</th>
+                                <th className="px-3 py-2 text-left text-xs font-bold">Type</th>
+                                <th className="px-3 py-2 text-left text-xs font-bold">Due Date</th>
+                                <th className="px-3 py-2 text-left text-xs font-bold">Weight</th>
+                                <th className="px-3 py-2 text-left text-xs font-bold">Rating</th>
+                                <th className="px-3 py-2 text-left text-xs font-bold">Earned</th>
+                                <th className="px-3 py-2 text-right text-xs font-bold">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tasks.map((task) => {
+                                const cfg = TASK_STATUS_CONFIG[task.status as TaskStatus] || TASK_STATUS_CONFIG.pending
+                                return (
+                                  <tr key={task.id} className="hover:bg-muted/20 border-t transition-colors">
+                                    <td className="px-3 py-2.5">
+                                      <div className="flex flex-col gap-0.5">
+                                        <Link
+                                          href={`/tasks?task=${task.id}`}
+                                          className="group text-foreground hover:text-primary inline-flex items-center gap-1.5 font-medium transition-colors"
+                                        >
+                                          <span className="group-hover:underline">{task.title}</span>
+                                          <ExternalLink className="h-3 w-3 shrink-0 opacity-60 group-hover:opacity-100" />
+                                        </Link>
+                                        {task.description ? (
+                                          <p className="text-muted-foreground line-clamp-1 max-w-md text-xs">
+                                            {task.description}
+                                          </p>
+                                        ) : null}
+                                        {(task as { kpiTitle?: string | null }).kpiTitle ? (
+                                          <p className="text-primary/90 line-clamp-1 max-w-md text-xs font-medium">
+                                            Corporate KPI: {(task as { kpiTitle?: string | null }).kpiTitle}
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                      <Badge
+                                        variant={cfg.badgeVariant}
+                                        className={cn(
+                                          "px-2 py-0.5 text-xs font-semibold whitespace-nowrap capitalize shadow-none",
+                                          cfg.color
+                                        )}
+                                      >
+                                        {cfg.label}
+                                      </Badge>
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "px-2 py-0.5 text-xs font-medium capitalize shadow-none",
+                                          task.assignmentType === "individual"
+                                            ? "text-info border-info/30 bg-info/10"
+                                            : "border-purple/30 bg-purple/10 text-purple"
+                                        )}
+                                      >
+                                        {task.assignmentType || "department"}
+                                      </Badge>
+                                    </td>
+                                    <td className="text-muted-foreground px-3 py-2.5 text-xs whitespace-nowrap">
+                                      {task.dueDate ? formatWATDate(task.dueDate) : "-"}
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "px-2 py-0.5 text-xs font-medium shadow-none",
+                                          getTaskWeightBadgeClass(task.weight)
+                                        )}
+                                      >
+                                        {task.weight ?? 3} pts
+                                      </Badge>
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                      {task.rating ? (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-warning border-warning/30 bg-warning/10 gap-1 px-2 py-0.5 text-xs font-semibold shadow-none"
+                                        >
+                                          <Star className="h-3 w-3 shrink-0 fill-amber-500 text-amber-500" />
+                                          <span>{task.rating}/5</span>
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-muted-foreground text-xs">Unrated</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-xs">
+                                      {task.weight ? (
+                                        <span className="text-foreground font-semibold">
+                                          {Math.round(((task.weight * (task.rating ?? 0)) / 5) * 100) / 100}{" "}
+                                          <span className="text-muted-foreground font-normal">/ {task.weight}</span>
+                                        </span>
+                                      ) : (
+                                        "-"
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right">
+                                      <Button variant="outline" size="sm" asChild className="h-7 text-xs font-medium">
+                                        <Link href={`/tasks?task=${task.id}`}>Update</Link>
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )
+                  },
+                }
+              : shouldRenderAttendanceExpansion
+                ? {
+                    canExpand: (row) => Array.isArray((row as { __attendanceRecords?: unknown[] }).__attendanceRecords),
+                    render: (row) => {
+                      const records =
+                        (
+                          row as {
+                            __attendanceRecords?: Array<{
+                              id: string
+                              date: string
+                              clock_in: string
+                              clock_out: string
+                              total_hours: string
+                              status: string
+                              rawStatus?: string | null
+                            }>
+                          }
+                        ).__attendanceRecords || []
+                      if (records.length === 0) {
+                        return (
+                          <p className="text-muted-foreground text-sm">
+                            No attendance records logged for this quarter.
+                          </p>
+                        )
+                      }
+
+                      return (
+                        <div className="space-y-3">
+                          <p className="text-muted-foreground text-xs font-semibold">
+                            Daily Clock-in / Attendance Logs
+                          </p>
+                          <div className="overflow-x-auto rounded-lg border">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted/40">
+                                <tr>
+                                  <th className="px-3 py-2 text-left text-xs font-bold">Date</th>
+                                  <th className="px-3 py-2 text-left text-xs font-bold">Clock In</th>
+                                  <th className="px-3 py-2 text-left text-xs font-bold">Clock Out</th>
+                                  <th className="px-3 py-2 text-left text-xs font-bold">Total Hours</th>
+                                  <th className="px-3 py-2 text-left text-xs font-bold">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {records.map((rec) => (
+                                  <tr key={rec.id} className="hover:bg-muted/20 border-t transition-colors">
+                                    <td className="px-3 py-2.5 font-medium">{rec.date}</td>
+                                    <td className="px-3 py-2.5 text-xs">{rec.clock_in}</td>
+                                    <td className="px-3 py-2.5 text-xs">{rec.clock_out}</td>
+                                    <td className="px-3 py-2.5 text-xs">{rec.total_hours}</td>
+                                    <td className="px-3 py-2.5">{renderStatusBadge(rec.rawStatus || rec.status)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )
+                    },
+                  }
+                : cbtExpandable
+                  ? {
+                      canExpand: (row) => !!(row.user_id && row.review_cycle_id),
+                      render: (row) => (
+                        <CbtAttemptDetail
+                          profileId={row.user_id as string}
+                          reviewCycleId={row.review_cycle_id as string}
+                        />
+                      ),
+                    }
+                  : undefined
+          }
+          emptyTitle={tableTitle}
+          emptyDescription={tableDescription}
+          emptyIcon={Icon}
+          skeletonRows={5}
+          viewToggle
+          cardRenderer={(row) => {
+            const firstVal = normalizeCell(row[firstColumnKey])
+            const secondKey = columns[1]?.key
+            const secondVal = secondKey ? normalizeCell(row[secondKey]) : null
+            const statusVal = row.__rawStatus || row.status
+
+            return (
+              <div className="space-y-3 rounded-xl border p-3.5 sm:p-4">
+                <div className="flex items-start justify-between gap-2 border-b pb-2">
+                  <div>
+                    <span className="text-foreground block text-sm font-semibold">{firstVal}</span>
+                    {secondVal && secondVal !== "-" && (
+                      <span className="text-muted-foreground block text-xs">{secondVal}</span>
+                    )}
+                  </div>
+                  {Boolean(statusVal && statusVal !== "-") && renderStatusBadge(statusVal)}
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {columns.slice(2).map((col) => {
+                    if (col.key === "status") return null
+                    const val = normalizeCell(row[col.key])
+                    if (val === "-") return null
+                    return (
+                      <div key={col.key}>
+                        <span className="text-muted-foreground block text-xs font-medium uppercase">{col.label}</span>
+                        <span className="text-foreground font-medium">{val}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          }}
+          urlSync
+        />
+      )}
+
+      <ExportOptionsDialog
+        open={isExportOpen}
+        onOpenChange={setIsExportOpen}
+        title={`Export ${title}`}
+        options={[
+          { id: "excel", label: "Excel (.xlsx)", icon: "excel" },
+          { id: "pdf", label: "PDF", icon: "pdf" },
+        ]}
+        onSelect={(id) => {
+          const filename = `${title.toLowerCase().replace(/\s+/g, "-")}-${toLocalISODate()}`
+          if (id === "excel") {
+            void exportPmsRowsToExcel(exportRows, filename)
+            return
+          }
+          void exportPmsRowsToPdf(exportRows, filename, title)
+        }}
+      />
+    </DataTablePage>
+  )
+}

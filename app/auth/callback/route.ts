@@ -1,0 +1,45 @@
+import { createClient } from "@/lib/supabase/server"
+import { NextResponse } from "next/server"
+import { getSafeNextPath } from "@/lib/auth/safe-next-path"
+import { logger } from "@/lib/logger"
+import { writeLoginLog } from "@/lib/auth/login-log"
+
+const log = logger("auth-callback")
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const code = searchParams.get("code")
+  // Validated by parsing, not string checks: see lib/auth/safe-next-path.ts
+  const safeNext = getSafeNextPath(searchParams.get("next"))
+
+  if (code) {
+    const supabase = await createClient()
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (error) {
+      log.error("Callback error:", error.message)
+      // Use a generic message in the URL to avoid leaking internal Supabase error details
+      return NextResponse.redirect(
+        new URL(`/auth/error?message=${encodeURIComponent("Authentication failed. Please try again.")}`, request.url)
+      )
+    }
+
+    // Log the login — magic link / OTP flows all land here
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (user) {
+      await writeLoginLog({
+        supabase,
+        headers: request.headers,
+        userId: user.id,
+        authMethod: "otp",
+        source: "auth_callback",
+        userEmail: user.email,
+      })
+    }
+  }
+
+  return NextResponse.redirect(new URL(safeNext, request.url))
+}

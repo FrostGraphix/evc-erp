@@ -1,0 +1,211 @@
+import { NextRequest, NextResponse } from "next/server"
+import { run, parseHttpUrl } from "@/lib/shell/run"
+import { serverError } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger("api/info")
+
+const SUPPORTED_PLATFORMS: Record<string, string> = {
+  // Video Platforms
+  "youtube.com": "YouTube",
+  "youtu.be": "YouTube",
+  "m.youtube.com": "YouTube",
+  "tiktok.com": "TikTok",
+  "vm.tiktok.com": "TikTok",
+  "instagram.com": "Instagram",
+  "twitter.com": "Twitter",
+  "x.com": "Twitter",
+  "facebook.com": "Facebook",
+  "fb.watch": "Facebook",
+  "fb.com": "Facebook",
+  // Additional Platforms
+  "reddit.com": "Reddit",
+  "redd.it": "Reddit",
+  "linkedin.com": "LinkedIn",
+  "pinterest.com": "Pinterest",
+  "pin.it": "Pinterest",
+  "tumblr.com": "Tumblr",
+  "twitch.tv": "Twitch",
+  "vimeo.com": "Vimeo",
+  "dailymotion.com": "Dailymotion",
+  "dai.ly": "Dailymotion",
+  "bilibili.com": "Bilibili",
+  "b23.tv": "Bilibili",
+  "snapchat.com": "Snapchat",
+  "snapchat.tv": "Snapchat",
+  "rumble.com": "Rumble",
+  "odysee.com": "Odysee",
+  "vk.com": "VK",
+  "ok.ru": "OK.ru",
+  "soundcloud.com": "SoundCloud",
+  "mixcloud.com": "Mixcloud",
+  "bandcamp.com": "Bandcamp",
+  "t.me": "Telegram",
+  "telegram.org": "Telegram",
+  "discord.com": "Discord",
+  "discord.gg": "Discord",
+  "imgur.com": "Imgur",
+  "gfycat.com": "Gfycat",
+  "streamable.com": "Streamable",
+  "v.redd.it": "Reddit",
+  "i.redd.it": "Reddit",
+}
+
+function getPlatform(url: string): string | null {
+  try {
+    const urlObj = new URL(url)
+    const domain = urlObj.hostname.toLowerCase().replace("www.", "")
+
+    for (const [platformDomain, platformName] of Object.entries(SUPPORTED_PLATFORMS)) {
+      if (domain.includes(platformDomain)) {
+        return platformName
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { url } = body
+
+    if (!url) {
+      return NextResponse.json({ error: "URL is required" }, { status: 400 })
+    }
+
+    // Validated before it reaches the downloader: yt-dlp will happily take a
+    // file:// path or an internal address otherwise.
+    const target = parseHttpUrl(url)
+    if (!target) {
+      return NextResponse.json({ error: "Enter a valid http(s) link." }, { status: 400 })
+    }
+
+    // Get platform name (or use 'Unknown' if not in our list - yt-dlp might still support it)
+    const platform = getPlatform(url) || "Unknown"
+
+    // Arguments as an array, so nothing in the URL can be read as shell.
+    const { stdout, stderr } = await run("yt-dlp", ["-J", "--no-warnings", target.toString()], {
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 30000,
+    })
+
+    if (stderr && !stdout) {
+      throw new Error(stderr)
+    }
+
+    const info = JSON.parse(stdout)
+
+    // Extract video formats
+    const formats: any[] = []
+    const seenQualities = new Set<string>()
+
+    if (info.formats) {
+      // Prioritize standard formats over bloated live master playlists (m3u8)
+      const sortedFormats = [...info.formats].sort((a, b) => {
+        const aIsM3u8 = a.protocol?.includes("m3u8") ? 1 : 0
+        const bIsM3u8 = b.protocol?.includes("m3u8") ? 1 : 0
+        if (aIsM3u8 !== bIsM3u8) return aIsM3u8 - bIsM3u8
+        const aSize = a.filesize || a.filesize_approx || 0
+        const bSize = b.filesize || b.filesize_approx || 0
+        if (aSize > 0 && bSize > 0) return aSize - bSize
+        return 0
+      })
+
+      for (const f of sortedFormats) {
+        // Skip audio-only formats for video list
+        if (f.vcodec === "none") continue
+
+        const height = f.height
+        const width = f.width
+        const formatId = f.format_id
+        const ext = f.ext || "mp4"
+        const filesize = f.filesize || f.filesize_approx || 0
+
+        if (height) {
+          const qualityLabel = `${height}p`
+          if (!seenQualities.has(qualityLabel)) {
+            formats.push({
+              format_id: formatId,
+              quality: qualityLabel,
+              width: width,
+              height: height,
+              ext: ext,
+              filesize: filesize,
+              filesize_mb: filesize ? parseFloat((filesize / (1024 * 1024)).toFixed(2)) : null,
+              type: "video",
+            })
+            seenQualities.add(qualityLabel)
+          }
+        }
+      }
+    }
+
+    // Sort by quality (height) descending
+    formats.sort((a, b) => (b.height || 0) - (a.height || 0))
+
+    // Add audio/MP3 conversion options
+    const audioFormats = [
+      {
+        format_id: "audio_mp3_128",
+        quality: "MP3 128kbps",
+        width: 0,
+        height: 0,
+        ext: "mp3",
+        filesize: null,
+        filesize_mb: null,
+        type: "audio",
+        bitrate: 128,
+      },
+      {
+        format_id: "audio_mp3_192",
+        quality: "MP3 192kbps",
+        width: 0,
+        height: 0,
+        ext: "mp3",
+        filesize: null,
+        filesize_mb: null,
+        type: "audio",
+        bitrate: 192,
+      },
+      {
+        format_id: "audio_mp3_256",
+        quality: "MP3 256kbps",
+        width: 0,
+        height: 0,
+        ext: "mp3",
+        filesize: null,
+        filesize_mb: null,
+        type: "audio",
+        bitrate: 256,
+      },
+      {
+        format_id: "audio_mp3_320",
+        quality: "MP3 320kbps (Best)",
+        width: 0,
+        height: 0,
+        ext: "mp3",
+        filesize: null,
+        filesize_mb: null,
+        type: "audio",
+        bitrate: 320,
+      },
+    ]
+
+    return NextResponse.json({
+      success: true,
+      platform: platform,
+      title: info.title || "Unknown",
+      thumbnail: info.thumbnail,
+      duration: info.duration,
+      uploader: info.uploader,
+      formats: formats.slice(0, 10), // Limit to top 10 video formats
+      audioFormats: audioFormats, // MP3 conversion options
+    })
+  } catch (error: any) {
+    log.error("Error fetching video info:", error)
+    return serverError(log, error, "Failed to fetch video information")
+  }
+}

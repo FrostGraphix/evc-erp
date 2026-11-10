@@ -1,0 +1,167 @@
+import { NextRequest, NextResponse } from "next/server"
+import { resolvePlanYear } from "@/lib/corporate-scorecard/plan-year"
+import { createClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+import { getClientId, rateLimit } from "@/lib/rate-limit"
+import { apiError, ApiErrorCode } from "@/lib/api/errors"
+import {
+  ragStatus,
+  rollupByPerspective,
+  averageCappedPct,
+  resolveKpiAttainment,
+  type Direction,
+  type MeasureType,
+} from "@/lib/corporate-scorecard/attainment"
+
+const log = logger("corporate-scorecard-summary")
+
+type AssignmentRow = {
+  kpi_id: string
+  department: string
+  role: "core" | "support"
+  target_value: number | null
+  corporate_kpis: {
+    perspective: string
+    strategic_objective: string
+    measure_type: MeasureType
+    direction: Direction
+    target_text: string | null
+  } | null
+}
+
+type ActualRow = {
+  kpi_id: string
+  department: string
+  actual_value: number | null
+  milestones_completed: number | null
+  milestones_total: number | null
+  recorded_at: string
+}
+
+/**
+ * GET /api/corporate-scorecard/summary
+ *
+ * The MD view: company-wide attainment by perspective, and by department —
+ * CORE ownership only, per the agreed rule that SUPPORT work does not affect
+ * a department's own scorecard number.
+ */
+export async function GET(request: NextRequest) {
+  const rl = await rateLimit(`corporate-scorecard-summary:${getClientId(request)}`, { limit: 30, windowSec: 60 })
+  if (!rl.allowed) {
+    return apiError("Too many requests. Please try again later.", ApiErrorCode.RATE_LIMITED, 429)
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return apiError("Unauthorized", ApiErrorCode.UNAUTHORIZED, 401)
+
+  const { year, years } = await resolvePlanYear(supabase, request.nextUrl.searchParams.get("year"))
+
+  const { data: assignments, error: assignmentError } = await supabase
+    .from("kpi_assignments")
+    .select(
+      `kpi_id, department, role, target_value,
+       corporate_kpis!inner ( perspective, strategic_objective, measure_type, direction, target_text )`
+    )
+    .eq("role", "core")
+    .eq("corporate_kpis.is_archived", false)
+    .eq("corporate_kpis.plan_year", year)
+    .returns<AssignmentRow[]>()
+
+  if (assignmentError) {
+    log.error({ err: assignmentError.message }, "Failed to load assignments for summary")
+    return apiError("Failed to load the scorecard summary", ApiErrorCode.DATABASE_ERROR, 500)
+  }
+
+  const rows = assignments || []
+  if (rows.length === 0) {
+    return NextResponse.json({ data: { perspectives: [], companyPct: null, departments: [] }, year, years })
+  }
+
+  const kpiIds = Array.from(new Set(rows.map((r) => r.kpi_id)))
+
+  const [{ data: actualRows }, { data: taskRows }] = await Promise.all([
+    supabase
+      .from("kpi_actuals")
+      .select("kpi_id, department, actual_value, milestones_completed, milestones_total, recorded_at, is_override")
+      .in("kpi_id", kpiIds)
+      .order("recorded_at", { ascending: false })
+      .returns<ActualRow[]>(),
+    supabase.from("tasks").select("id, kpi_id, department, status").in("kpi_id", kpiIds).eq("is_archived", false),
+  ])
+
+  // Most recent actual per (kpi, department) pair.
+  const latestByKey = new Map<string, ActualRow>()
+  for (const row of actualRows || []) {
+    const key = `${row.kpi_id}:${row.department}`
+    if (!latestByKey.has(key)) latestByKey.set(key, row)
+  }
+
+  const taskStatsByKey = new Map<string, { total: number; completed: number; inProgress: number }>()
+  for (const t of taskRows || []) {
+    if (!t.kpi_id || !t.department) continue
+    const key = `${t.kpi_id}:${t.department}`
+    const stat = taskStatsByKey.get(key) || { total: 0, completed: 0, inProgress: 0 }
+    stat.total += 1
+    if (t.status === "completed") stat.completed += 1
+    else if (t.status === "in_progress") stat.inProgress += 1
+    taskStatsByKey.set(key, stat)
+  }
+
+  const perKpiRows = rows.map((row) => {
+    const kpi = row.corporate_kpis!
+    const latestManual = latestByKey.get(`${row.kpi_id}:${row.department}`) ?? null
+    const taskStat = taskStatsByKey.get(`${row.kpi_id}:${row.department}`) ?? null
+
+    const { resolved, attainment } = resolveKpiAttainment({
+      measureType: kpi.measure_type,
+      direction: kpi.direction,
+      targetValue: row.target_value,
+      targetText: kpi.target_text,
+      manualActual: latestManual,
+      taskStats: taskStat,
+    })
+
+    return {
+      department: row.department,
+      perspective: kpi.perspective,
+      strategicObjective: kpi.strategic_objective,
+      cappedPct: attainment.cappedPct,
+      hasData: resolved.source !== "none",
+    }
+  })
+
+  const perspectives = rollupByPerspective(
+    perKpiRows.map((r) => ({
+      perspective: r.perspective,
+      strategicObjective: r.strategicObjective,
+      cappedPct: r.cappedPct,
+    }))
+  )
+  const companyPct = averageCappedPct(perspectives.map((p) => p.attainmentPct))
+
+  const byDepartment = new Map<string, { attained: number[]; recordedCount: number }>()
+  for (const row of perKpiRows) {
+    const bucket = byDepartment.get(row.department) || { attained: [], recordedCount: 0 }
+    if (row.cappedPct != null) bucket.attained.push(row.cappedPct)
+    if (row.hasData) bucket.recordedCount += 1
+    byDepartment.set(row.department, bucket)
+  }
+
+  const departments = Array.from(byDepartment.entries())
+    .map(([department, stat]) => {
+      const attainmentPct = averageCappedPct(stat.attained)
+      return {
+        department,
+        attainmentPct,
+        status: attainmentPct != null ? ragStatus(attainmentPct) : null,
+        recordedKpiCount: Math.max(stat.recordedCount, stat.attained.length),
+        coreKpiCount: rows.filter((r) => r.department === department).length,
+      }
+    })
+    .sort((a, b) => (b.attainmentPct ?? -1) - (a.attainmentPct ?? -1))
+
+  return NextResponse.json({ data: { perspectives, companyPct, departments }, year, years })
+}

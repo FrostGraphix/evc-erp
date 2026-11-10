@@ -1,0 +1,2692 @@
+"use client"
+
+import { FeedbackExpandPanel, type LunchReviewSummary } from "./_components/lunch-feedback-panel"
+import { useCanEdit } from "@/components/admin/edit-access-context"
+import { useState, useEffect, useMemo, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import { DataTablePage, DataTable } from "@/components/ui/data-table"
+import type { DataTableColumn, DataTableFilter, DataTableTab } from "@/components/ui/data-table"
+import { StatCard } from "@/components/ui/stat-card"
+import { StatGrid } from "@/components/ui/stat-grid"
+import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Calendar,
+  Settings,
+  Utensils,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  Award,
+  CalendarDays,
+  Plus,
+  Vote,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  Star,
+  Eye,
+  Pencil,
+  MessageCircle,
+} from "lucide-react"
+import { toast } from "sonner"
+import { apiFetch } from "@/lib/api-client"
+import { cn } from "@/lib/utils"
+import { LunchMenuBuilderDialog } from "./_components/lunch-menu-builder-dialog"
+import { LunchDeadlineDialog } from "./_components/lunch-deadline-dialog"
+import { LunchVoteOverrideDialog } from "./_components/lunch-vote-override-dialog"
+import { LunchMenuViewersSheet } from "./_components/lunch-menu-viewers-sheet"
+import { LunchShareDialog } from "./_components/lunch-share-dialog"
+import { LunchExportDialog } from "./_components/lunch-export-dialog"
+import { getAttendanceMonthOptions } from "@/lib/hr/attendance-utils"
+import {
+  DEFAULT_LUNCH_SETTINGS,
+  groupHeading,
+  menuHeading,
+  NOT_EATING_OPTION_ID,
+  type LunchMenu,
+  type LunchOptionTally,
+  type LunchVoteRecord,
+  type LunchMenuViewRecord,
+} from "@/lib/hr/lunch-voting"
+import { formatWATDate, formatWATTime } from "@/lib/utils/date"
+import { CalendarGridSkeleton, RowsSkeleton } from "@/components/skeletons/section-skeletons"
+import { EmptyState } from "@/components/ui/patterns/empty-state"
+import { LunchPriceScheduleSettingsDialog } from "./_components/lunch-price-schedule-settings-dialog"
+
+export interface LunchEmployee {
+  id: string
+  full_name: string
+  employee_number: string
+  department: string | null
+}
+
+export interface LunchSettings {
+  cost: number
+  subsidy_percent: number
+  eating_days?: string[]
+  voting_deadline?: string
+}
+
+/** A menu row as returned by /api/admin/hr/lunch/menus — hydrated with votes and reviews. */
+export interface AdminLunchMenu extends LunchMenu {
+  votes: LunchVoteRecord[]
+  tallies: LunchOptionTally[]
+  /** Votes that will actually be charged — excludes the poll's NO answers. */
+  eatingCount: number
+  votingOpen: boolean
+  resolvedDeadline: string
+  review_count?: number
+  average_rating?: number | null
+  reviews?: { id: string; rating: number; comment: string | null; created_at: string }[]
+  viewers?: LunchMenuViewRecord[]
+  view_count?: number
+}
+
+export type MenuEffectiveStatus = "draft" | "voting_open" | "deadline_passed" | "closed" | "cancelled"
+
+export function getMenuStatusInfo(menu: { status: string; archived_at?: string | null; votingOpen?: boolean }): {
+  key: MenuEffectiveStatus
+  label: string
+  tone: string
+  accentClass: string
+} {
+  if (menu.archived_at) {
+    return {
+      key: "cancelled",
+      label: "Cancelled",
+      tone: "border border-border/80 bg-muted/60 text-muted-foreground hover:bg-muted/80 shadow-none",
+      accentClass: "bg-slate-400",
+    }
+  }
+  if (menu.status === "draft") {
+    return {
+      key: "draft",
+      label: "Draft",
+      tone: "border border-border/80 bg-muted/60 text-muted-foreground hover:bg-muted/80 shadow-none",
+      accentClass: "bg-slate-400 dark:bg-slate-600",
+    }
+  }
+  if (menu.status === "closed") {
+    return {
+      key: "closed",
+      label: "Closed",
+      tone: "border-0 bg-red-500/10 text-red-500 hover:bg-red-500/20 shadow-none",
+      accentClass: "bg-red-500",
+    }
+  }
+  if (menu.votingOpen) {
+    return {
+      key: "voting_open",
+      label: "Voting open",
+      tone: "border-0 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 shadow-none",
+      accentClass: "bg-emerald-500",
+    }
+  }
+  return {
+    key: "deadline_passed",
+    label: "Deadline passed",
+    tone: "border-0 bg-warning/10 text-warning hover:bg-amber-500/20 shadow-none",
+    accentClass: "bg-amber-500",
+  }
+}
+
+export interface LunchSummaryRow {
+  user_id: string
+  full_name: string
+  employee_number: string
+  department: string | null
+  lunch_count: number
+  total_deduction: number
+}
+
+/** One served lunch, with the prices locked in on the day it was logged. */
+export interface LunchRawLog {
+  user_id: string
+  date: string
+  cost: number
+  company_subsidy: number
+  employee_deduction: number
+}
+
+function formatNaira(amount: number, fractionDigits = 2) {
+  return `₦${Number(amount).toLocaleString("en-US", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  })}`
+}
+
+interface LunchRegisterPageProps {
+  initialEmployees: LunchEmployee[]
+  initialAteUserIds: string[]
+  initialSettings: LunchSettings
+  todayDate: string
+}
+
+type LunchTab = "menus" | "daily" | "summary" | "leaderboard" | "calendar" | "reviews"
+
+const LUNCH_TABS: DataTableTab[] = [
+  { key: "menus", label: "Menu & Votes" },
+  { key: "daily", label: "Daily Roster" },
+  { key: "summary", label: "Summary" },
+  { key: "leaderboard", label: "Leaderboard" },
+  { key: "calendar", label: "Calendar" },
+  { key: "reviews", label: "Feedback" },
+]
+
+const DAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+function monBasedDay(jsDay: number) {
+  return jsDay === 0 ? 6 : jsDay - 1
+}
+
+// Gold/silver/bronze for the podium, plain outline past that.
+const RANK_BADGE_COLORS = [
+  "border-amber-500/40 bg-amber-500/10 text-amber-600 hover:bg-amber-500/10",
+  "border-slate-400/40 bg-slate-400/10 text-slate-500 hover:bg-slate-400/10",
+  "border-orange-600/40 bg-orange-600/10 text-orange-700 hover:bg-orange-600/10",
+]
+
+function rankBadgeClass(idx: number) {
+  return RANK_BADGE_COLORS[idx] ?? ""
+}
+
+function buildCalendarCells(yearMonth: string): (string | null)[] {
+  const [year, month] = yearMonth.split("-").map(Number)
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const firstDayOfWeek = new Date(year, month - 1, 1).getDay()
+  const offset = monBasedDay(firstDayOfWeek)
+
+  const cells: (string | null)[] = [
+    ...Array(offset).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const d = i + 1
+      return `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`
+    }),
+  ]
+  return cells
+}
+
+export function LunchRegisterPage({
+  initialEmployees,
+  initialAteUserIds,
+  initialSettings,
+  todayDate,
+}: LunchRegisterPageProps) {
+  const router = useRouter()
+  const canEditHr = useCanEdit("hr.lunch")
+  const [activeTab, setActiveTab] = useState<LunchTab>("menus")
+  const [reviews, setReviews] = useState<LunchReviewSummary[]>([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [reviewsError, setReviewsError] = useState<string | null>(null)
+  const [employees] = useState<LunchEmployee[]>(initialEmployees)
+  // Rows currently visible in each table (after search + filters + sort).
+  const [processedDailyRows, setProcessedDailyRows] = useState<{ id: string; employee: LunchEmployee }[]>([])
+
+  // Daily Register tab states
+  const [selectedDate, setSelectedDate] = useState<string>(todayDate)
+  const [ateUserIds, setAteUserIds] = useState<string[]>(initialAteUserIds)
+  const [fetchingLogs, setFetchingLogs] = useState(false)
+
+  // Monthly Summary & Calendar tab states
+  const [selectedMonth, setSelectedMonth] = useState<string>(todayDate.substring(0, 7))
+  const [summaryData, setSummaryData] = useState<LunchSummaryRow[]>([])
+  const [processedSummaryData, setProcessedSummaryData] = useState<LunchSummaryRow[]>([])
+  const [rawLogs, setRawLogs] = useState<LunchRawLog[]>([])
+  const [fetchingSummary, setFetchingSummary] = useState(false)
+
+  // Leaderboard specific states
+  const [leaderboardPeriodMode, setLeaderboardPeriodMode] = useState<"month" | "year" | "all">("month")
+  const [leaderboardMonth, setLeaderboardMonth] = useState<string>(todayDate.substring(0, 7))
+  const [leaderboardYear, setLeaderboardYear] = useState<string>("2026")
+  const [selectedLeaderboardDept, setSelectedLeaderboardDept] = useState<string>("all")
+  const [leaderboardSummaryData, setLeaderboardSummaryData] = useState<LunchSummaryRow[]>([])
+  const [fetchingLeaderboard, setFetchingLeaderboard] = useState(false)
+
+  // Calendar tab specific states
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(initialEmployees[0]?.id || "")
+
+  // General settings states
+  const [settings, setSettings] = useState<LunchSettings>(initialSettings)
+  const [loading, setLoading] = useState(false)
+  const [openSettings, setOpenSettings] = useState(false)
+
+  // Settings form state
+  const [settingsForm, setSettingsForm] = useState({
+    cost: initialSettings.cost,
+    subsidy_percent: initialSettings.subsidy_percent,
+    eating_days: initialSettings.eating_days || ["Monday", "Wednesday", "Friday"],
+    voting_deadline: initialSettings.voting_deadline || DEFAULT_LUNCH_SETTINGS.voting_deadline,
+  })
+
+  // Menu & Votes tab states
+  const [menus, setMenus] = useState<AdminLunchMenu[]>([])
+  const [fetchingMenus, setFetchingMenus] = useState(false)
+  const [menusError, setMenusError] = useState<string | null>(null)
+  const [openMenuBuilder, setOpenMenuBuilder] = useState(false)
+  const [editingMenu, setEditingMenu] = useState<AdminLunchMenu | null>(null)
+  const [deadlineMenu, setDeadlineMenu] = useState<AdminLunchMenu | null>(null)
+  const [shareMenu, setShareMenu] = useState<AdminLunchMenu | null>(null)
+  const [deletingMenu, setDeletingMenu] = useState<AdminLunchMenu | null>(null)
+  const [archivingMenu, setArchivingMenu] = useState<AdminLunchMenu | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [overrideMenu, setOverrideMenu] = useState<AdminLunchMenu | (LunchMenu & { votes: LunchVoteRecord[] }) | null>(
+    null
+  )
+  const [overrideUserId, setOverrideUserId] = useState<string | null>(null)
+  const [viewersMenu, setViewersMenu] = useState<AdminLunchMenu | null>(null)
+  const [dailyMenu, setDailyMenu] = useState<(LunchMenu & { votes: LunchVoteRecord[] }) | null>(null)
+  const [dailyVotes, setDailyVotes] = useState<LunchVoteRecord[]>([])
+
+  // Export states
+  const [openExport, setOpenExport] = useState(false)
+
+  // Generate Month list options for Select filter dropdowns and export picker
+  const monthOptions = useMemo(() => getAttendanceMonthOptions(), [])
+
+  // Generate Year list options
+  const yearOptions = ["2026", "2025"]
+
+  // Fetch daily lunch logs when the selected date changes
+  const loadDateLogs = useCallback(async (date: string) => {
+    setFetchingLogs(true)
+    try {
+      const res = await apiFetch(`/api/admin/hr/lunch?date=${date}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to load logs")
+
+      setAteUserIds(data.ateUserIds || [])
+      setDailyMenu(data.menu ? { ...data.menu, votes: data.votes || [] } : null)
+      setDailyVotes(data.votes || [])
+      if (data.settings) {
+        setSettings(data.settings)
+        setSettingsForm({
+          cost: data.settings.cost,
+          subsidy_percent: data.settings.subsidy_percent,
+          eating_days: data.settings.eating_days || ["Monday", "Wednesday", "Friday"],
+          voting_deadline: data.settings.voting_deadline || DEFAULT_LUNCH_SETTINGS.voting_deadline,
+        })
+      }
+    } catch (err) {
+      toast.error("Failed to load lunch register for selected date")
+    } finally {
+      setFetchingLogs(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab !== "daily") return
+    void loadDateLogs(selectedDate)
+  }, [selectedDate, activeTab, loadDateLogs])
+
+  // Fetch monthly summary logs (and raw logs) when month or tab changes
+  useEffect(() => {
+    if (activeTab !== "summary" && activeTab !== "calendar") return
+
+    async function loadMonthlyData() {
+      setFetchingSummary(true)
+      try {
+        const res = await apiFetch(`/api/admin/hr/lunch?month=${selectedMonth}`)
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || "Failed to load monthly summary")
+
+        setSummaryData(data.summary || [])
+        setRawLogs(data.logs || [])
+        if (data.settings) {
+          setSettings(data.settings)
+          setSettingsForm({
+            cost: data.settings.cost,
+            subsidy_percent: data.settings.subsidy_percent,
+            eating_days: data.settings.eating_days || ["Monday", "Wednesday", "Friday"],
+            voting_deadline: data.settings.voting_deadline || DEFAULT_LUNCH_SETTINGS.voting_deadline,
+          })
+        }
+      } catch (err) {
+        toast.error("Failed to load monthly lunch logs")
+      } finally {
+        setFetchingSummary(false)
+      }
+    }
+
+    void loadMonthlyData()
+  }, [selectedMonth, activeTab])
+
+  // Fetch leaderboard data when cycle or parameters change
+  useEffect(() => {
+    if (activeTab !== "leaderboard") return
+
+    async function loadLeaderboardData() {
+      setFetchingLeaderboard(true)
+      try {
+        let url = "/api/admin/hr/lunch"
+        if (leaderboardPeriodMode === "month") {
+          url += `?month=${leaderboardMonth}`
+        } else if (leaderboardPeriodMode === "year") {
+          url += `?year=${leaderboardYear}`
+        } else {
+          url += "?all_time=true"
+        }
+
+        const res = await apiFetch(url)
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || "Failed to load leaderboard data")
+
+        setLeaderboardSummaryData(data.summary || [])
+      } catch (err) {
+        toast.error("Failed to load leaderboard data")
+      } finally {
+        setFetchingLeaderboard(false)
+      }
+    }
+
+    void loadLeaderboardData()
+  }, [activeTab, leaderboardPeriodMode, leaderboardMonth, leaderboardYear])
+
+  // Load published/draft menus with their live vote tallies
+  const loadMenus = useCallback(async (): Promise<AdminLunchMenu[]> => {
+    setFetchingMenus(true)
+    setMenusError(null)
+    try {
+      const res = await apiFetch("/api/admin/hr/lunch/menus")
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to load menus")
+      const loaded = (data.menus || []) as AdminLunchMenu[]
+      setMenus(loaded)
+      if (data.settings) {
+        setSettings(data.settings)
+        setSettingsForm({
+          cost: data.settings.cost,
+          subsidy_percent: data.settings.subsidy_percent,
+          eating_days: data.settings.eating_days || ["Monday", "Wednesday", "Friday"],
+          voting_deadline: data.settings.voting_deadline || DEFAULT_LUNCH_SETTINGS.voting_deadline,
+        })
+      }
+      return loaded
+    } catch (err) {
+      setMenusError(err instanceof Error ? err.message : "Failed to load menus")
+      return []
+    } finally {
+      setFetchingMenus(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab !== "menus") return
+    void loadMenus()
+  }, [activeTab, loadMenus])
+
+  const loadReviews = useCallback(async () => {
+    setReviewsLoading(true)
+    setReviewsError(null)
+    try {
+      const res = await apiFetch("/api/admin/hr/lunch/reviews", { cache: "no-store" })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || "Failed to load lunch feedback")
+      setReviews(payload.data || [])
+    } catch (err) {
+      setReviewsError(err instanceof Error ? err.message : "Failed to load lunch feedback")
+    } finally {
+      setReviewsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab !== "reviews") return
+    void loadReviews()
+  }, [activeTab, loadReviews])
+
+  // Publish / close / reopen a menu
+  async function updateMenuStatus(menu: AdminLunchMenu, status: "draft" | "published" | "closed") {
+    try {
+      const res = await apiFetch(`/api/admin/hr/lunch/menus/${menu.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to update menu")
+
+      toast.success(
+        status === "published"
+          ? "Menu published — staff can vote now."
+          : status === "closed"
+            ? "Voting closed."
+            : "Menu moved back to draft."
+      )
+      const loaded = await loadMenus()
+      if (status === "published") offerWhatsAppShare(loaded.find((m) => m.id === menu.id))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update menu")
+    }
+  }
+
+  // Cancelling a day drops its lunch charges but keeps the votes on record.
+  async function setArchived(menu: AdminLunchMenu, archived: boolean) {
+    try {
+      const res = await apiFetch(`/api/admin/hr/lunch/menus/${menu.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to update menu")
+
+      toast.success(
+        archived
+          ? "Day cancelled — nobody is charged for it, and the votes are kept."
+          : "Day restored — the lunch charges are back."
+      )
+      setArchivingMenu(null)
+      void loadMenus()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update menu")
+    }
+  }
+
+  // Publishing is followed straight away by posting to the staff WhatsApp
+  // group, so the post is offered right then — but only while staff can still
+  // vote; a menu published past its deadline has nothing to ask for.
+  function offerWhatsAppShare(menu: AdminLunchMenu | undefined) {
+    if (menu?.votingOpen) setShareMenu(menu)
+  }
+
+  // Any published day can be shared — a closed one gets a caption that doesn't
+  // ask for votes. Drafts and cancelled days have no public share page.
+  function canShareMenu(menu: AdminLunchMenu) {
+    return menu.status !== "draft" && !menu.archived_at
+  }
+
+  async function deleteMenu(menu: AdminLunchMenu) {
+    setDeleting(true)
+    try {
+      // Votes are only discarded because the confirmation said so out loud.
+      const clearVotes = menu.votes.length > 0 ? "?clear_votes=true" : ""
+      const res = await apiFetch(`/api/admin/hr/lunch/menus/${menu.id}${clearVotes}`, { method: "DELETE" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to delete menu")
+      toast.success("Menu deleted.")
+      setDeletingMenu(null)
+      void loadMenus()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete menu")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // Pricing calculations
+  const cost = Number(settings.cost)
+  const subsidyPercent = Number(settings.subsidy_percent)
+  const employeeSurcharge = cost * (1 - subsidyPercent / 100)
+  const companySubsidy = cost * (subsidyPercent / 100)
+
+  // Monthly stats
+  const totalMealsRegisteredMonth = summaryData.reduce((sum, row) => sum + row.lunch_count, 0)
+  const totalDeductionsMonth = summaryData.reduce((sum, row) => sum + row.total_deduction, 0)
+
+  // Navigate dates (daily view)
+  function adjustDate(days: number) {
+    const d = new Date(selectedDate)
+    d.setDate(d.getDate() + days)
+    setSelectedDate(d.toISOString().substring(0, 10))
+  }
+
+  // Navigate months (calendar view)
+  function adjustCalendarMonth(delta: number) {
+    const [year, month] = selectedMonth.split("-").map(Number)
+    const d = new Date(year, month - 1 + delta, 1)
+    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`)
+  }
+
+  // Toggle meal register with automatic save in background
+  async function toggleEmployeeLunch(employeeId: string, checked: boolean) {
+    let updatedAteUserIds: string[]
+    if (checked) {
+      updatedAteUserIds = [...ateUserIds, employeeId]
+    } else {
+      updatedAteUserIds = ateUserIds.filter((id) => id !== employeeId)
+    }
+    setAteUserIds(updatedAteUserIds)
+
+    try {
+      const res = await apiFetch("/api/admin/hr/lunch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: selectedDate,
+          userIds: updatedAteUserIds,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to save lunch status")
+
+      toast.success("Lunch status updated.", { duration: 1000 })
+    } catch (err) {
+      // Revert state
+      setAteUserIds(ateUserIds)
+      toast.error(err instanceof Error ? err.message : "Failed to update lunch status")
+    }
+  }
+
+  // Save settings
+  async function handleSaveSettings(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const res = await apiFetch("/api/admin/hr/lunch/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settingsForm),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to save settings")
+
+      setSettings(data.settings)
+      toast.success("Lunch settings updated! Changes apply starting today.")
+      setOpenSettings(false)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save settings")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Toggle weekday selection in form
+  function toggleFormWeekday(day: string, checked: boolean) {
+    const current = settingsForm.eating_days
+    let next: string[]
+    if (checked) {
+      next = [...current, day]
+    } else {
+      next = current.filter((d) => d !== day)
+    }
+    setSettingsForm({ ...settingsForm, eating_days: next })
+  }
+
+  // Trigger open the export options picker
+  function handleExportClick() {
+    setOpenExport(true)
+  }
+
+  // Daily checklist columns
+  const renderDailyMealChoice = (userId: string) => {
+    const vote = dailyVotes.find((v) => v.user_id === userId)
+    if (!vote) {
+      return <span className="text-muted-foreground text-xs italic">No vote</span>
+    }
+    if (!vote.is_eating) {
+      return (
+        <Badge variant="outline" className="border-rose-500/30 bg-rose-500/10 text-xs font-medium text-rose-600">
+          NO — Opted out
+        </Badge>
+      )
+    }
+    const dishNames = dailyMenu?.groups
+      ? dailyMenu.groups
+          .map((g) => g.options.find((o) => o.id === vote.selections[g.id])?.name)
+          .filter(Boolean)
+          .join(" + ")
+      : "Opted In"
+    return (
+      <Badge className="border-0 bg-emerald-500/10 text-xs font-medium text-emerald-600">
+        {dishNames || "Opted In"}
+      </Badge>
+    )
+  }
+
+  const renderDailyDeduction = (userId: string) => {
+    if (!ateUserIds.includes(userId)) return <span className="text-muted-foreground text-xs">—</span>
+    return (
+      <span className="font-mono text-xs font-bold text-red-600">
+        ₦{employeeSurcharge.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+      </span>
+    )
+  }
+
+  const renderDailyServed = (userId: string) => {
+    const hasEaten = ateUserIds.includes(userId)
+    return (
+      <Badge
+        className={
+          hasEaten
+            ? "border-0 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20"
+            : "border bg-gray-100 text-gray-400 hover:bg-gray-100/80"
+        }
+      >
+        {hasEaten ? "Served" : "Skipped"}
+      </Badge>
+    )
+  }
+
+  const openDailyOverride = (userId: string) => {
+    setOverrideUserId(userId)
+    setOverrideMenu(dailyMenu)
+  }
+
+  const renderDailyAction = (userId: string) => {
+    if (!dailyMenu) {
+      return (
+        <Checkbox
+          checked={ateUserIds.includes(userId)}
+          disabled={!canEditHr}
+          onCheckedChange={(checked) => {
+            void toggleEmployeeLunch(userId, !!checked)
+          }}
+          className="h-5 w-5 border-2"
+          title="Toggle payroll lunch status"
+        />
+      )
+    }
+    if (!canEditHr) return null
+    return (
+      <Button size="sm" variant="outline" className="h-7 text-xs font-medium" onClick={() => openDailyOverride(userId)}>
+        Change Choice
+      </Button>
+    )
+  }
+
+  const dailyColumns: DataTableColumn<{ id: string; employee: LunchEmployee }>[] = [
+    {
+      key: "employee_name",
+      label: "Employee Name",
+      accessor: (row) => row.employee.full_name,
+      sortable: true,
+      render: (row) => (
+        <div>
+          <span className="text-foreground block font-semibold">{row.employee.full_name}</span>
+          <span className="text-muted-foreground text-xs">{row.employee.department || "General"}</span>
+        </div>
+      ),
+    },
+    {
+      key: "employee_number",
+      label: "Staff Code",
+      accessor: (row) => row.employee.employee_number,
+      render: (row) => <span className="font-mono text-xs">{row.employee.employee_number}</span>,
+    },
+    {
+      key: "meal_choice",
+      label: "Meal Choice / Vote",
+      render: (row) => renderDailyMealChoice(row.employee.id),
+    },
+    {
+      key: "deduction",
+      label: "Deduction",
+      render: (row) => renderDailyDeduction(row.employee.id),
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (row) => renderDailyServed(row.employee.id),
+    },
+    {
+      key: "actions",
+      label: "Action",
+      render: (row) => renderDailyAction(row.employee.id),
+    },
+  ]
+
+  // Menu & Votes columns
+  const menuColumns: DataTableColumn<AdminLunchMenu>[] = [
+    {
+      key: "date",
+      label: "Date",
+      sortable: true,
+      accessor: (row) => row.date,
+      render: (row) => <span className="text-foreground font-semibold">{menuHeading(row.date, todayDate)}</span>,
+    },
+    {
+      key: "deadline",
+      label: "Voting Closes",
+      accessor: (row) => row.resolvedDeadline,
+      render: (row) => (
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-xs">{formatWATTime(row.resolvedDeadline)}</span>
+          {/* A stored value means this day was deliberately overridden; the
+              rest simply follow the lunch settings deadline. */}
+          {row.voting_deadline && (
+            <Badge variant="outline" className="px-1.5 py-0 text-xs">
+              custom
+            </Badge>
+          )}
+        </div>
+      ),
+      hideOnMobile: true,
+    },
+    {
+      key: "votes",
+      label: "Opted In",
+      sortable: true,
+      accessor: (row) => row.eatingCount,
+      render: (row) => (
+        <Badge
+          variant="outline"
+          className="border-2 border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 font-semibold text-emerald-600 hover:bg-emerald-500/10"
+        >
+          {row.eatingCount}
+        </Badge>
+      ),
+    },
+    {
+      key: "said_no",
+      label: "Opted Out",
+      sortable: true,
+      accessor: (row) => row.votes.length - row.eatingCount,
+      render: (row) => {
+        const notEating = row.votes.length - row.eatingCount
+        if (notEating === 0) {
+          return <span className="text-muted-foreground text-xs">—</span>
+        }
+        return (
+          <Badge
+            variant="outline"
+            className="border-2 border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 font-semibold text-rose-600 hover:bg-rose-500/10"
+          >
+            {notEating}
+          </Badge>
+        )
+      },
+    },
+    {
+      key: "feedback",
+      label: "Feedback",
+      sortable: true,
+      accessor: (row) => row.average_rating ?? 0,
+      render: (row) => {
+        const count = row.review_count ?? 0
+        const avg = row.average_rating
+        if (!count || avg === null || avg === undefined) {
+          return <span className="text-muted-foreground text-xs">—</span>
+        }
+        return (
+          <div className="flex items-center gap-1.5">
+            <Badge
+              variant="outline"
+              className="gap-1 border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600"
+            >
+              <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+              {avg.toFixed(1)}
+            </Badge>
+            <span className="text-muted-foreground text-xs">({count})</span>
+          </div>
+        )
+      },
+    },
+    {
+      key: "status",
+      label: "Status",
+      accessor: (row) => getMenuStatusInfo(row).label,
+      render: (row) => {
+        const { label, tone } = getMenuStatusInfo(row)
+        return <Badge className={tone}>{label}</Badge>
+      },
+    },
+    {
+      key: "views",
+      label: "Views",
+      sortable: true,
+      accessor: (row) => row.viewers?.length ?? 0,
+      render: (row) => {
+        const count = row.viewers?.length ?? 0
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1.5 px-2 text-xs font-semibold text-blue-600 hover:bg-blue-500/10 hover:text-blue-700"
+                onClick={() => setViewersMenu(row)}
+                aria-label="Click to view list of staff who viewed this menu"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                {count}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Click to view list of staff who viewed this menu</TooltipContent>
+          </Tooltip>
+        )
+      },
+    },
+    {
+      // Kept out of the ⋯ menu so posting to the staff group is one tap.
+      key: "share",
+      label: "Share",
+      render: (row) =>
+        canShareMenu(row) ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 px-2 text-xs font-semibold text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700"
+            onClick={() => setShareMenu(row)}
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            Share
+          </Button>
+        ) : (
+          <span className="text-muted-foreground text-xs">—</span>
+        ),
+    },
+  ]
+
+  const menuFilters: DataTableFilter<AdminLunchMenu>[] = [
+    {
+      key: "year",
+      label: "Year",
+      options: [
+        { value: "2026", label: "2026" },
+        { value: "2025", label: "2025" },
+        { value: "2024", label: "2024" },
+      ],
+      mode: "custom" as const,
+      filterFn: (row, selectedValues) => {
+        if (selectedValues.length === 0) return true
+        return selectedValues.includes(row.date.substring(0, 4))
+      },
+    },
+    {
+      key: "month",
+      label: "Month",
+      options: [
+        { value: "01", label: "January" },
+        { value: "02", label: "February" },
+        { value: "03", label: "March" },
+        { value: "04", label: "April" },
+        { value: "05", label: "May" },
+        { value: "06", label: "June" },
+        { value: "07", label: "July" },
+        { value: "08", label: "August" },
+        { value: "09", label: "September" },
+        { value: "10", label: "October" },
+        { value: "11", label: "November" },
+        { value: "12", label: "December" },
+      ],
+      mode: "custom" as const,
+      filterFn: (row, selectedValues) => {
+        if (selectedValues.length === 0) return true
+        return selectedValues.includes(row.date.substring(5, 7))
+      },
+    },
+    {
+      key: "status",
+      label: "Status",
+      options: [
+        { value: "voting_open", label: "Voting open" },
+        { value: "deadline_passed", label: "Deadline passed" },
+        { value: "draft", label: "Draft" },
+        { value: "closed", label: "Closed" },
+        { value: "cancelled", label: "Cancelled" },
+      ],
+      mode: "custom" as const,
+      filterFn: (row, selectedValues) => {
+        if (selectedValues.length === 0) return true
+        const status = getMenuStatusInfo(row)
+        if (
+          selectedValues.includes("published") &&
+          (status.key === "voting_open" || status.key === "deadline_passed")
+        ) {
+          return true
+        }
+        return selectedValues.includes(status.key)
+      },
+    },
+    {
+      key: "has_votes",
+      label: "Votes",
+      options: [
+        { value: "with", label: "Has votes" },
+        { value: "without", label: "No votes yet" },
+      ],
+      mode: "custom" as const,
+      filterFn: (row, selectedValues) => {
+        if (selectedValues.length === 0) return true
+        return selectedValues.includes(row.votes.length > 0 ? "with" : "without")
+      },
+    },
+  ]
+
+  // Monthly summary columns
+  const summaryColumns: DataTableColumn<LunchSummaryRow>[] = [
+    {
+      key: "employee_name",
+      label: "Employee Name",
+      accessor: (row) => row.full_name,
+      sortable: true,
+      render: (row) => (
+        <div>
+          <span className="text-foreground font-semibold">{row.full_name}</span>
+          <div className="text-muted-foreground text-xs">{row.department || "General"}</div>
+        </div>
+      ),
+    },
+    {
+      key: "employee_number",
+      label: "Staff Code",
+      accessor: (row) => row.employee_number,
+      render: (row) => <span className="font-mono text-xs">{row.employee_number}</span>,
+    },
+    {
+      key: "lunch_count",
+      label: "Lunch Days",
+      accessor: (row) => row.lunch_count,
+      sortable: true,
+      render: (row) => (
+        <Badge
+          variant="outline"
+          className="border-2 border-blue-500/30 bg-blue-500/10 px-2.5 py-0.5 font-semibold text-blue-600 hover:bg-blue-500/10"
+        >
+          {row.lunch_count} {row.lunch_count === 1 ? "day" : "days"}
+        </Badge>
+      ),
+    },
+    {
+      key: "total_deduction",
+      label: "Total Surcharge (₦)",
+      accessor: (row) => row.total_deduction,
+      sortable: true,
+      render: (row) => (
+        <span className="font-mono font-bold text-red-600">
+          ₦{Number(row.total_deduction).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+        </span>
+      ),
+    },
+  ]
+
+  // Review & Feedback columns
+  const reviewColumns: DataTableColumn<LunchReviewSummary>[] = [
+    {
+      key: "date",
+      label: "Date",
+      sortable: true,
+      accessor: (row) => row.date,
+      render: (row) => (
+        <span className="text-foreground font-semibold">
+          {formatWATDate(row.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+        </span>
+      ),
+    },
+    {
+      key: "average_rating",
+      label: "Average Rating",
+      sortable: true,
+      accessor: (row) => row.average_rating ?? 0,
+      render: (row) => {
+        if (row.average_rating === null || row.average_rating === undefined) {
+          return <span className="text-muted-foreground text-xs">—</span>
+        }
+        return (
+          <Badge
+            variant="outline"
+            className="gap-1 border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-600"
+          >
+            <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+            {row.average_rating.toFixed(1)} / 5
+          </Badge>
+        )
+      },
+    },
+    {
+      key: "review_count",
+      label: "Total Reviews",
+      sortable: true,
+      accessor: (row) => row.review_count,
+      render: (row) => (
+        <Badge variant="outline" className="text-xs font-medium">
+          {row.review_count} {row.review_count === 1 ? "review" : "reviews"}
+        </Badge>
+      ),
+    },
+    {
+      key: "comments_count",
+      label: "Comments",
+      sortable: true,
+      accessor: (row) => row.comments.length,
+      render: (row) => (
+        <span className="text-muted-foreground text-xs font-medium">
+          {row.comments.length} {row.comments.length === 1 ? "comment" : "comments"}
+        </span>
+      ),
+    },
+  ]
+
+  const reviewFilters: DataTableFilter<LunchReviewSummary>[] = [
+    {
+      key: "year",
+      label: "Year",
+      options: [
+        { value: "2026", label: "2026" },
+        { value: "2025", label: "2025" },
+        { value: "2024", label: "2024" },
+      ],
+      mode: "custom" as const,
+      filterFn: (row, selectedValues) => {
+        if (selectedValues.length === 0) return true
+        return selectedValues.includes(row.date.substring(0, 4))
+      },
+    },
+    {
+      key: "month",
+      label: "Month",
+      options: [
+        { value: "01", label: "January" },
+        { value: "02", label: "February" },
+        { value: "03", label: "March" },
+        { value: "04", label: "April" },
+        { value: "05", label: "May" },
+        { value: "06", label: "June" },
+        { value: "07", label: "July" },
+        { value: "08", label: "August" },
+        { value: "09", label: "September" },
+        { value: "10", label: "October" },
+        { value: "11", label: "November" },
+        { value: "12", label: "December" },
+      ],
+      mode: "custom" as const,
+      filterFn: (row, selectedValues) => {
+        if (selectedValues.length === 0) return true
+        return selectedValues.includes(row.date.substring(5, 7))
+      },
+    },
+    {
+      key: "has_comments",
+      label: "Comments",
+      options: [
+        { value: "with", label: "With comments" },
+        { value: "without", label: "Without comments" },
+      ],
+      mode: "custom" as const,
+      filterFn: (row, selectedValues) => {
+        if (selectedValues.length === 0) return true
+        return selectedValues.includes(row.comments.length > 0 ? "with" : "without")
+      },
+    },
+  ]
+
+  // Leaderboard sorting & filtering
+  const sortedLeaderboard = [...leaderboardSummaryData]
+    .filter((r) => selectedLeaderboardDept === "all" || r.department === selectedLeaderboardDept)
+    .sort((a, b) => b.lunch_count - a.lunch_count)
+
+  // Calendar dates calculations
+  const calendarCells = buildCalendarCells(selectedMonth)
+  const employeeSelectedLogs = rawLogs.filter((log) => log.user_id === selectedEmployeeId)
+
+  const dailyMappedRows = employees.map((emp) => ({
+    id: emp.id,
+    employee: emp,
+  }))
+
+  // Check if selected date is a configured eating day
+  const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+  const selectedDayName = daysOfWeek[new Date(selectedDate).getDay()]
+  const eatingDays = settings.eating_days || ["Monday", "Wednesday", "Friday"]
+  const isEatingDay = eatingDays.includes(selectedDayName)
+
+  // Filters for Daily Register Tab (Date inside table, before Department)
+  const dailyFilters = [
+    {
+      key: "date",
+      label: "Date",
+      options: [],
+      render: () => (
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => adjustDate(-1)}
+                aria-label="Previous day"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Previous day</TooltipContent>
+          </Tooltip>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="border-input bg-background h-9 rounded-md border px-3 py-1.5 text-sm"
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => adjustDate(1)}
+                aria-label="Next day"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Next day</TooltipContent>
+          </Tooltip>
+        </div>
+      ),
+    },
+    {
+      key: "department",
+      label: "Department",
+      options: Array.from(new Set(employees.map((e) => e.department).filter(Boolean))).map((d) => ({
+        value: d!,
+        label: d!,
+      })),
+      mode: "custom" as const,
+      filterFn: (row: any, selectedValues: string[]) => {
+        if (selectedValues.length === 0) return true
+        return selectedValues.includes(row.employee.department || "")
+      },
+    },
+  ]
+
+  // Filters for Summary Tab (Month Select & Department)
+  const summaryFilters = [
+    {
+      key: "department",
+      label: "Department",
+      options: Array.from(new Set(employees.map((e) => e.department).filter(Boolean))).map((d) => ({
+        value: d!,
+        label: d!,
+      })),
+    },
+    {
+      key: "month",
+      label: "Month",
+      options: monthOptions,
+      placeholder: "Select Month",
+      multi: false,
+      defaultValues: [selectedMonth],
+      mode: "custom" as const,
+      filterFn: () => true,
+    },
+  ]
+
+  return (
+    <DataTablePage
+      title="Lunch Register"
+      description={
+        activeTab === "summary"
+          ? "Monthly lunch surcharge summary by employee."
+          : activeTab === "daily"
+            ? "Daily lunch checklist register."
+            : activeTab === "leaderboard"
+              ? "Rankings of lunch attendance for the selected period."
+              : "Individual employee lunch calendar view."
+      }
+      icon={Utensils}
+      tabs={LUNCH_TABS}
+      activeTab={activeTab}
+      onTabChange={(t) => setActiveTab(t as LunchTab)}
+      stats={
+        activeTab === "summary" ? (
+          <StatGrid>
+            <StatCard
+              variant="compact"
+              title="Total Meals Registered"
+              value={totalMealsRegisteredMonth}
+              icon={Utensils}
+              iconBgColor="bg-blue-500/10"
+              iconColor="text-blue-500"
+            />
+            <StatCard
+              variant="compact"
+              title="Meal Cost (Unit)"
+              value={`₦${cost.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+              icon={Settings}
+              iconBgColor="bg-violet-500/10"
+              iconColor="text-violet-500"
+            />
+            <StatCard
+              variant="compact"
+              title="Surcharge (Unit)"
+              value={`₦${employeeSurcharge.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+              icon={Utensils}
+              iconBgColor="bg-amber-500/10"
+              iconColor="text-amber-500"
+            />
+            <StatCard
+              variant="compact"
+              title="Total Surcharges"
+              value={`₦${totalDeductionsMonth.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+              icon={Utensils}
+              iconBgColor="bg-emerald-500/10"
+              iconColor="text-emerald-500"
+            />
+          </StatGrid>
+        ) : undefined
+      }
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          {activeTab === "menus" && canEditHr && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditingMenu(null)
+                setOpenMenuBuilder(true)
+              }}
+            >
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">New Menu</span>
+            </Button>
+          )}
+
+          {/* Settings Dialog */}
+          {canEditHr && (
+            <LunchPriceScheduleSettingsDialog
+              openSettings={openSettings}
+              setOpenSettings={setOpenSettings}
+              handleSaveSettings={handleSaveSettings}
+              settingsForm={settingsForm}
+              setSettingsForm={setSettingsForm}
+              toggleFormWeekday={toggleFormWeekday}
+              loading={loading}
+            />
+          )}
+
+          {/* Export Report */}
+          <Button variant="outline" onClick={handleExportClick} size="sm">
+            <Download className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Export</span>
+          </Button>
+        </div>
+      }
+    >
+      {activeTab === "menus" && (
+        <div className="space-y-4">
+          <StatGrid>
+            <StatCard
+              variant="compact"
+              title="Menus Published"
+              value={menus.filter((m) => m.status !== "draft").length}
+              icon={Utensils}
+              iconBgColor="bg-blue-500/10"
+              iconColor="text-blue-500"
+            />
+            <StatCard
+              variant="compact"
+              title="Open for Voting"
+              value={menus.filter((m) => m.votingOpen).length}
+              icon={Vote}
+              iconBgColor="bg-emerald-500/10"
+              iconColor="text-emerald-500"
+            />
+            <StatCard
+              variant="compact"
+              title="Drafts"
+              value={menus.filter((m) => m.status === "draft").length}
+              icon={CalendarDays}
+              iconBgColor="bg-amber-500/10"
+              iconColor="text-amber-500"
+              className="hidden sm:block"
+            />
+            <StatCard
+              variant="compact"
+              title="Votes Cast"
+              value={menus.reduce((sum, m) => sum + m.votes.length, 0)}
+              icon={Users}
+              iconBgColor="bg-violet-500/10"
+              iconColor="text-violet-500"
+            />
+          </StatGrid>
+
+          <DataTable<AdminLunchMenu>
+            data={menus}
+            columns={menuColumns}
+            getRowId={(row) => row.id}
+            searchPlaceholder="Search a dish…"
+            searchFn={(row, q) => {
+              const needle = q.toLowerCase()
+              return (
+                row.groups.some((g) => g.options.some((o) => o.name.toLowerCase().includes(needle))) ||
+                getMenuStatusInfo(row).label.toLowerCase().includes(needle) ||
+                formatWATDate(row.date).toLowerCase().includes(needle)
+              )
+            }}
+            filters={menuFilters}
+            isLoading={fetchingMenus}
+            error={menusError}
+            onRetry={() => void loadMenus()}
+            viewToggle
+            contactsView
+            stickyToolbar
+            defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+            mobileRow={{
+              title: (row) =>
+                formatWATDate(row.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
+              subtitle: (row) => `${row.groups.map((g) => g.options.map((o) => o.name).join(", ")).join(" | ")}`,
+              trailing: (row) => {
+                const status = getMenuStatusInfo(row)
+                return <Badge className={cn("text-xs", status.tone)}>{status.label}</Badge>
+              },
+              detail: {
+                title: (row) =>
+                  `Lunch Menu: ${formatWATDate(row.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}`,
+                subtitle: (row) => {
+                  const status = getMenuStatusInfo(row)
+                  return row.votingOpen ? "Voting is currently open" : `Status: ${status.label}`
+                },
+                badges: (row) => {
+                  const status = getMenuStatusInfo(row)
+                  return <Badge className={cn("text-xs", status.tone)}>{status.label}</Badge>
+                },
+                fields: (row) => [
+                  {
+                    label: "Date",
+                    value: formatWATDate(row.date, {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    }),
+                  },
+                  { label: "Status", value: getMenuStatusInfo(row).label },
+                  { label: "Categories", value: `${row.groups.length} group(s)` },
+                  {
+                    label: "Menu Items",
+                    value:
+                      row.groups.map((g) => `${g.name}: ${g.options.map((o) => o.name).join(", ")}`).join("\n") ||
+                      "No items",
+                    fullWidth: true,
+                  },
+                ],
+                actions: (row) =>
+                  canEditHr
+                    ? [
+                        {
+                          label: "Edit Menu",
+                          icon: Pencil,
+                          onClick: () => {
+                            setEditingMenu(row)
+                            setOpenMenuBuilder(true)
+                          },
+                        },
+                      ]
+                    : [],
+              },
+            }}
+            cardRenderer={(row) => {
+              const status = getMenuStatusInfo(row)
+              return (
+                <div className="bg-card space-y-3 rounded-xl border p-4 text-xs transition-shadow hover:shadow-md">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {formatWATDate(row.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                    <Badge className={status.tone}>{status.label}</Badge>
+                  </div>
+                  <div className="text-muted-foreground line-clamp-2 text-xs">
+                    {row.groups.map((g) => g.options.map((o) => o.name).join(", ")).join(" | ")}
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-2 text-xs">
+                    <span className="text-muted-foreground">{row.votes.length} votes cast</span>
+                    <div className="flex items-center gap-1.5">
+                      {canShareMenu(row) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1 text-xs text-emerald-600"
+                          onClick={() => setShareMenu(row)}
+                        >
+                          <MessageCircle className="h-3 w-3" />
+                          Share
+                        </Button>
+                      )}
+                      {canEditHr && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingMenu(row)}>
+                          Edit
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            }}
+            expandable={{ render: (row) => <MenuVotesPanel menu={row} totalStaff={employees.length} /> }}
+            rowActions={
+              canEditHr
+                ? [
+                    {
+                      // Always offered. When votes exist the builder warns that
+                      // changing the dishes clears them, rather than the action
+                      // silently disappearing.
+                      label: "Edit menu",
+                      onClick: (row) => {
+                        setEditingMenu(row)
+                        setOpenMenuBuilder(true)
+                      },
+                    },
+                    {
+                      // The clock stays editable after votes exist — only rebuilding
+                      // the dishes is destructive. Past days are left alone.
+                      label: "Change deadline",
+                      hidden: (row) => row.date < todayDate,
+                      onClick: (row) => setDeadlineMenu(row),
+                    },
+                    {
+                      label: "Change someone's answer",
+                      onClick: (row) => setOverrideMenu(row),
+                    },
+                    {
+                      label: "Publish for voting",
+                      hidden: (row) => row.status === "published",
+                      onClick: (row) => void updateMenuStatus(row, "published"),
+                    },
+                    {
+                      // Only worth offering while voting is genuinely still open —
+                      // it closes itself at the deadline, so after that this would
+                      // just be a button that changes nothing anyone can see.
+                      label: "Close voting early",
+                      hidden: (row) => !row.votingOpen,
+                      onClick: (row) => void updateMenuStatus(row, "closed"),
+                    },
+                    {
+                      label: "Reopen voting",
+                      hidden: (row) => row.status !== "closed" || row.date < todayDate,
+                      onClick: (row) => void updateMenuStatus(row, "published"),
+                    },
+                    {
+                      // The everyday "this day is off" action: keeps the record,
+                      // drops the charges.
+                      label: "Cancel this day",
+                      hidden: (row) => Boolean(row.archived_at),
+                      onClick: (row) => setArchivingMenu(row),
+                    },
+                    {
+                      label: "Restore this day",
+                      hidden: (row) => !row.archived_at,
+                      onClick: (row) => void setArchived(row, false),
+                    },
+                    {
+                      label: "Delete permanently",
+                      variant: "destructive",
+                      onClick: (row) => setDeletingMenu(row),
+                    },
+                  ]
+                : []
+            }
+          />
+        </div>
+      )}
+
+      {activeTab === "daily" && (
+        <div className="space-y-4">
+          {/* Daily Stats Cards (Always Visible) */}
+          <StatGrid>
+            <StatCard
+              variant="compact"
+              title="Total Meals Registered"
+              value={ateUserIds.length}
+              icon={Utensils}
+              iconBgColor="bg-blue-500/10"
+              iconColor="text-blue-500"
+            />
+            <StatCard
+              variant="compact"
+              title="Meal Cost (Unit)"
+              value={`₦${cost.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+              icon={Settings}
+              iconBgColor="bg-violet-500/10"
+              iconColor="text-violet-500"
+            />
+            <StatCard
+              variant="compact"
+              title="Surcharge (Unit)"
+              value={`₦${employeeSurcharge.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+              icon={Utensils}
+              iconBgColor="bg-amber-500/10"
+              iconColor="text-amber-500"
+            />
+            <StatCard
+              variant="compact"
+              title="Total Surcharges"
+              value={`₦${(ateUserIds.length * employeeSurcharge).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+              icon={Utensils}
+              iconBgColor="bg-emerald-500/10"
+              iconColor="text-emerald-500"
+            />
+          </StatGrid>
+
+          {/* Date Navigator (Always Visible) */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm font-medium">Date</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => adjustDate(-1)}
+                    aria-label="Previous day"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Previous day</TooltipContent>
+              </Tooltip>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="border-input bg-background h-9 rounded-md border px-3 py-1.5 text-sm"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => adjustDate(1)}
+                    aria-label="Next day"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Next day</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+
+          {/* Content Block */}
+          {fetchingLogs ? (
+            <div className="p-4">
+              <RowsSkeleton rows={6} />
+            </div>
+          ) : !isEatingDay ? (
+            <div className="bg-muted/10 flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed p-16 text-center">
+              <Utensils className="text-muted-foreground/50 h-8 w-8" />
+              <span className="text-foreground text-sm font-semibold">No Lunch Scheduled</span>
+              <span className="text-muted-foreground max-w-sm text-xs">
+                {selectedDayName} is not configured as a scheduled lunch day. You can change this in settings (top
+                right) or navigate to another day using the selector above.
+              </span>
+            </div>
+          ) : (
+            <DataTable
+              data={dailyMappedRows}
+              columns={dailyColumns}
+              getRowId={(row) => row.id}
+              onProcessedDataChange={setProcessedDailyRows}
+              searchPlaceholder="Search staff name..."
+              searchFn={(row, q) => row.employee.full_name.toLowerCase().includes(q.toLowerCase())}
+              filters={dailyFilters.filter((f) => f.key !== "date")}
+              isLoading={false}
+              viewToggle
+              contactsView
+              stickyToolbar
+              defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+              mobileRow={{
+                title: (row) => row.employee.full_name,
+                subtitle: (row) => `${row.employee.department || "General"} · ${row.employee.employee_number}`,
+                trailing: (row) => renderDailyServed(row.employee.id),
+                detail: {
+                  title: (row) => row.employee.full_name,
+                  subtitle: (row) => row.employee.department || "General",
+                  badges: (row) => (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {renderDailyServed(row.employee.id)}
+                      {renderDailyMealChoice(row.employee.id)}
+                    </div>
+                  ),
+                  fields: (row) => [
+                    { label: "Staff Code", value: row.employee.employee_number },
+                    { label: "Department", value: row.employee.department || "General" },
+                    {
+                      label: "Deduction",
+                      value: ateUserIds.includes(row.employee.id)
+                        ? `₦${employeeSurcharge.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+                        : "—",
+                      copyable: false,
+                    },
+                  ],
+                  actions: (row) => {
+                    if (!canEditHr) return []
+                    if (dailyMenu) {
+                      return [{ label: "Change Choice", onClick: () => openDailyOverride(row.employee.id) }]
+                    }
+                    const hasEaten = ateUserIds.includes(row.employee.id)
+                    return [
+                      {
+                        label: hasEaten ? "Mark as Skipped" : "Mark as Served",
+                        variant: hasEaten ? ("outline" as const) : ("default" as const),
+                        onClick: () => void toggleEmployeeLunch(row.employee.id, !hasEaten),
+                      },
+                    ]
+                  },
+                },
+              }}
+              cardRenderer={(row) => (
+                <div className="bg-card flex h-full flex-col gap-3 rounded-xl border p-4 text-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{row.employee.full_name}</p>
+                      <p className="text-muted-foreground truncate">
+                        {row.employee.department || "General"} ·{" "}
+                        <span className="font-mono">{row.employee.employee_number}</span>
+                      </p>
+                    </div>
+                    {renderDailyServed(row.employee.id)}
+                  </div>
+                  <div className="grid gap-1.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">Meal</span>
+                      {renderDailyMealChoice(row.employee.id)}
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">Deduction</span>
+                      {renderDailyDeduction(row.employee.id)}
+                    </div>
+                  </div>
+                  <div className="mt-auto flex items-center justify-end gap-2 border-t pt-3">
+                    {!dailyMenu && <span className="text-muted-foreground">Served</span>}
+                    {renderDailyAction(row.employee.id)}
+                  </div>
+                </div>
+              )}
+            />
+          )}
+        </div>
+      )}
+
+      {activeTab === "summary" &&
+        (fetchingSummary ? (
+          <div className="p-4">
+            <RowsSkeleton rows={6} />
+          </div>
+        ) : (
+          <DataTable
+            data={summaryData}
+            columns={summaryColumns}
+            getRowId={(row) => row.user_id}
+            onProcessedDataChange={setProcessedSummaryData}
+            searchPlaceholder="Search staff name..."
+            searchFn={(row, q) => row.full_name.toLowerCase().includes(q.toLowerCase())}
+            filters={summaryFilters}
+            onFilterChange={(filters) => {
+              const newMonth = filters.month?.[0]
+              if (newMonth && newMonth !== selectedMonth) {
+                setSelectedMonth(newMonth)
+              }
+            }}
+            expandable={{
+              render: (r) => (
+                <EmployeeLunchExpandPanel
+                  row={r}
+                  selectedMonth={selectedMonth}
+                  rawLogs={rawLogs}
+                  eatingDays={eatingDays}
+                />
+              ),
+            }}
+            viewToggle
+            contactsView
+            stickyToolbar
+            defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+            mobileRow={{
+              title: (row) => row.full_name,
+              subtitle: (row) => `${row.department || "No department"} · Meals: ${row.lunch_count}`,
+              trailing: (row) => (
+                <span className="text-xs font-semibold">
+                  ₦{row.total_deduction.toLocaleString("en-US", { minimumFractionDigits: 0 })}
+                </span>
+              ),
+            }}
+            cardRenderer={(row) => (
+              <div className="bg-card space-y-3 rounded-xl border p-4 text-xs transition-shadow hover:shadow-md">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">{row.full_name}</p>
+                    <p className="text-muted-foreground text-xs">{row.department || "No department"}</p>
+                  </div>
+                  <Badge variant="outline">{row.lunch_count} meals</Badge>
+                </div>
+                <div className="flex items-center justify-between border-t pt-2">
+                  <span className="text-muted-foreground">Surcharge</span>
+                  <span className="text-sm font-semibold">
+                    ₦{row.total_deduction.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            )}
+            isLoading={false}
+          />
+        ))}
+
+      {activeTab === "leaderboard" && (
+        <div className="space-y-4">
+          {/* Inline controls matching LeaderboardView filters */}
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <Select
+              value={leaderboardPeriodMode}
+              onValueChange={(v) => setLeaderboardPeriodMode(v as "month" | "year" | "all")}
+            >
+              <SelectTrigger className="h-9 w-full sm:w-[130px]" aria-label="Cycle">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="month">Monthly</SelectItem>
+                <SelectItem value="year">Yearly</SelectItem>
+                <SelectItem value="all">All Time</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {leaderboardPeriodMode === "month" && (
+              <Select value={leaderboardMonth} onValueChange={setLeaderboardMonth}>
+                <SelectTrigger className="h-9 w-full sm:w-[180px]" aria-label="Month">
+                  <SelectValue placeholder="Select Month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {leaderboardPeriodMode === "year" && (
+              <Select value={leaderboardYear} onValueChange={setLeaderboardYear}>
+                <SelectTrigger className="h-9 w-full sm:w-[130px]" aria-label="Year">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((y) => (
+                    <SelectItem key={y} value={y}>
+                      {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            <div className={cn(leaderboardPeriodMode === "month" && "col-span-2 sm:col-span-1")}>
+              <Select value={selectedLeaderboardDept} onValueChange={setSelectedLeaderboardDept}>
+                <SelectTrigger className="h-9 w-full sm:w-[180px]" aria-label="Department">
+                  <SelectValue placeholder="All Departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Departments</SelectItem>
+                  {Array.from(new Set(employees.map((e) => e.department).filter(Boolean))).map((d) => (
+                    <SelectItem key={d} value={d!}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {fetchingLeaderboard ? (
+            <div className="p-4">
+              <RowsSkeleton rows={5} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {/* Metric 1: Most Lunch Meals Served */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Utensils className="h-4 w-4 text-emerald-500" />
+                    Most Meals Served
+                  </CardTitle>
+                  <p className="text-muted-foreground text-xs">Highest count of lunch meals logged</p>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <ScrollArea className="h-64">
+                    <div className="space-y-1 pr-3">
+                      {sortedLeaderboard.map((row, idx) => (
+                        <div
+                          key={row.user_id}
+                          className="hover:bg-muted/30 flex items-center justify-between gap-2 rounded px-1.5 py-1.5 text-sm"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={cn("w-6 shrink-0 justify-center px-0 text-xs", rankBadgeClass(idx))}
+                            >
+                              {idx + 1}
+                            </Badge>
+                            <div className="min-w-0">
+                              <div className="truncate text-xs font-semibold">{row.full_name}</div>
+                              <div className="text-muted-foreground truncate text-xs">
+                                {row.department || "General"}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="shrink-0 text-xs font-semibold text-emerald-600">
+                            {row.lunch_count} meals
+                          </span>
+                        </div>
+                      ))}
+                      {sortedLeaderboard.length === 0 && <EmptyState compact title="No data for this period" />}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              {/* Metric 2: Highest Surcharges */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Award className="h-4 w-4 text-red-500" />
+                    Highest Surcharges
+                  </CardTitle>
+                  <p className="text-muted-foreground text-xs">Highest total surcharges deducted</p>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <ScrollArea className="h-64">
+                    <div className="space-y-1 pr-3">
+                      {sortedLeaderboard.map((row, idx) => (
+                        <div
+                          key={row.user_id}
+                          className="hover:bg-muted/30 flex items-center justify-between gap-2 rounded px-1.5 py-1.5 text-sm"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={cn("w-6 shrink-0 justify-center px-0 text-xs", rankBadgeClass(idx))}
+                            >
+                              {idx + 1}
+                            </Badge>
+                            <div className="min-w-0">
+                              <div className="truncate text-xs font-semibold">{row.full_name}</div>
+                              <div className="text-muted-foreground truncate text-xs">
+                                {row.department || "General"}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="shrink-0 font-mono text-xs font-bold text-red-600">
+                            ₦{row.total_deduction.toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                      {sortedLeaderboard.length === 0 && <EmptyState compact title="No data for this period" />}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              {/* Metric 3: Least Meals Served */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Users className="h-4 w-4 text-blue-500" />
+                    Least Meals Served
+                  </CardTitle>
+                  <p className="text-muted-foreground text-xs">Lowest count of lunch meals logged</p>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <ScrollArea className="h-64">
+                    <div className="space-y-1 pr-3">
+                      {[...sortedLeaderboard].reverse().map((row, idx) => (
+                        <div
+                          key={row.user_id}
+                          className="hover:bg-muted/30 flex items-center justify-between gap-2 rounded px-1.5 py-1.5 text-sm"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={cn("w-6 shrink-0 justify-center px-0 text-xs", rankBadgeClass(idx))}
+                            >
+                              {idx + 1}
+                            </Badge>
+                            <div className="min-w-0">
+                              <div className="truncate text-xs font-semibold">{row.full_name}</div>
+                              <div className="text-muted-foreground truncate text-xs">
+                                {row.department || "General"}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="shrink-0 text-xs font-semibold text-amber-600">{row.lunch_count} meals</span>
+                        </div>
+                      ))}
+                      {sortedLeaderboard.length === 0 && <EmptyState compact title="No data for this period" />}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "calendar" &&
+        (fetchingSummary ? (
+          <div className="p-4">
+            <CalendarGridSkeleton />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Custom filters panel for Calendar view matching CalendarView controls */}
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="max-w-72 min-w-48 flex-1">
+                <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId}>
+                  <SelectTrigger className="bg-background border-input h-9 text-sm">
+                    <SelectValue placeholder="Select employee…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.map((e) => (
+                      <SelectItem key={e.id} value={e.id} className="text-xs">
+                        {e.full_name}
+                        <span className="text-muted-foreground ml-2 text-xs">({e.department || "General"})</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label="Previous month"
+                  onClick={() => adjustCalendarMonth(-1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="min-w-36 text-center text-sm font-medium">
+                  {formatWATDate(selectedMonth + "-01", { day: undefined, month: "long", year: "numeric" })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label="Next month"
+                  onClick={() => adjustCalendarMonth(1)}
+                  disabled={selectedMonth >= todayDate.substring(0, 7)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Calendar Grid Card matching attendance CalendarView exact UI styling */}
+            {!selectedEmployeeId ? (
+              <div className="text-muted-foreground py-16 text-center text-sm">
+                Select an employee to view their lunch calendar.
+              </div>
+            ) : (
+              <div className="bg-card text-card-foreground overflow-hidden rounded-lg border shadow-xs">
+                {/* Day-of-week headers */}
+                <div className="bg-muted/40 grid grid-cols-7 border-b">
+                  {DAY_HEADERS.map((d) => (
+                    <div key={d} className="text-muted-foreground py-2 text-center text-xs font-semibold">
+                      {d}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Calendar cells */}
+                <div className="grid grid-cols-7">
+                  {calendarCells.map((date, i) => {
+                    const isLastInRow = (i + 1) % 7 === 0
+                    if (!date) {
+                      return (
+                        <div
+                          key={`empty-${i}`}
+                          className={`bg-muted/20 min-h-16 border-b p-1 ${isLastInRow ? "" : "border-r"}`}
+                        />
+                      )
+                    }
+
+                    const dayLog = employeeSelectedLogs.find((log) => log.date === date)
+                    const hasEaten = Boolean(dayLog)
+                    const bg = hasEaten ? "bg-emerald-500/5 hover:bg-emerald-500/10" : "bg-background hover:bg-muted/10"
+
+                    return (
+                      <div
+                        key={date}
+                        className={`min-h-16 border-b p-1.5 text-xs transition-colors ${isLastInRow ? "" : "border-r"} ${bg}`}
+                      >
+                        <div className="text-muted-foreground mb-1 font-medium">{date.slice(8)}</div>
+                        {hasEaten ? (
+                          <>
+                            <div
+                              className="truncate leading-tight font-bold text-emerald-600"
+                              style={{ fontSize: "10px" }}
+                            >
+                              Served
+                            </div>
+                            <div className="text-muted-foreground leading-tight" style={{ fontSize: "10px" }}>
+                              Deducted: {formatNaira(dayLog?.employee_deduction ?? 0, 0)}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-muted-foreground/60 mt-1 leading-tight" style={{ fontSize: "10px" }}>
+                            —
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Legend matching attendance CalendarView exact UI styling */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge className="border-0 bg-emerald-500/10 text-xs text-emerald-500 hover:bg-emerald-500/10">
+                Served
+              </Badge>
+              <Badge className="border bg-gray-100 text-xs text-gray-400 hover:bg-gray-100">Skipped</Badge>
+            </div>
+          </div>
+        ))}
+      <AlertDialog open={archivingMenu !== null} onOpenChange={(open) => !open && setArchivingMenu(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Cancel lunch for{" "}
+              {archivingMenu
+                ? formatWATDate(archivingMenu.date, { weekday: "long", day: "numeric", month: "long" })
+                : ""}
+              ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {archivingMenu && archivingMenu.eatingCount > 0
+                ? `The day disappears from everyone's /lunch page and the ${archivingMenu.eatingCount} lunch ${archivingMenu.eatingCount === 1 ? "charge" : "charges"} for it are removed, so nobody is deducted. The votes are kept, so you can restore the day and the charges together if lunch goes ahead after all.`
+                : "The day disappears from everyone's /lunch page. Nobody is charged. You can restore it at any time."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                if (archivingMenu) void setArchived(archivingMenu, true)
+              }}
+            >
+              Cancel the day
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deletingMenu !== null} onOpenChange={(open) => !open && setDeletingMenu(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete the menu for{" "}
+              {deletingMenu ? formatWATDate(deletingMenu.date, { weekday: "long", day: "numeric", month: "long" }) : ""}
+              ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deletingMenu && deletingMenu.votes.length > 0
+                ? `${deletingMenu.votes.length} ${deletingMenu.votes.length === 1 ? "person has" : "people have"} already voted. This erases the menu, their votes and the lunch charges for good — there is no record left of who chose what. If you only need lunch called off, use "Cancel this day" instead; it removes the charges but keeps the record.`
+                : "This menu has no votes yet, so nothing else is affected."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault()
+                if (deletingMenu) void deleteMenu(deletingMenu)
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete menu"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <LunchDeadlineDialog
+        open={deadlineMenu !== null}
+        onOpenChange={(open) => !open && setDeadlineMenu(null)}
+        menu={deadlineMenu}
+        defaultDeadline={settings.voting_deadline || DEFAULT_LUNCH_SETTINGS.voting_deadline}
+        onSaved={() => void loadMenus()}
+      />
+
+      <LunchVoteOverrideDialog
+        open={overrideMenu !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOverrideMenu(null)
+            setOverrideUserId(null)
+          }
+        }}
+        menu={overrideMenu}
+        defaultUserId={overrideUserId}
+        employees={employees.map((e) => ({ id: e.id, full_name: e.full_name }))}
+        onSaved={() => {
+          void loadMenus()
+          void loadDateLogs(selectedDate)
+        }}
+      />
+
+      <LunchMenuViewersSheet
+        open={viewersMenu !== null}
+        onOpenChange={(open) => !open && setViewersMenu(null)}
+        menu={viewersMenu}
+        employees={employees}
+        onOverrideVote={(employeeId) => {
+          setOverrideUserId(employeeId)
+          setOverrideMenu(viewersMenu)
+        }}
+      />
+
+      <LunchMenuBuilderDialog
+        open={openMenuBuilder}
+        onOpenChange={setOpenMenuBuilder}
+        menu={editingMenu}
+        voteCount={editingMenu?.votes.length ?? 0}
+        defaultDate={selectedDate}
+        todayDate={todayDate}
+        defaultDeadline={settings.voting_deadline || DEFAULT_LUNCH_SETTINGS.voting_deadline}
+        onSaved={async ({ date, published }) => {
+          const loaded = await loadMenus()
+          if (published) offerWhatsAppShare(loaded.find((m) => m.date === date && !m.archived_at))
+        }}
+      />
+
+      <LunchShareDialog
+        open={shareMenu !== null}
+        onOpenChange={(open) => !open && setShareMenu(null)}
+        menu={shareMenu}
+        todayDate={todayDate}
+      />
+
+      <LunchExportDialog open={openExport} onOpenChange={setOpenExport} monthOptions={monthOptions} />
+      {activeTab === "reviews" && (
+        <div className="space-y-4">
+          <p className="text-muted-foreground text-xs">
+            Feedback is submitted anonymously — ratings and comments are never attributed to a staff member. Click on
+            any row to view written comments.
+          </p>
+          <DataTable<LunchReviewSummary>
+            data={reviews}
+            columns={reviewColumns}
+            getRowId={(row) => row.menu_id}
+            searchPlaceholder="Search dates or written comments..."
+            searchFn={(row, q) =>
+              row.date.toLowerCase().includes(q.toLowerCase()) ||
+              row.comments.some((c) => (c.comment || "").toLowerCase().includes(q.toLowerCase()))
+            }
+            filters={reviewFilters}
+            isLoading={reviewsLoading}
+            error={reviewsError}
+            onRetry={() => void loadReviews()}
+            viewToggle
+            contactsView
+            stickyToolbar
+            defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+            mobileRow={{
+              title: (row) =>
+                formatWATDate(row.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
+              subtitle: (row) =>
+                `${row.review_count} reviews · Avg Rating: ${row.average_rating ? row.average_rating.toFixed(1) : "N/A"} ★`,
+              trailing: (row) => (
+                <Badge variant="outline" className="text-xs">
+                  {row.average_rating ? `${row.average_rating.toFixed(1)} ★` : "No rating"}
+                </Badge>
+              ),
+            }}
+            cardRenderer={(row) => (
+              <div className="bg-card space-y-3 rounded-xl border p-4 text-xs transition-shadow hover:shadow-md">
+                <div className="flex items-start justify-between">
+                  <p className="text-sm font-semibold">
+                    {formatWATDate(row.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                  </p>
+                  <Badge variant="outline">
+                    {row.average_rating ? `${row.average_rating.toFixed(1)} ★` : "No rating"}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between border-t pt-2 text-xs">
+                  <span className="text-muted-foreground">{row.review_count} reviews</span>
+                  <span className="text-muted-foreground">{row.comments.length} comments</span>
+                </div>
+              </div>
+            )}
+            expandable={{
+              render: (row) => <FeedbackExpandPanel entry={row} />,
+            }}
+          />
+        </div>
+      )}
+    </DataTablePage>
+  )
+}
+
+/**
+ * Per-menu breakdown: the tally for every option with the staff behind it,
+ * plus anyone who has not voted yet on a menu that is still open.
+ */
+/**
+ * What the kitchen and Admin and HR actually need off a menu: how many portions
+ * of each dish to prepare, and who gets what. Deliberately not a copy of the
+ * staff poll — percentages and progress bars answer "what is winning", which
+ * is not a question anybody has once voting is done.
+ */
+type SortDir = "asc" | "desc"
+
+/** Clickable column header with a sort-direction indicator, matching the DataTable's own headers. */
+function SortHeader({
+  label,
+  active,
+  dir,
+  onClick,
+  align,
+}: {
+  label: string
+  active: boolean
+  dir: SortDir
+  onClick: () => void
+  align?: "right"
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "hover:text-foreground inline-flex items-center gap-1 transition-colors",
+        align === "right" && "flex-row-reverse"
+      )}
+    >
+      {label}
+      {active ? (
+        dir === "asc" ? (
+          <ArrowUp className="h-3 w-3" />
+        ) : (
+          <ArrowDown className="h-3 w-3" />
+        )
+      ) : (
+        <ArrowUpDown className="h-3 w-3 opacity-40" />
+      )}
+    </button>
+  )
+}
+
+// A stable color per dish name, so the same dish reads the same everywhere it's
+// badged (the menu's own count and each eater's meal) instead of one flat grey.
+const DISH_BADGE_COLORS = [
+  "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/10",
+  "border-blue-500/30 bg-blue-500/10 text-blue-600 hover:bg-blue-500/10",
+  "border-amber-500/30 bg-amber-500/10 text-amber-600 hover:bg-amber-500/10",
+  "border-violet-500/30 bg-violet-500/10 text-violet-600 hover:bg-violet-500/10",
+  "border-rose-500/30 bg-rose-500/10 text-rose-600 hover:bg-rose-500/10",
+  "border-cyan-500/30 bg-cyan-500/10 text-cyan-600 hover:bg-cyan-500/10",
+]
+
+function dishBadgeClass(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
+  return DISH_BADGE_COLORS[hash % DISH_BADGE_COLORS.length]
+}
+
+function MenuVotesPanel({ menu, totalStaff }: { menu: AdminLunchMenu; totalStaff: number }) {
+  const notEating = menu.tallies.find((t) => t.option_id === NOT_EATING_OPTION_ID)
+  const notEatingCount = notEating?.count ?? 0
+  const noAnswer = Math.max(totalStaff - menu.votes.length, 0)
+
+  // Each eater with their full combination, so a two-category day reads
+  // "Afang + Eba" per person instead of two disconnected lists.
+  const eatersRaw = menu.votes
+    .filter((vote) => vote.is_eating)
+    .map((vote) => ({
+      user_id: vote.user_id,
+      full_name: vote.full_name,
+      department: vote.department,
+      voted_at: vote.updated_at,
+      combo: menu.groups
+        .map((group) => group.options.find((o) => o.id === vote.selections[group.id])?.name)
+        .filter(Boolean)
+        .join(" + "),
+    }))
+
+  // Flattened prep tallies (all groups, with a category label), most-ordered first.
+  const prepRowsRaw = menu.groups.flatMap((group, index) =>
+    menu.tallies
+      .filter((t) => t.group_id === group.id && t.option_id !== NOT_EATING_OPTION_ID)
+      .map((t) => ({ ...t, category: menu.groups.length > 1 ? groupHeading(group, index) : null }))
+  )
+
+  // Latest vote first by default — that's the order an admin checking in on a
+  // day in progress actually wants.
+  const [eaterSort, setEaterSort] = useState<{ key: "name" | "department" | "meal" | "voted_at"; dir: SortDir }>({
+    key: "voted_at",
+    dir: "desc",
+  })
+
+  function toggleSort<T extends string>(current: { key: T; dir: SortDir }, key: T, defaultDir: SortDir) {
+    return current.key === key
+      ? { key, dir: (current.dir === "asc" ? "desc" : "asc") as SortDir }
+      : { key, dir: defaultDir }
+  }
+
+  const eaters = [...eatersRaw].sort((a, b) => {
+    const dir = eaterSort.dir === "asc" ? 1 : -1
+    switch (eaterSort.key) {
+      case "name":
+        return dir * a.full_name.localeCompare(b.full_name)
+      case "department":
+        return dir * (a.department || "").localeCompare(b.department || "")
+      case "meal":
+        return dir * a.combo.localeCompare(b.combo)
+      case "voted_at":
+        return dir * a.voted_at.localeCompare(b.voted_at)
+    }
+  })
+
+  const prepRows = [...prepRowsRaw].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+
+  if (menu.groups.length === 0) {
+    return <p className="text-muted-foreground text-xs">No dishes on this menu yet.</p>
+  }
+
+  const statusInfo = getMenuStatusInfo(menu)
+  const viewCount = menu.viewers?.length ?? 0
+  const stats = [
+    { label: "Opted in", value: menu.eatingCount, tone: "text-success" },
+    { label: "Opted out", value: notEatingCount, tone: "text-danger" },
+    { label: "No answer", value: noAnswer, tone: "text-warning" },
+    {
+      label: "Viewed",
+      value: viewCount,
+      suffix: `${totalStaff > 0 ? Math.round((viewCount / totalStaff) * 100) : 0}%`,
+      tone: "text-info",
+    },
+    { label: "Total staff", value: totalStaff, tone: "text-foreground" },
+  ]
+
+  return (
+    <div className="border-border/80 bg-card overflow-hidden rounded-xl border">
+      <div className="border-border bg-muted/40 flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-foreground text-sm font-semibold">
+            Menu for {formatWATDate(menu.date, { weekday: "long", day: "numeric", month: "short", year: "numeric" })}
+          </p>
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            {menu.eatingCount} {menu.eatingCount === 1 ? "meal" : "meals"} to prepare across {prepRows.length}{" "}
+            {prepRows.length === 1 ? "dish" : "dishes"}
+          </p>
+        </div>
+        <Badge className={cn("self-start sm:self-auto", statusInfo.tone)}>{statusInfo.label}</Badge>
+      </div>
+
+      {/* quick stats */}
+      <div className="border-border grid grid-cols-2 border-b sm:grid-cols-5">
+        {stats.map((stat) => (
+          <div key={stat.label} className="border-border px-4 py-3 not-last:border-r max-sm:odd:border-r">
+            <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">{stat.label}</p>
+            <p className={cn("mt-1 text-lg font-semibold tabular-nums", stat.tone)}>
+              {stat.value}
+              {stat.suffix && <span className="text-muted-foreground ml-1 text-xs font-normal">{stat.suffix}</span>}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-5 p-4 lg:p-5">
+        {/* 1 ── each dish with how many to prepare of it: a compact strip, so the
+            serving list below gets the full width */}
+        <section aria-label="Dishes to prepare">
+          <p className="text-muted-foreground pb-2 text-xs font-semibold tracking-wide uppercase">To prepare</p>
+          <div className="flex flex-wrap gap-2">
+            {prepRows.map((tally) => (
+              <div
+                key={tally.option_id}
+                className={cn(
+                  "bg-muted/35 flex max-w-full items-center gap-3 rounded-lg border px-3 py-2",
+                  tally.count === 0 && "opacity-60"
+                )}
+              >
+                <div className="min-w-0">
+                  {tally.category && (
+                    <p className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
+                      {tally.category}
+                    </p>
+                  )}
+                  <p className="text-sm leading-5">{tally.name}</p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "shrink-0 border-2 px-2.5 py-0.5 font-semibold tabular-nums",
+                    tally.count > 0 ? dishBadgeClass(tally.name) : "text-muted-foreground border-muted-foreground/20"
+                  )}
+                >
+                  {tally.count}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* 2 ── the serving list, as a table matching the admin attendance day table */}
+        <section className="min-w-0 space-y-1 overflow-x-auto" aria-label="Who gets what">
+          <p className="text-muted-foreground px-2 pb-1 text-xs font-semibold tracking-wide uppercase">
+            Who gets what{" "}
+            <span className="normal-case">
+              ({eaters.length} {eaters.length === 1 ? "person" : "people"})
+            </span>
+          </p>
+          {eaters.length === 0 ? (
+            <p className="text-muted-foreground px-2 text-xs">Nobody has chosen a meal yet.</p>
+          ) : (
+            <>
+              <div className="text-muted-foreground grid min-w-[560px] grid-cols-[40px_1fr_160px_1fr_130px] items-center gap-3 px-2 text-xs font-semibold uppercase">
+                <span>S/N</span>
+                <SortHeader
+                  label="Employee"
+                  active={eaterSort.key === "name"}
+                  dir={eaterSort.dir}
+                  onClick={() => setEaterSort((s) => toggleSort(s, "name", "asc"))}
+                />
+                <SortHeader
+                  label="Department"
+                  active={eaterSort.key === "department"}
+                  dir={eaterSort.dir}
+                  onClick={() => setEaterSort((s) => toggleSort(s, "department", "asc"))}
+                />
+                <SortHeader
+                  label="Meal"
+                  active={eaterSort.key === "meal"}
+                  dir={eaterSort.dir}
+                  onClick={() => setEaterSort((s) => toggleSort(s, "meal", "asc"))}
+                />
+                <span className="flex justify-end">
+                  <SortHeader
+                    label="Voted At"
+                    align="right"
+                    active={eaterSort.key === "voted_at"}
+                    dir={eaterSort.dir}
+                    onClick={() => setEaterSort((s) => toggleSort(s, "voted_at", "desc"))}
+                  />
+                </span>
+              </div>
+              {eaters.map((eater, index) => (
+                <div
+                  key={eater.user_id}
+                  className="hover:bg-muted/30 grid min-w-[560px] grid-cols-[40px_1fr_160px_1fr_130px] items-center gap-3 rounded px-2 py-1.5 text-sm"
+                >
+                  <span className="text-muted-foreground text-xs">{index + 1}</span>
+                  <span className="text-foreground truncate font-medium">{eater.full_name}</span>
+                  <span className="text-muted-foreground truncate text-xs">{eater.department || "General"}</span>
+                  <div>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "border-2 px-2.5 py-0.5 text-xs font-semibold",
+                        eater.combo ? dishBadgeClass(eater.combo) : "text-muted-foreground"
+                      )}
+                    >
+                      {eater.combo || "—"}
+                    </Badge>
+                  </div>
+                  <span className="text-muted-foreground text-right text-xs">
+                    {eater.voted_at ? formatWATTime(eater.voted_at) : "—"}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  )
+}
+
+function EmployeeLunchExpandPanel({
+  row,
+  selectedMonth,
+  rawLogs,
+  eatingDays,
+}: {
+  row: LunchSummaryRow
+  selectedMonth: string
+  rawLogs: LunchRawLog[]
+  eatingDays: string[]
+}) {
+  const employeeLogs = rawLogs.filter((log) => log.user_id === row.user_id)
+
+  // Build calendar cells (dates) for this month
+  const cells = buildCalendarCells(selectedMonth).filter(Boolean) as string[]
+  const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+  // Filter days to show only eating days
+  const visibleCells = cells.filter((dateStr) => {
+    const d = new Date(dateStr)
+    const dayName = daysOfWeek[d.getDay()]
+    return eatingDays.includes(dayName)
+  })
+
+  // Format day short: e.g. "Mon, Jul 13"
+  function formatDayShort(dateString: string) {
+    const d = new Date(dateString)
+    return d.toLocaleDateString("en-NG", { timeZone: "Africa/Lagos", weekday: "short", month: "short", day: "numeric" })
+  }
+
+  const served = employeeLogs.length
+  const skipped = visibleCells.filter((d) => !employeeLogs.some((l) => l.date === d)).length
+  const totals = employeeLogs.reduce(
+    (sum, log) => ({
+      cost: sum.cost + Number(log.cost),
+      subsidy: sum.subsidy + Number(log.company_subsidy),
+      surcharge: sum.surcharge + Number(log.employee_deduction),
+    }),
+    { cost: 0, subsidy: 0, surcharge: 0 }
+  )
+  const grid = "grid grid-cols-[minmax(120px,1.2fr)_90px_repeat(3,minmax(100px,1fr))] items-center gap-3"
+
+  return (
+    <div className="border-border/80 bg-card overflow-hidden rounded-xl border">
+      <div className="border-border bg-muted/40 flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-foreground text-sm font-semibold">
+            {row.full_name} · {formatWATDate(`${selectedMonth}-01`, { month: "long", year: "numeric" })}
+          </p>
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            {row.department || "No department"}
+            {row.employee_number ? ` · ${row.employee_number}` : ""}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="bg-success/15 text-success">{served} served</Badge>
+          <Badge variant="outline" className="font-normal">
+            {skipped} skipped
+          </Badge>
+          <Badge className="bg-danger/15 text-danger">Surcharge {formatNaira(totals.surcharge)}</Badge>
+        </div>
+      </div>
+
+      {visibleCells.length === 0 ? (
+        <p className="text-muted-foreground p-4 text-sm">No lunch days are set up for this month.</p>
+      ) : (
+        <div className="overflow-x-auto p-4 lg:p-5">
+          <div className="min-w-[560px]">
+            <div
+              className={cn(
+                grid,
+                "text-muted-foreground border-b px-2 pb-2 text-xs font-semibold tracking-wide uppercase"
+              )}
+            >
+              <span>Day</span>
+              <span>Status</span>
+              <span className="text-right">Meal price</span>
+              <span className="text-right">Company subsidy</span>
+              <span className="text-right">Employee surcharge</span>
+            </div>
+            <div className="divide-border max-h-[320px] divide-y overflow-y-auto">
+              {visibleCells.map((dateStr) => {
+                const log = employeeLogs.find((l) => l.date === dateStr)
+                return (
+                  <div key={dateStr} className={cn(grid, "hover:bg-muted/30 px-2 py-2 text-sm transition-colors")}>
+                    <span className={cn("font-medium", !log && "text-muted-foreground")}>
+                      {formatDayShort(dateStr)}
+                    </span>
+                    <div>
+                      {log ? (
+                        <Badge className="bg-success/15 text-success">Served</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground font-normal">
+                          Skipped
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="text-muted-foreground text-right font-mono text-xs">
+                      {log ? formatNaira(log.cost) : "—"}
+                    </span>
+                    <span className="text-success text-right font-mono text-xs">
+                      {log ? formatNaira(log.company_subsidy) : "—"}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-right font-mono text-xs",
+                        log ? "text-danger font-semibold" : "text-muted-foreground"
+                      )}
+                    >
+                      {log ? formatNaira(log.employee_deduction) : "—"}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className={cn(grid, "border-t px-2 pt-2.5 text-sm font-semibold")}>
+              <span>Month total</span>
+              <span className="text-muted-foreground text-xs font-normal">{served} meals</span>
+              <span className="text-right font-mono text-xs">{formatNaira(totals.cost)}</span>
+              <span className="text-success text-right font-mono text-xs">{formatNaira(totals.subsidy)}</span>
+              <span className="text-danger text-right font-mono text-xs">{formatNaira(totals.surcharge)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -1,0 +1,171 @@
+import { createClient } from "@/lib/supabase/server"
+import { getServiceRoleClientOrFallback } from "@/lib/supabase/admin"
+import { requireDeptScope } from "@/lib/dept/require-dept-scope"
+import { normalizeDepartmentName } from "@/shared/departments"
+import { expandDepartmentScopeForQuery } from "@/lib/admin/rbac"
+import { listAssignableProfiles } from "@/lib/workforce/assignment-policy"
+import { AdminTasksContent, type employee, type UserProfile } from "@/app/admin/tasks/management/admin-tasks-content"
+import type { Task, TaskPersonSummary } from "@/types/task"
+import { withSeriesFrequency } from "@/lib/tasks/series-links"
+
+export const metadata: Metadata = { title: "Dept Tasks" }
+import type { Metadata } from "next"
+
+type GoalFilterOption = { id: string; title: string }
+type GoalRow = { id: string; title: string }
+
+interface DeptTasksPageProps {
+  params: Promise<{ dept_id: string }>
+  searchParams?: Promise<{ goal_id?: string }>
+}
+
+export default async function DeptTasksPage({ params, searchParams }: DeptTasksPageProps) {
+  const { dept_id } = await params
+  const resolvedSearchParams = await searchParams
+  const scope = await requireDeptScope(dept_id)
+
+  const supabase = await createClient()
+  const dataClient = getServiceRoleClientOrFallback(supabase)
+
+  const [{ data: authData }, { data: isMd }] = await Promise.all([supabase.auth.getUser(), supabase.rpc("is_md")])
+  const userId = authData.user?.id ?? scope.userId
+
+  const deptName = normalizeDepartmentName(scope.deptName)
+  const expandedDepts = expandDepartmentScopeForQuery([deptName])
+
+  const userProfile: UserProfile = {
+    id: userId,
+    role: scope.role,
+    department: deptName,
+    is_department_lead: true,
+    lead_departments: expandedDepts,
+    managed_departments: expandedDepts,
+    is_global_task_assigner: false,
+    is_md: isMd === true,
+  }
+
+  // Everyone who has ever been in this department, former staff included, so their tasks stay visible.
+  const { data: deptProfileRows } = await dataClient.from("profiles").select("id").in("department", expandedDepts)
+  const deptProfileIds = ((deptProfileRows || []) as Array<{ id: string }>).map((row) => row.id)
+
+  // Narrow in the database to what the filter below keeps, so the page no longer reads every task in the
+  // company. `ilike` without wildcards is a case-insensitive match, as normalizeDepartmentName is.
+  const quote = (value: string) => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
+  const taskScopeFilter = [
+    ...expandedDepts.map((name) => `department.ilike.${quote(name)}`),
+    ...(deptProfileIds.length > 0 ? [`assigned_to.in.(${deptProfileIds.join(",")})`] : []),
+    `assigned_to.eq.${userId}`,
+  ].join(",")
+
+  const [tasksResult, employeeResult] = await Promise.all([
+    dataClient
+      .from("tasks")
+      .select("*")
+      .eq("is_archived", false)
+      .neq("category", "weekly_action")
+      .or(taskScopeFilter)
+      .order("created_at", { ascending: false }),
+    listAssignableProfiles(dataClient, {
+      select:
+        "id, first_name, last_name, company_email, department, employment_status, is_department_lead, lead_departments",
+      departmentScope: expandedDepts,
+      allowLegacyNullStatus: true,
+    }),
+  ])
+
+  const rawTasks = await withSeriesFrequency(dataClient, (tasksResult.data || []) as Task[])
+
+  const profileIds = new Set<string>()
+  const goalIds = new Set<string>()
+  const kpiIds = new Set<string>()
+  const projectIds = new Set<string>()
+
+  rawTasks.forEach((t) => {
+    if (t.assigned_to) profileIds.add(t.assigned_to)
+    if (t.assigned_by) profileIds.add(t.assigned_by)
+    if (t.created_by) profileIds.add(t.created_by)
+    if (t.reviewed_by) profileIds.add(t.reviewed_by)
+    if (t.goal_id) goalIds.add(t.goal_id)
+    if (t.kpi_id) kpiIds.add(t.kpi_id)
+    if (t.project_id) projectIds.add(t.project_id)
+  })
+
+  const [profilesRes, goalsRes, kpisRes, projectsRes, allProjectsRes] = await Promise.all([
+    profileIds.size > 0
+      ? dataClient.from("profiles").select("id, first_name, last_name, department").in("id", Array.from(profileIds))
+      : { data: [] },
+    goalIds.size > 0
+      ? dataClient.from("goals_objectives").select("id, title").in("id", Array.from(goalIds))
+      : { data: [] },
+    kpiIds.size > 0
+      ? dataClient
+          .from("corporate_kpis")
+          .select("id, measure, strategic_objective, strategic_priority")
+          .in("id", Array.from(kpiIds))
+      : { data: [] },
+    projectIds.size > 0
+      ? dataClient.from("projects").select("id, project_name").in("id", Array.from(projectIds))
+      : { data: [] },
+    dataClient.from("projects").select("id, project_name, status").order("project_name", { ascending: true }),
+  ])
+
+  const profileMap = new Map<string, TaskPersonSummary>(
+    ((profilesRes.data || []) as TaskPersonSummary[]).map((p) => [p.id, p])
+  )
+  const goalMap = new Map<string, string>(
+    ((goalsRes.data || []) as Array<{ id: string; title: string }>).map((g) => [g.id, g.title])
+  )
+  type KpiInfo = { id: string; measure: string; strategic_objective: string; strategic_priority: string }
+  const kpiMap = new Map<string, KpiInfo>(((kpisRes.data || []) as KpiInfo[]).map((k) => [k.id, k]))
+  const projectMap = new Map<string, string>(
+    ((projectsRes.data || []) as Array<{ id: string; project_name: string }>).map((p) => [p.id, p.project_name])
+  )
+
+  const tasksWithUsers = rawTasks.map((task) => {
+    const copy: Task = { ...task }
+    if (task.assigned_to) copy.assigned_to_user = profileMap.get(task.assigned_to)
+    if (task.assigned_by) copy.assigned_by_user = profileMap.get(task.assigned_by)
+    if (task.created_by) copy.created_by_user = profileMap.get(task.created_by)
+    if (task.reviewed_by) copy.reviewed_by_user = profileMap.get(task.reviewed_by)
+    if (task.goal_id) copy.goal_title = goalMap.get(task.goal_id) || null
+    if (task.project_id) copy.project_name = projectMap.get(task.project_id) || null
+    if (task.kpi_id) {
+      const kpi = kpiMap.get(task.kpi_id)
+      if (kpi) {
+        copy.kpi_measure = kpi.measure
+        copy.kpi_pillar = kpi.strategic_priority
+        copy.kpi_objective = kpi.strategic_objective
+        if (!copy.goal_title) {
+          copy.goal_title = kpi.strategic_objective
+        }
+      }
+    }
+    return copy
+  })
+
+  // The query above already narrows to this dept; this keeps the exact rules (aliases, individual tasks).
+  const scopedTokens = new Set(expandedDepts.map((d) => normalizeDepartmentName(d)))
+  const filteredTasks = tasksWithUsers
+    .filter((t) => String(t.source_type || "") !== "action_item")
+    .filter((task) => {
+      if (task.department && scopedTokens.has(normalizeDepartmentName(task.department))) return true
+      if (
+        task.assigned_to_user?.department &&
+        scopedTokens.has(normalizeDepartmentName(task.assigned_to_user.department))
+      )
+        return true
+      if (task.assignment_type === "individual" && task.assigned_to === userId) return true
+      return false
+    })
+
+  return (
+    <AdminTasksContent
+      initialTasks={filteredTasks}
+      initialemployee={(employeeResult.data || []) as employee[]}
+      initialDepartments={[deptName]}
+      initialProjects={(allProjectsRes.data || []) as Array<{ id: string; project_name: string; status?: string }>}
+      userProfile={userProfile}
+      initialGoalId={resolvedSearchParams?.goal_id || ""}
+    />
+  )
+}

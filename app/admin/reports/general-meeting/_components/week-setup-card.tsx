@@ -1,0 +1,682 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import { formatWATDateTime } from "@/lib/utils/date"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { Calendar, ChevronDown, ChevronUp, Loader2, Lock, Plus, ShieldCheck, Unlock } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getCurrentOfficeWeek } from "@/lib/meeting-week"
+import { getDefaultMeetingDateIso } from "@/lib/weekly-report-lock"
+import { QUERY_KEYS } from "@/lib/query-keys"
+import { normalizeDepartmentName } from "@/shared/departments"
+import { isAssignableEmploymentStatus } from "@/lib/workforce/assignment-policy"
+import { apiFetch } from "@/lib/api-client"
+import { useAdminWeeklyReportLockState } from "@/hooks/use-weekly-report-lock"
+import { depsChanged } from "@/lib/utils/deps-changed"
+import { LinesSkeleton } from "@/components/skeletons/section-skeletons"
+
+type EmployeeOption = {
+  id: string
+  full_name: string
+  department: string
+  employment_status?: string | null
+}
+
+type OfficeYearRow = { year: number; anchor_day: number; is_locked: boolean }
+type KssPresenterType = "employee" | "visitor"
+const EXTERNAL_VISITOR_DEPARTMENT = "Guest"
+
+function getInitialOfficeWeek() {
+  const now = new Date()
+  const current = getCurrentOfficeWeek()
+  if (now.getDay() === 0) {
+    // Sunday — advance to next week since that's when you prepare
+    const next = new Date(now)
+    next.setDate(next.getDate() + 1)
+    return getCurrentOfficeWeek(next)
+  }
+  return current
+}
+
+export function WeekSetupCard() {
+  const [initialWeek] = useState(getInitialOfficeWeek)
+  const currentOfficeWeek = getCurrentOfficeWeek()
+  const queryClient = useQueryClient()
+  const currentYear = new Date().getFullYear()
+
+  const [weekNumber, setWeekNumber] = useState(initialWeek.week)
+  const [yearNumber, setYearNumber] = useState(initialWeek.year)
+  const [meetingDateInput, setMeetingDateInput] = useState(
+    getDefaultMeetingDateIso(currentOfficeWeek.week, currentOfficeWeek.year)
+  )
+  const [meetingTimeInput, setMeetingTimeInput] = useState("08:30")
+  const [meetingGraceHours, setMeetingGraceHours] = useState(24)
+  const [kssDepartmentInput, setKssDepartmentInput] = useState("none")
+  const [kssPresenterType, setKssPresenterType] = useState<KssPresenterType>("employee")
+  const [kssPresenterIdInput, setKssPresenterIdInput] = useState("none")
+  const [kssPresenterNameInput, setKssPresenterNameInput] = useState("")
+  const [savingMeetingWindow, setSavingMeetingWindow] = useState(false)
+  const [showWeekSetup, setShowWeekSetup] = useState(false)
+  const [showYearConfig, setShowYearConfig] = useState(false)
+
+  const weekOptions = useMemo(() => Array.from({ length: 53 }, (_, index) => index + 1), [])
+  const yearOptions = useMemo(
+    () => [currentOfficeWeek.year - 1, currentOfficeWeek.year, currentOfficeWeek.year + 1, currentOfficeWeek.year + 2],
+    [currentOfficeWeek.year]
+  )
+
+  const { data: employees = [] } = useQuery({
+    queryKey: QUERY_KEYS.generalMeetingWeekSetupEmployees(),
+    queryFn: async (): Promise<EmployeeOption[]> => {
+      const res = await apiFetch("/api/admin/reports/week-setup/employees", { cache: "no-store" })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "Failed to load employees")
+      const json = await res.json()
+      return json.data as EmployeeOption[]
+    },
+  })
+
+  // "Guest" is reserved for visitor presenters and is assigned automatically on
+  // save — it must never appear as a selectable host department for employees.
+  const departmentOptions = useMemo(
+    () =>
+      Array.from(new Set(employees.map((employee) => employee.department)))
+        .filter((department) => department !== EXTERNAL_VISITOR_DEPARTMENT)
+        .sort((a, b) => a.localeCompare(b)),
+    [employees]
+  )
+
+  const presenterOptions = useMemo(
+    () =>
+      employees
+        .filter(
+          (employee) =>
+            normalizeDepartmentName(employee.department) === normalizeDepartmentName(kssDepartmentInput) &&
+            (isAssignableEmploymentStatus(employee.employment_status, { allowLegacyNullStatus: false }) ||
+              employee.id === kssPresenterIdInput)
+        )
+        .sort((a, b) => a.full_name.localeCompare(b.full_name)),
+    [employees, kssDepartmentInput, kssPresenterIdInput]
+  )
+
+  const { data: lockState } = useAdminWeeklyReportLockState(weekNumber, yearNumber)
+  const computedDeadlineLabel = useMemo(() => {
+    if (!lockState?.meetingDate) return null
+    const [year, month, day] = lockState.meetingDate.split("-").map(Number)
+    if (!year || !month || !day) return null
+    const base = new Date(year, month - 1, day, 0, 0, 0, 0)
+    base.setHours(base.getHours() + (lockState.graceHours || 0))
+    return formatWATDateTime(base)
+  }, [lockState])
+
+  const { data: weekSetupData } = useQuery({
+    queryKey: QUERY_KEYS.meetingWeekSetup(weekNumber, yearNumber),
+    queryFn: async () => {
+      const res = await apiFetch(`/api/admin/reports/week-setup?week=${weekNumber}&year=${yearNumber}`, {
+        cache: "no-store",
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "Failed to load week setup")
+      return res.json()
+    },
+  })
+
+  const isWeekSetupLocked = useMemo(() => {
+    if (!lockState) return false
+    return !lockState.canMutate
+  }, [lockState])
+
+  // Seed date and grace hours from the week's lock state — adjusted during render, not in an effect.
+  const [seededLock, setSeededLock] = useState<readonly unknown[] | null>(null)
+  const seededLockNext = [lockState, weekNumber, yearNumber] as const
+  if (depsChanged(seededLock, seededLockNext)) {
+    setSeededLock(seededLockNext)
+    if (lockState) {
+      setMeetingDateInput(lockState.meetingDate || getDefaultMeetingDateIso(weekNumber, yearNumber))
+      setMeetingGraceHours(lockState.graceHours || 24)
+    }
+  }
+
+  // Seed the KSS/time inputs from the week's setup — adjusted during render, not in an effect.
+  const [seededSetup, setSeededSetup] = useState<readonly unknown[] | null>(null)
+  const seededSetupNext = [weekSetupData] as const
+  if (depsChanged(seededSetup, seededSetupNext)) {
+    setSeededSetup(seededSetupNext)
+    if (weekSetupData) {
+      setMeetingTimeInput(weekSetupData.meetingTime || "08:30")
+      setKssDepartmentInput(weekSetupData.kssDepartment || "none")
+      setKssPresenterIdInput(weekSetupData.kssPresenterId || "none")
+      setKssPresenterNameInput(weekSetupData.kssPresenterName || "")
+      setKssPresenterType(
+        weekSetupData.kssPresenterId && weekSetupData.kssPresenterId !== "none" ? "employee" : "visitor"
+      )
+    }
+  }
+
+  const tuesdayIso = useMemo(() => {
+    if (!weekSetupData?.mondayDateIso) return null
+    const d = new Date(`${weekSetupData.mondayDateIso}T00:00:00`)
+    d.setDate(d.getDate() + 1)
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, "0")
+    const dd = String(d.getDate()).padStart(2, "0")
+    return `${yyyy}-${mm}-${dd}`
+  }, [weekSetupData?.mondayDateIso])
+
+  const saveMeetingWindow = async () => {
+    if (!meetingDateInput) {
+      toast.error("Meeting date is required")
+      return
+    }
+    if (!meetingTimeInput) {
+      toast.error("Meeting time is required")
+      return
+    }
+    if (meetingGraceHours < 0 || meetingGraceHours > 24) {
+      toast.error("Grace hours must be between 0 and 24")
+      return
+    }
+    const normalizedVisitorName = kssPresenterNameInput.trim()
+    const resolvedPresenterId = kssPresenterType === "employee" ? kssPresenterIdInput : "none"
+    const resolvedPresenterName = kssPresenterType === "visitor" ? normalizedVisitorName : ""
+
+    const resolvedDepartment =
+      kssDepartmentInput === "none" && kssPresenterType === "visitor" ? EXTERNAL_VISITOR_DEPARTMENT : kssDepartmentInput
+
+    if (resolvedDepartment === "none") {
+      toast.error("KSS host department is required for employee presenter")
+      return
+    }
+    setSavingMeetingWindow(true)
+    try {
+      const [meetingDateResponse, kssResult] = await Promise.all([
+        apiFetch("/api/reports/meeting-date", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            meetingWeek: weekNumber,
+            meetingYear: yearNumber,
+            meetingDate: meetingDateInput,
+            meetingTime: meetingTimeInput,
+          }),
+        }),
+        weekSetupData?.rosterId
+          ? apiFetch("/api/reports/kss-roster", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: weekSetupData.rosterId,
+                department: resolvedDepartment,
+                presenterId: resolvedPresenterId === "none" ? null : resolvedPresenterId,
+                presenterName: resolvedPresenterName || null,
+                isActive: true,
+              }),
+            })
+          : apiFetch("/api/reports/kss-roster", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                meetingWeek: weekNumber,
+                meetingYear: yearNumber,
+                department: resolvedDepartment,
+                presenterId: resolvedPresenterId === "none" ? null : resolvedPresenterId,
+                presenterName: resolvedPresenterName || null,
+              }),
+            }),
+      ])
+
+      const meetingDatePayload = await meetingDateResponse.json().catch(() => ({}))
+      if (!meetingDateResponse.ok) {
+        throw new Error(meetingDatePayload.error || "Failed to save meeting date")
+      }
+
+      const kssPayload = await kssResult.json().catch(() => ({}))
+      if (!kssResult.ok) {
+        throw new Error(kssPayload.error || "Failed to save KSS setup")
+      }
+
+      const windowRes = await apiFetch("/api/admin/reports/week-setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          weekNumber,
+          yearNumber,
+          meetingDate: meetingDateInput,
+          meetingTime: meetingTimeInput,
+          graceHours: meetingGraceHours,
+        }),
+      })
+      if (!windowRes.ok) {
+        throw new Error((await windowRes.json().catch(() => null))?.error || "Failed to save meeting window")
+      }
+
+      toast.success("Week setup saved")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.adminWeeklyReportLockState(weekNumber, yearNumber) }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.meetingWeekSetup(weekNumber, yearNumber) }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.kssRosterTable() }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.kssDocumentsTable() }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.kssSelectedWeekLock(weekNumber, yearNumber) }),
+      ])
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to save week setup")
+    } finally {
+      setSavingMeetingWindow(false)
+    }
+  }
+
+  // ── Office Year Config ──────────────────────────────────────────────────────
+
+  const { data: yearRows = [], isLoading: yearConfigLoading } = useQuery<OfficeYearRow[]>({
+    queryKey: QUERY_KEYS.officeYearConfig(),
+    queryFn: async () => {
+      const res = await apiFetch("/api/reports/office-year-config")
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Failed to load")
+      return json.data
+    },
+  })
+
+  const [newYear, setNewYear] = useState(currentYear + 1)
+  const [newDay, setNewDay] = useState(12)
+  const [editingYear, setEditingYear] = useState<number | null>(null)
+  const [editDay, setEditDay] = useState(12)
+
+  const saveYearMutation = useMutation({
+    mutationFn: async ({ year, anchor_day }: { year: number; anchor_day: number }) => {
+      const res = await apiFetch("/api/reports/office-year-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year, anchor_day }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Failed to save")
+      return json.data
+    },
+    onSuccess: (_data, variables) => {
+      toast.success(`Week 1 for ${variables.year} set to January ${variables.anchor_day}`)
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.officeYearConfig() })
+      setEditingYear(null)
+    },
+    onError: (err: Error) => {
+      toast.error(err.message)
+    },
+  })
+
+  const existingYears = new Set(yearRows.map((r) => r.year))
+  const canAddNew = !existingYears.has(newYear)
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <Calendar className="text-muted-foreground h-5 w-5" />
+          <CardTitle className="text-base">{`Week Setup: W${weekNumber}, ${yearNumber}`}</CardTitle>
+          {lockState?.hasOverrideRole && (
+            <Badge className="gap-1 bg-emerald-600 text-white hover:bg-emerald-600">
+              <ShieldCheck className="h-3 w-3" />
+              Override Active
+            </Badge>
+          )}
+          {!lockState?.hasOverrideRole && lockState?.unlockUntil && !lockState?.isLocked && (
+            <Badge variant="secondary" className="gap-1">
+              <Unlock className="h-3 w-3" />
+              Temporarily Unlocked
+            </Badge>
+          )}
+          {lockState?.isLocked && (
+            <Badge variant="secondary" className="gap-1">
+              <Lock className="h-3 w-3" />
+              Locked
+            </Badge>
+          )}
+        </div>
+        <CardDescription>
+          Source of truth for reminders, meeting mail, KSS, Minutes of Meeting, Action Points, and the weekly report
+          lock window.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {lockState && (
+          <div className="bg-muted/40 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs">
+            <span className="font-medium">{`Meeting date: ${lockState.meetingDate}`}</span>
+            <span className="text-muted-foreground">{`Grace window: ${lockState.graceHours}h`}</span>
+            <span className="text-muted-foreground">{`Deadline: ${computedDeadlineLabel || formatWATDateTime(lockState.lockDeadline)}`}</span>
+            {lockState.hasOverrideRole && (
+              <span className="text-success">
+                Your developer/super-admin role can still create, update, and delete after the grace period.
+              </span>
+            )}
+            {!lockState.hasOverrideRole && lockState.unlockUntil && !lockState.isLocked && (
+              <span className="text-warning">This week is open through a temporary unlock window.</span>
+            )}
+            {!lockState.hasOverrideRole && lockState.isLocked && (
+              <span className="text-muted-foreground">This week is read-only because the grace period has ended.</span>
+            )}
+          </div>
+        )}
+
+        {/* ── Week Setup Fields (collapsible) ────────────────────────────────── */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowWeekSetup(!showWeekSetup)}
+            className="text-muted-foreground hover:text-foreground flex w-full items-center justify-between text-sm font-medium transition-colors"
+          >
+            <span>Week Setup Fields</span>
+            {showWeekSetup ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        </div>
+
+        {showWeekSetup && (
+          <div className="space-y-4">
+            {weekSetupData?.isMondayHoliday && (
+              <div className="border-warning/30 bg-warning/10 text-warning flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold">⚠️ Public Holiday Notice:</span>
+                  <span>
+                    Monday ({weekSetupData.mondayDateIso}) is {weekSetupData.mondayHolidayName}.
+                  </span>
+                </div>
+                {tuesdayIso && meetingDateInput !== tuesdayIso && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="text-warning border-warning/40 h-6 text-xs hover:bg-amber-100"
+                    onClick={() => setMeetingDateInput(tuesdayIso)}
+                    disabled={isWeekSetupLocked}
+                  >
+                    Shift to Tuesday ({tuesdayIso})
+                  </Button>
+                )}
+              </div>
+            )}
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7 xl:items-end">
+              <div className="w-full max-w-[160px]">
+                <Label className="mb-1.5 block text-xs font-semibold">Week</Label>
+                <Select value={String(weekNumber)} onValueChange={(value) => setWeekNumber(Number(value))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {weekOptions.map((week) => (
+                      <SelectItem key={week} value={String(week)}>
+                        Week {week}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full max-w-[140px]">
+                <Label className="mb-1.5 block text-xs font-semibold">Year</Label>
+                <Select value={String(yearNumber)} onValueChange={(value) => setYearNumber(Number(value))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {yearOptions.map((year) => (
+                      <SelectItem key={year} value={String(year)}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full max-w-[220px]">
+                <Label className="mb-1.5 block text-xs font-semibold">Actual Meeting Date</Label>
+                <Input
+                  type="date"
+                  value={meetingDateInput}
+                  onChange={(event) => setMeetingDateInput(event.target.value)}
+                  disabled={isWeekSetupLocked}
+                />
+              </div>
+              <div className="w-full max-w-[160px]">
+                <Label className="mb-1.5 block text-xs font-semibold">Meeting Time</Label>
+                <Input
+                  type="time"
+                  value={meetingTimeInput}
+                  onChange={(event) => setMeetingTimeInput(event.target.value)}
+                  disabled={isWeekSetupLocked}
+                />
+              </div>
+              <div className="w-full max-w-[180px]">
+                <Label className="mb-1.5 block text-xs font-semibold">Grace Hours After Meeting</Label>
+                <Input
+                  type="number"
+                  value={meetingGraceHours}
+                  onChange={(event) => setMeetingGraceHours(parseInt(event.target.value, 10) || 0)}
+                  min={0}
+                  max={24}
+                  disabled={isWeekSetupLocked}
+                />
+              </div>
+              <div className="w-full max-w-[180px]">
+                <Label className="mb-1.5 block text-xs font-semibold">Presenter Type</Label>
+                <Select
+                  value={kssPresenterType}
+                  onValueChange={(value) => {
+                    setKssPresenterType(value as KssPresenterType)
+                    setKssPresenterIdInput("none")
+                    setKssPresenterNameInput("")
+                    // Visitors are auto-hosted under "Guest"; clear any employee
+                    // department selection so the saved record resolves correctly.
+                    if (value === "visitor") setKssDepartmentInput("none")
+                  }}
+                  disabled={isWeekSetupLocked}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="employee">Employee</SelectItem>
+                    <SelectItem value="visitor">Visitor</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {kssPresenterType === "employee" && (
+                <div className="w-full max-w-[240px]">
+                  <Label className="mb-1.5 block text-xs font-semibold">KSS Department</Label>
+                  <Select
+                    value={kssDepartmentInput}
+                    onValueChange={(value) => {
+                      setKssDepartmentInput(value)
+                      setKssPresenterIdInput("none")
+                    }}
+                    disabled={isWeekSetupLocked}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select department</SelectItem>
+                      {departmentOptions.map((department) => (
+                        <SelectItem key={department} value={department}>
+                          {department}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[minmax(220px,320px)_1fr] md:items-end">
+              <div className="w-full">
+                <Label className="mb-1.5 block text-xs font-semibold">KSS Presenter (Optional)</Label>
+                {kssPresenterType === "employee" ? (
+                  <Select
+                    value={kssPresenterIdInput}
+                    onValueChange={setKssPresenterIdInput}
+                    disabled={isWeekSetupLocked || kssDepartmentInput === "none"}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select presenter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select presenter</SelectItem>
+                      {presenterOptions.map((employee) => (
+                        <SelectItem key={employee.id} value={employee.id}>
+                          {employee.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={kssPresenterNameInput}
+                    onChange={(event) => setKssPresenterNameInput(event.target.value)}
+                    placeholder="Enter visitor full name"
+                    disabled={isWeekSetupLocked}
+                  />
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  onClick={saveMeetingWindow}
+                  disabled={savingMeetingWindow || isWeekSetupLocked}
+                  className="gap-2"
+                >
+                  {savingMeetingWindow && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Save Week Setup
+                </Button>
+                <span className="text-muted-foreground text-xs">
+                  {isWeekSetupLocked
+                    ? "This week is locked after the meeting grace window, so the setup is read-only."
+                    : lockState?.hasOverrideRole
+                      ? "Your role can override the grace-period lock for this week."
+                      : lockState?.unlockUntil
+                        ? "This week is temporarily unlocked, so changes are allowed until the unlock window closes."
+                        : "Saving here updates the week's meeting date, meeting time, KSS presenter (employee or visitor), and lock grace window together."}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Office Year Configuration (collapsible) ────────────────────────── */}
+        <div className="border-t pt-4">
+          <button
+            type="button"
+            onClick={() => setShowYearConfig(!showYearConfig)}
+            className="text-muted-foreground hover:text-foreground flex w-full items-center justify-between text-sm font-medium transition-colors"
+          >
+            <span>Office Year Configuration</span>
+            {showYearConfig ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Set which January day Week 1 starts on for each year. Locked years cannot be changed.
+          </p>
+
+          {showYearConfig && (
+            <div className="mt-4 space-y-4">
+              {yearConfigLoading ? (
+                <LinesSkeleton lines={2} />
+              ) : (
+                <div className="space-y-2">
+                  {yearRows.map((row) => (
+                    <div
+                      key={row.year}
+                      className="bg-muted/50 flex items-center justify-between gap-4 rounded-lg border px-4 py-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold">{row.year}</span>
+                        {row.is_locked && (
+                          <Badge variant="secondary" className="gap-1 text-xs">
+                            <Lock className="h-3 w-3" /> Locked
+                          </Badge>
+                        )}
+                      </div>
+
+                      {editingYear === row.year && !row.is_locked ? (
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs whitespace-nowrap">January</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={editDay}
+                            onChange={(e) => setEditDay(Number(e.target.value))}
+                            className="w-20"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => saveYearMutation.mutate({ year: row.year, anchor_day: editDay })}
+                            disabled={saveYearMutation.isPending}
+                          >
+                            Save
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingYear(null)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <span className="text-muted-foreground text-sm">Week 1 starts January {row.anchor_day}</span>
+                          {!row.is_locked && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setEditingYear(row.year)
+                                setEditDay(row.anchor_day)
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Year</Label>
+                  <Input
+                    type="number"
+                    min={currentYear}
+                    max={2100}
+                    value={newYear}
+                    onChange={(e) => setNewYear(Number(e.target.value))}
+                    className="w-24"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">January start day</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={newDay}
+                    onChange={(e) => setNewDay(Number(e.target.value))}
+                    className="w-20"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  disabled={!canAddNew || saveYearMutation.isPending}
+                  onClick={() => saveYearMutation.mutate({ year: newYear, anchor_day: newDay })}
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add {newYear}
+                </Button>
+                {!canAddNew && existingYears.has(newYear) && (
+                  <p className="text-muted-foreground text-xs">{newYear} already exists above.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}

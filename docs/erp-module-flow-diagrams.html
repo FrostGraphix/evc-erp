@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ACOB ERP Module Flow Diagrams</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --text: #10233f;
+        --muted: #516173;
+        --border: #d7e2ea;
+        --accent: #0f766e;
+        --bg: #eef5f7;
+        --card: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      @page {
+        size: A4 landscape;
+        margin: 12mm;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Calibri, Arial, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      main {
+        width: 100%;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 18px;
+      }
+
+      .intro,
+      section {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+      }
+
+      .intro {
+        padding: 22px 26px;
+        margin-bottom: 18px;
+        background:
+          radial-gradient(circle at top right, rgba(15, 118, 110, 0.14), transparent 28%),
+          linear-gradient(135deg, #ffffff 0%, #f0fdfa 100%);
+      }
+
+      section {
+        height: 182mm;
+        max-height: 182mm;
+        padding: 20px 24px 16px;
+        margin-bottom: 18px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        page-break-after: always;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      section:last-of-type {
+        page-break-after: auto;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        line-height: 1.15;
+      }
+
+      h2 {
+        margin: 0 0 8px;
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45;
+        font-size: 14px;
+      }
+
+      .meta {
+        margin-bottom: 8px;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .section-header {
+        margin-bottom: 12px;
+        flex: 0 0 auto;
+      }
+
+      .mermaid {
+        width: 100%;
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      .mermaid svg {
+        width: 100%;
+        height: auto;
+        max-height: 135mm;
+      }
+
+      @media print {
+        body {
+          background: #ffffff;
+        }
+
+        main {
+          max-width: none;
+          padding: 0;
+        }
+
+        .intro,
+        section {
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .intro {
+          page-break-after: always;
+        }
+
+        section {
+          height: 182mm;
+          max-height: 182mm;
+          margin: 0;
+        }
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+      window.addEventListener("load", () => {
+        mermaid.initialize({
+          startOnLoad: true,
+          securityLevel: "loose",
+          theme: "default",
+          flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+            curve: "basis"
+          }
+        })
+      })
+    </script>
+  </head>
+  <body>
+    <main>
+      <div class="intro">
+        <div class="meta">April 2026</div>
+        <h1>ACOB ERP Module Flow Diagrams</h1>
+        <p>
+          This version keeps each title and diagram together on the same landscape page and includes Department PMS as the 10th flow.
+        </p>
+      </div>
+
+      <section>
+        <div class="section-header">
+          <h2>1. Leave Management</h2>
+          <p>Request creation, evidence checks, staged approvals, and final leave activation.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["Employee opens leave page"] --> B["Create leave request"]
+    B --> C["Enter leave type, dates, reliever, reason, handover"]
+    C --> D["System validates balance, overlap, reliever, and policy"]
+    D --> E{"Evidence required?"}
+    E -->|Yes| F["Request moves to pending evidence"]
+    E -->|No| G["Reliever approval stage"]
+    F --> H["Employee uploads evidence"]
+    H --> G
+    G --> I{"Reliever decision"}
+    I -->|Approve| J["Department lead approval"]
+    I -->|Reject| X["Request rejected"]
+    J --> K{"Lead decision"}
+    K -->|Approve| L["HR or Admin approval"]
+    K -->|Reject| X
+    L --> M{"HR or Admin decision"}
+    M -->|Approve| N["Leave approved"]
+    M -->|Reject| X
+    N --> O["Balance updated"]
+    N --> P["Attendance and leave effects applied"]
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h2>2. Help Desk</h2>
+          <p>Support route, procurement route, ticket ownership, and KPI contribution paths.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["Requester creates help desk ticket"] --> B{"Ticket route"}
+    B -->|Support route| C["Department queue or direct assignment"]
+    B -->|Procurement route| D["Pending approval"]
+
+    C --> E{"Assigned to person?"}
+    E -->|Yes| F["Execution owner works ticket"]
+    E -->|No| G["Department queue handles workflow"]
+
+    F --> H["Ticket syncs into task"]
+    H --> I["Synced task auto-links to goal"]
+    I --> J["Completion contributes to individual KPI"]
+
+    G --> K["Queue progress contributes to department KPI"]
+
+    D --> L["Requester department lead approval"]
+    L --> M["Service department lead approval"]
+    M --> N["Head Corporate Services approval"]
+    N --> O["Managing Director approval"]
+    O --> P["Approved for procurement"]
+    P --> F
+
+    F --> Q["Status flow assigned to in progress to resolved to closed"]
+    Q --> R["Requester rates after resolved or closed"]
+    Q --> S["Department help desk performance contributes to department KPI"]
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h2>3. Project</h2>
+          <p>Project setup, task creation, assignment modes, and delivery contribution.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["Admin or project manager creates project"] --> B["Project members and ownership are set"]
+    B --> C["Project task is created"]
+    C --> D{"Assignment type"}
+    D -->|Individual| E["Assign to one member"]
+    D -->|Multiple| F["Assign to multiple members"]
+    D -->|Department| G["Assign to department"]
+
+    E --> H["Task stored in tasks table"]
+    F --> H
+    G --> H
+
+    H --> I{"Individual owner exists?"}
+    I -->|Yes| J["Task auto-links to owner goal"]
+    I -->|No| K["Task remains department delivery work"]
+
+    J --> L["Task completion contributes to individual KPI"]
+    H --> M["Project delivery contributes to department KPI"]
+    H --> N["Project updates and notifications are recorded"]
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h2>4. Task</h2>
+          <p>Assignment authority, task types, and how tasks move into measurable outcomes.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["Task creation request"] --> B{"Who is assigning?"}
+    B -->|Department lead| C["Lead can assign only to self or own department staff"]
+    B -->|HCS or MD| D["Global assignment authority"]
+
+    C --> E{"Assignment type"}
+    D --> E
+
+    E -->|Individual| F["Single owner task"]
+    E -->|Multiple| G["Group task with task assignments"]
+    E -->|Department| H["Department task"]
+
+    F --> I["Task auto-links to assignee goal"]
+    G --> J["Assigned users work shared task"]
+    H --> K["Task supports department delivery"]
+
+    I --> L["Status and completion contribute to individual KPI"]
+    J --> L
+    K --> M["Department task delivery contributes to department KPI"]
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h2>5. Reference Generator</h2>
+          <p>Outgoing correspondence creation, approvals, reference generation, and requester notification.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["User opens reference generator"] --> B["Sender name auto-fills from profile"]
+    B --> C["User enters subject, recipient, category, and due date"]
+    C --> D["Correspondence record is created as draft"]
+    D --> E["Department lead is notified and reviews"]
+    E --> F{"Department lead decision"}
+    F -->|Approve| G["MD reviews the correspondence"]
+    F -->|Reject| X["Draft returned or rejected"]
+    G --> H{"MD decision"}
+    H -->|Approve| I["Reference number is generated and stored"]
+    H -->|Reject| X
+    I --> J["Approved correspondence is sent back to requester"]
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h2>6. Individual KPI</h2>
+          <p>Approved goals receive evidence automatically from assigned work.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["Approved employee goals exist"] --> B["Work is created for employee"]
+    B --> C["Manual task"]
+    B --> D["Project task"]
+    B --> E["Help desk synced task"]
+
+    C --> F["System auto-links work to matching approved goal"]
+    D --> F
+    E --> F
+
+    F --> G["Employee completes linked work"]
+    G --> H["Each goal score is calculated from linked task completion"]
+    H --> I["Individual KPI is the weighted average of approved goal scores"]
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h2>7. Individual PMS</h2>
+          <p>Final employee performance score built from KPI, KSS, attendance, and behaviour.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["Individual KPI"] --> E["Final PMS calculation"]
+    B["KSS score from kss_results"] --> E
+    C["Attendance score"] --> E
+    D["Behaviour score from review"] --> E
+
+    E --> F["If CBT is zero its weight is redistributed"]
+    F --> G["Final individual PMS score is produced"]
+    G --> H["Performance review is created"]
+    H --> I["Employee acknowledges review"]
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h2>8. My Work</h2>
+          <p>Unified personal work surface for executable assigned work.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["User opens work page"] --> B["System loads assigned executable work"]
+    B --> C["Manual tasks"]
+    B --> D["Project tasks"]
+    B --> E["Help desk synced tasks"]
+    B --> F["Extra multi-assigned tasks"]
+
+    C --> G["Items merge into My Work list"]
+    D --> G
+    E --> G
+    F --> G
+
+    G --> H["User filters by search, status, source, and priority"]
+    H --> I{"User opens item"}
+    I -->|Task| J["Navigate to task management"]
+    I -->|Project task| K["Navigate to project detail"]
+    I -->|Help desk| L["Navigate to help desk ticket detail"]
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h2>9. Goal</h2>
+          <p>Goal moves from target-setting into an active KPI bucket with linked work evidence.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["Employee or authorized manager creates goal"] --> B["Goal awaits approval"]
+    B --> C["Lead or admin approves goal"]
+    C --> D["Goal becomes active KPI target"]
+    D --> E["System routes linked work into the goal"]
+    E --> F["Manual tasks"]
+    E --> G["Project tasks"]
+    E --> H["Help desk synced tasks"]
+    F --> I["Goal progress updates from task completion"]
+    G --> I
+    H --> I
+    I --> J["Goal score contributes to individual KPI"]
+        </div>
+      </section>
+
+      <section>
+        <div class="section-header">
+          <h2>10. Department PMS</h2>
+          <p>Department performance score built from department KPI and supporting management factors.</p>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A["Average individual KPI in department"] --> E["Department KPI"]
+    B["Department action item score"] --> E
+    C["Department help desk score"] --> E
+    D["Department task and project delivery score"] --> E
+
+    E --> F["Department PMS calculation"]
+    G["Learning and capability score"] --> F
+    H["Attendance and compliance score"] --> F
+    I["Behaviour and leadership score"] --> F
+
+    F --> J["Final department PMS score is produced"]
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

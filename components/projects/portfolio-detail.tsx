@@ -1,0 +1,327 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  AlertTriangle,
+  BarChart3,
+  ClipboardList,
+  Clock,
+  FolderCog,
+  FolderKanban,
+  FolderTree,
+  Layers,
+  MapPin,
+  Pencil,
+  Plus,
+  RefreshCw,
+} from "lucide-react"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { DataTablePage, type DataTableTab } from "@/components/ui/data-table"
+import { StatCard } from "@/components/ui/stat-card"
+import { StatGrid } from "@/components/ui/stat-grid"
+import { EmptyState } from "@/components/ui/patterns/empty-state"
+import { PortfolioStatusBadge } from "@/components/projects/project-summary"
+import { ProjectsOverview, type OverviewProject } from "@/components/projects/projects-overview"
+import { ProjectCharts } from "@/components/projects/project-charts"
+import { ProjectDialogs } from "@/app/admin/projects/_components/project-dialogs"
+import { PortfolioDialog } from "@/app/admin/portfolios/_components/portfolio-dialog"
+import { PortfolioProjectsDialog } from "@/app/admin/portfolios/_components/portfolio-projects-dialog"
+import type { Portfolio } from "@/app/admin/portfolios/_components/portfolios-content"
+import { portfoliosListHref, projectHref } from "@/lib/projects/links"
+import { PROJECTS_QUERY_KEY, fetchProjectRecords, projectHealth, toChartProject } from "@/lib/projects/records"
+import { toLocalISODate } from "@/lib/utils/date"
+import { usePortfolios } from "@/hooks/use-portfolios"
+import { QUERY_KEYS } from "@/lib/query-keys"
+import { useSites } from "@/hooks/use-sites"
+import type { SiteRecord } from "@/lib/sites/records"
+import { SitesTable, type SiteDialogState } from "@/components/sites/sites-table"
+import { WorkTasksTable } from "@/components/projects/work-tasks-table"
+import { PortfolioTaskDialog } from "@/components/projects/portfolio-task-dialog"
+import { fetchPortfolioTasks, portfolioTasksKey } from "@/lib/projects/work-tasks"
+
+type ManagerOption = {
+  id: string
+  first_name: string
+  last_name: string
+  full_name?: string | null
+  department: string
+}
+
+/** One portfolio's own page: its projects ranked by what needs attention, its sites, its tasks, and its charts. */
+export function PortfolioDetail({
+  portfolioId,
+  isAdmin,
+  profiles = [],
+}: {
+  portfolioId: string
+  isAdmin: boolean
+  profiles?: ManagerOption[]
+}) {
+  const queryClient = useQueryClient()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const tabParam = searchParams.get("tab")
+  const activeTab = tabParam === "charts" || tabParam === "sites" || tabParam === "tasks" ? tabParam : "projects"
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isManageOpen, setIsManageOpen] = useState(false)
+  const [isAddProjectOpen, setIsAddProjectOpen] = useState(false)
+  const [isAddTaskOpen, setIsAddTaskOpen] = useState(false)
+  const [siteDialog, setSiteDialog] = useState<SiteDialogState>({ mode: "closed" })
+  const [deletingSite, setDeletingSite] = useState<SiteRecord | null>(null)
+  // Only `canEdit` is read here; the Sites tab shares this query's cache entry.
+  const sitesQuery = useSites(portfolioId)
+  const canEditSites = isAdmin && (sitesQuery.data?.canEdit ?? false)
+  // The portfolio's own tasks plus every task on its projects.
+  const tasksQuery = useQuery({
+    queryKey: portfolioTasksKey(portfolioId),
+    queryFn: () => fetchPortfolioTasks(portfolioId),
+    enabled: activeTab === "tasks",
+  })
+
+  // Same key and shape as the portfolios list, so the two pages share a cache.
+  const portfoliosQuery = usePortfolios()
+  const projectsQuery = useQuery({ queryKey: PROJECTS_QUERY_KEY, queryFn: fetchProjectRecords })
+
+  const portfolios = useMemo(() => portfoliosQuery.data?.data ?? [], [portfoliosQuery.data])
+  const portfolio = portfolios.find((p) => p.id === portfolioId) ?? null
+
+  const projects = useMemo(
+    () => (projectsQuery.data ?? []).filter((project) => project.portfolio_id === portfolioId),
+    [projectsQuery.data, portfolioId]
+  )
+  const today = toLocalISODate()
+  const overviewItems = useMemo<OverviewProject[]>(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        project_name: project.project_name,
+        portfolioName: project.portfolio?.name ?? null,
+        priority: project.priority ?? null,
+        health: projectHealth(project, today),
+      })),
+    [projects, today]
+  )
+  const chartProjects = useMemo(() => projects.map(toChartProject), [projects])
+
+  const stats = useMemo(() => {
+    let needAttention = 0
+    let pastDue = 0
+    let plans = 0
+    let plansDone = 0
+    let done = 0
+    for (const { health } of overviewItems) {
+      if (health.status === "completed") done++
+      if (health.status === "at_risk" || health.status === "behind_schedule") needAttention++
+      pastDue += health.overdueCount
+      plans += health.planCount
+      plansDone += health.plansDoneCount
+    }
+    return { needAttention, pastDue, plans, plansDone, done }
+  }, [overviewItems])
+
+  const tabs = useMemo<DataTableTab[]>(
+    () => [
+      { key: "projects", label: "Projects", icon: FolderKanban },
+      { key: "sites", label: "Sites", icon: MapPin },
+      { key: "tasks", label: "Tasks", icon: ClipboardList },
+      { key: "charts", label: "Charts", icon: BarChart3 },
+    ],
+    []
+  )
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.portfolios() })
+    void queryClient.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sitesKey() })
+    void queryClient.invalidateQueries({ queryKey: portfolioTasksKey(portfolioId) })
+  }
+
+  const backLink = { href: portfoliosListHref(isAdmin), label: "Back to Portfolios" }
+  const isLoading = portfoliosQuery.isLoading || projectsQuery.isLoading
+  const error = portfoliosQuery.error || projectsQuery.error
+
+  if (isLoading || error || !portfolio) {
+    return (
+      <DataTablePage title={portfolio?.name ?? "Portfolio"} icon={Layers} backLink={backLink}>
+        {isLoading ? (
+          <div className="bg-muted/40 h-64 animate-pulse rounded-xl" />
+        ) : error ? (
+          <EmptyState
+            title="Couldn't load this portfolio"
+            description={error instanceof Error ? error.message : "Something went wrong."}
+            action={
+              <Button variant="outline" size="sm" onClick={refresh} aria-label="Refresh">
+                Try again
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            title="Portfolio not found"
+            description="It may have been deleted, or you may not have access to it."
+          />
+        )}
+      </DataTablePage>
+    )
+  }
+
+  return (
+    <DataTablePage
+      title={portfolio.code ? `${portfolio.code} — ${portfolio.name}` : portfolio.name}
+      description={portfolio.description || undefined}
+      icon={Layers}
+      backLink={backLink}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={(tab) => router.replace(tab === "projects" ? pathname : `${pathname}?tab=${tab}`, { scroll: false })}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <PortfolioStatusBadge status={portfolio.status} />
+          <Button variant="outline" size="sm" onClick={refresh} aria-label="Refresh">
+            <RefreshCw className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)} aria-label="Edit portfolio">
+              <Pencil className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Edit</span>
+            </Button>
+          )}
+          {/* One primary action per tab: the header follows what the tab shows. */}
+          {activeTab === "projects" && isAdmin && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setIsManageOpen(true)} aria-label="Manage projects">
+                <FolderCog className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Manage Projects</span>
+              </Button>
+              <Button size="sm" onClick={() => setIsAddProjectOpen(true)} aria-label="Add project">
+                <Plus className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Add Project</span>
+              </Button>
+            </>
+          )}
+          {activeTab === "sites" && canEditSites && (
+            <Button size="sm" onClick={() => setSiteDialog({ mode: "add" })} aria-label="Add site">
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Add Site</span>
+            </Button>
+          )}
+          {activeTab === "tasks" && isAdmin && (
+            <Button size="sm" onClick={() => setIsAddTaskOpen(true)} aria-label="Add task">
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Add Task</span>
+            </Button>
+          )}
+        </div>
+      }
+      stats={
+        <StatGrid>
+          <StatCard
+            variant="compact"
+            title="Projects"
+            value={`${stats.done} of ${projects.length} done`}
+            icon={FolderKanban}
+            iconBgColor="bg-blue-500/10"
+            iconColor="text-blue-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Need attention"
+            value={stats.needAttention}
+            tooltip="Projects that are Slipping or Behind"
+            icon={AlertTriangle}
+            iconBgColor={stats.needAttention > 0 ? "bg-amber-500/10" : "bg-slate-500/10"}
+            iconColor={stats.needAttention > 0 ? "text-amber-500" : "text-slate-500"}
+          />
+          <StatCard
+            variant="compact"
+            title="Tasks past due"
+            value={stats.pastDue}
+            icon={Clock}
+            iconBgColor={stats.pastDue > 0 ? "bg-red-500/10" : "bg-slate-500/10"}
+            iconColor={stats.pastDue > 0 ? "text-red-500" : "text-slate-500"}
+          />
+          <StatCard
+            variant="compact"
+            title="Plans finished"
+            value={stats.plans === 0 ? "No plans" : `${stats.plansDone} of ${stats.plans}`}
+            icon={FolderTree}
+            iconBgColor="bg-violet-500/10"
+            iconColor="text-violet-500"
+          />
+        </StatGrid>
+      }
+    >
+      {activeTab === "charts" ? (
+        <ProjectCharts projects={chartProjects} filterBy="project" />
+      ) : activeTab === "tasks" ? (
+        <WorkTasksTable
+          tasks={tasksQuery.data ?? []}
+          isLoading={tasksQuery.isLoading}
+          error={tasksQuery.error}
+          onRetry={() => void tasksQuery.refetch()}
+          showProject
+          emptyDescription="No tasks in this portfolio yet. Tasks on its projects, and tasks assigned to the whole portfolio from Task Management, show here."
+        />
+      ) : activeTab === "sites" ? (
+        <SitesTable
+          portfolioId={portfolio.id}
+          isAdmin={isAdmin}
+          dialog={siteDialog}
+          setDialog={setSiteDialog}
+          deleting={deletingSite}
+          setDeleting={setDeletingSite}
+        />
+      ) : (
+        <ProjectsOverview projects={overviewItems} hrefFor={(project) => projectHref(project.id, isAdmin)} />
+      )}
+
+      {isAdmin && (
+        <>
+          <PortfolioDialog
+            open={isEditOpen}
+            onOpenChange={setIsEditOpen}
+            portfolio={portfolio}
+            onSuccess={() => {
+              toast.success("Portfolio updated")
+              setIsEditOpen(false)
+              refresh()
+            }}
+          />
+          <PortfolioProjectsDialog
+            open={isManageOpen}
+            onOpenChange={setIsManageOpen}
+            portfolio={portfolio}
+            portfolios={portfolios}
+            unassignedProjects={portfoliosQuery.data?.unassigned?.projects ?? []}
+            onChanged={refresh}
+            onCreateProject={() => {
+              setIsManageOpen(false)
+              setIsAddProjectOpen(true)
+            }}
+          />
+          <PortfolioTaskDialog
+            open={isAddTaskOpen}
+            onOpenChange={setIsAddTaskOpen}
+            portfolio={portfolio}
+            profiles={profiles}
+          />
+          <ProjectDialogs
+            profiles={profiles}
+            isAddOpen={isAddProjectOpen}
+            setIsAddOpen={setIsAddProjectOpen}
+            isEditOpen={false}
+            setIsEditOpen={() => {}}
+            selectedProject={null}
+            defaultPortfolioId={portfolio.id}
+            onSuccess={refresh}
+          />
+        </>
+      )}
+    </DataTablePage>
+  )
+}

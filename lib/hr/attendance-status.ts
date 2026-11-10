@@ -1,0 +1,353 @@
+import { isLate, isWeekend } from "@/lib/hr/attendance-utils"
+import { toLocalISODate } from "@/lib/utils/date"
+import { AttendancePolicy, DEFAULT_ATTENDANCE_POLICY } from "@/lib/org-config"
+
+export function isLateWithPolicy(clockIn: string | null | undefined, lateCutoff: string): boolean {
+  if (!clockIn) return false
+  const [h, m] = clockIn.split(":").map(Number)
+  const [ch, cm] = lateCutoff.split(":").map(Number)
+  if (isNaN(h) || isNaN(m) || isNaN(ch) || isNaN(cm)) return false
+  return h * 60 + m > ch * 60 + cm
+}
+
+export type UnifiedAttendanceStatus =
+  | "holiday"
+  | "exempted"
+  | "waiver"
+  | "waived"
+  | "early"
+  | "present"
+  | "late"
+  | "lateness_with_permission"
+  | "early_departure"
+  | "early_departure_with_permission"
+  | "early_closure"
+  | "late_resumption"
+  | "incomplete"
+  | "incomplete_with_permission"
+  | "absent"
+  | "absent_with_permission"
+  | "out_of_station"
+  | "cds"
+  | "on_leave"
+  | "lwop"
+  | "weekend"
+  | "no_record"
+  | "half_day"
+
+/** Tailwind colour classes for every canonical attendance status (with dark mode support). */
+export const ATTENDANCE_STATUS_COLORS: Record<UnifiedAttendanceStatus, string> = {
+  cds: "bg-success/15 text-success border-success/30",
+  early: "bg-success/15 text-success border-success/30",
+  present: "bg-info/15 text-info border-info/30",
+  late: "bg-warning/15 text-warning border-warning/30",
+  lateness_with_permission:
+    "bg-gradient-to-r from-amber-100 to-green-100 text-success border-amber-200 dark:from-amber-950/40 dark:to-green-950/40",
+  early_departure: "bg-warning/15 text-warning border-warning/30",
+  early_departure_with_permission:
+    "bg-gradient-to-r from-orange-100 to-green-100 text-success border-orange-200 dark:from-orange-950/40 dark:to-green-950/40",
+  early_closure: "bg-info/15 text-info border-info/30",
+  late_resumption: "bg-info/15 text-info border-info/30",
+  incomplete: "bg-info/15 text-info border-info/30",
+  incomplete_with_permission:
+    "bg-gradient-to-r from-cyan-100 to-green-100 text-success border-cyan-200 dark:from-cyan-950/40 dark:to-green-950/40",
+  absent: "bg-danger/15 text-danger border-danger/30",
+  absent_with_permission:
+    "bg-gradient-to-r from-red-100 to-green-100 text-success border-red-200 dark:from-red-950/40 dark:to-green-950/40",
+  out_of_station: "bg-info/15 text-info border-info/30",
+  waiver: "bg-info/15 text-info border-info/30",
+  waived: "bg-info/15 text-info border-info/30",
+  exempted: "bg-purple/15 text-purple border-purple/30",
+  on_leave: "bg-purple/15 text-purple border-purple/30",
+  // Deliberately not purple like paid leave — an unpaid day should not read as a benefit.
+  lwop: "bg-danger/15 text-danger border-danger/30",
+  holiday: "bg-info/15 text-info border-info/30",
+  weekend: "bg-muted text-foreground border-border",
+  no_record: "bg-muted text-foreground border-border",
+  half_day: "bg-warning/15 text-warning border-warning/30",
+}
+
+/** Human-readable labels for statuses whose raw value would look bad in the UI. */
+export const ATTENDANCE_STATUS_LABELS: Record<UnifiedAttendanceStatus, string> = {
+  cds: "CDS",
+  early: "Early",
+  present: "Present",
+  late: "Late",
+  lateness_with_permission: "LWP",
+  early_departure: "Left Early",
+  early_departure_with_permission: "LEWP",
+  early_closure: "Early Closure",
+  late_resumption: "Late Resumption",
+  incomplete: "Incomplete",
+  incomplete_with_permission: "IWP",
+  absent: "Absent",
+  absent_with_permission: "AWP",
+  out_of_station: "OOS",
+  waiver: "Waiver",
+  waived: "Waiver",
+  exempted: "Exempted",
+  on_leave: "On Leave",
+  lwop: "LWOP",
+  holiday: "Holiday",
+  weekend: "Weekend",
+  no_record: "No Record",
+  half_day: "Half Day",
+}
+export const DB_WRITABLE_STATUSES = [
+  "cds",
+  "early",
+  "present",
+  "late",
+  "absent",
+  "incomplete",
+  "incomplete_with_permission",
+  "waiver",
+  "lateness_with_permission",
+  "absent_with_permission",
+  "early_departure_with_permission",
+  "out_of_station",
+] as const
+export type DbAttendanceStatus = (typeof DB_WRITABLE_STATUSES)[number]
+
+export const PERMISSION_ATTENDANCE_STATUSES = [
+  "lateness_with_permission",
+  "incomplete_with_permission",
+  "absent_with_permission",
+  "out_of_station",
+] as const
+export type PermissionAttendanceStatus = (typeof PERMISSION_ATTENDANCE_STATUSES)[number]
+
+export const MANUAL_ATTENDANCE_STATUS_OPTIONS: Array<{ value: DbAttendanceStatus | "auto"; label: string }> = [
+  { value: "auto", label: "Auto-derived" },
+  { value: "early", label: "Early" },
+  { value: "present", label: "Present" },
+  { value: "late", label: "Late" },
+  { value: "incomplete", label: "Incomplete" },
+  { value: "incomplete_with_permission", label: "IWP" },
+  { value: "waiver", label: "Waiver" },
+  { value: "lateness_with_permission", label: "LWP" },
+  { value: "absent_with_permission", label: "AWP" },
+  { value: "early_departure_with_permission", label: "LEWP" },
+  { value: "out_of_station", label: "OOS" },
+  { value: "cds", label: "CDS" },
+  { value: "absent", label: "Absent" },
+]
+
+export function isPermissionAttendanceStatus(status: string | null | undefined): status is PermissionAttendanceStatus {
+  return PERMISSION_ATTENDANCE_STATUSES.includes(status as PermissionAttendanceStatus)
+}
+
+export function normalizeStoredAttendanceStatus(status: string | null | undefined): UnifiedAttendanceStatus | null {
+  if (!status) return null
+  if (status === "waived") return "waiver"
+  if (status === "half_day") return "late"
+  if (status in ATTENDANCE_STATUS_COLORS) return status as UnifiedAttendanceStatus
+  if ((DB_WRITABLE_STATUSES as readonly string[]).includes(status)) return status as UnifiedAttendanceStatus
+  return null
+}
+
+export type AttendanceLike = {
+  date?: string | null
+  clock_in?: string | null
+  clock_out?: string | null
+  status?: string | null
+  waived?: boolean | null
+}
+
+/** Returns true if a clock_out time string is before endTime. */
+export function isEarlyDeparture(clockOut: string, endTime: string = "17:00"): boolean {
+  const [h, m] = clockOut.split(":").map(Number)
+  const [eh, em] = endTime.split(":").map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m) || !Number.isFinite(eh) || !Number.isFinite(em)) return false
+  return h * 60 + m < eh * 60 + em
+}
+
+/** Day-level early office-closure context (org-wide), if the date is a closure day. */
+export type EarlyClosureInfo = { closeTime: string } | null | undefined
+
+/**
+ * Early-departure facts for a completed day, independent of the primary status label.
+ * Used to render the secondary "Left Early" chip when the primary status is "Late"
+ * (late + left-early both show). `approved` = the early-out was granted permission
+ * (LEWP); it forgives the early-out hours but never the lateness.
+ */
+export function getEarlyDepartureFacts(
+  rec: AttendanceLike | null | undefined,
+  earlyClosure: EarlyClosureInfo,
+  policy: AttendancePolicy = DEFAULT_ATTENDANCE_POLICY
+): { leftEarly: boolean; approved: boolean; onClosureDay: boolean } {
+  const onClosureDay = Boolean(earlyClosure?.closeTime)
+  if (!rec?.clock_in || !rec?.clock_out || rec.clock_out <= rec.clock_in) {
+    return { leftEarly: false, approved: false, onClosureDay }
+  }
+  const effectiveEnd = earlyClosure?.closeTime ?? policy.endTime
+  return {
+    leftEarly: isEarlyDeparture(rec.clock_out, effectiveEnd),
+    approved: normalizeStoredAttendanceStatus(rec.status) === "early_departure_with_permission",
+    onClosureDay,
+  }
+}
+
+type ManualPermissionValue =
+  | "lateness_with_permission"
+  | "absent_with_permission"
+  | "early_departure_with_permission"
+  | "incomplete_with_permission"
+
+export interface ManualStatusEditOptions {
+  /** Fully present and on-time — no LWP/AWP/LEWP/IWP override is applicable. */
+  isOnTimePresent: boolean
+  showLWP: boolean
+  showAWP: boolean
+  showIWP: boolean
+  /** Early departure with permission is applicable (on-time arrival, left early). */
+  showLEWP: boolean
+  /** Status choices to offer in the manual single-day editor. */
+  options: Array<{ value: ManualPermissionValue; label: string }>
+  /** Sensible default status given the punches present. */
+  initialStatus: "" | ManualPermissionValue
+}
+
+/**
+ * Single source of truth for which manual overrides (LWP/AWP/IWP/LEWP) apply to a day, based on
+ * its punches. Used by the per-day attendance editor so the rule isn't duplicated between
+ * its "open" and "render" paths (and can be reused by any other single-day edit surface).
+ */
+export function getManualStatusEditOptions(
+  record: { clock_in?: string | null; clock_out?: string | null } | null
+): ManualStatusEditOptions {
+  const clockIn = record?.clock_in ?? null
+  const clockOut = record?.clock_out ?? null
+  const hasClockIn = Boolean(clockIn)
+  const hasClockOut = Boolean(clockOut)
+  const hasAnyPunch = hasClockIn || hasClockOut
+
+  const isLatePunch = hasClockIn && isLate(clockIn as string)
+  const isEarlyOut = hasClockOut && isEarlyDeparture(clockOut as string)
+  const isOnTimePresent = hasClockIn && hasClockOut && !isLatePunch && !isEarlyOut
+
+  const showAWP = !hasAnyPunch
+  const showIWP = hasAnyPunch && (!hasClockIn || !hasClockOut)
+  const showLWP = isLatePunch
+  // Left-early-with-permission applies when they arrived on time but left early.
+  const showLEWP = isEarlyOut && !isLatePunch
+
+  const initialStatus: ManualStatusEditOptions["initialStatus"] = !hasAnyPunch
+    ? "absent_with_permission"
+    : showIWP && !isLatePunch
+      ? "incomplete_with_permission"
+      : showLEWP
+        ? "early_departure_with_permission"
+        : showLWP
+          ? "lateness_with_permission"
+          : ""
+
+  const options: ManualStatusEditOptions["options"] = [
+    ...(showLWP ? [{ value: "lateness_with_permission" as const, label: "LWP" }] : []),
+    ...(showLEWP ? [{ value: "early_departure_with_permission" as const, label: "LEWP" }] : []),
+    ...(showIWP ? [{ value: "incomplete_with_permission" as const, label: "IWP" }] : []),
+    ...(showAWP ? [{ value: "absent_with_permission" as const, label: "AWP" }] : []),
+  ]
+
+  return { isOnTimePresent, showLWP, showAWP, showIWP, showLEWP, options, initialStatus }
+}
+
+export function deriveUnifiedAttendanceStatus(
+  input: {
+    record?: AttendanceLike | null
+    isHoliday?: boolean
+    isOnLeave?: boolean
+    /** Leave of an unpaid type (LWOP) — takes precedence over isOnLeave. */
+    isOnUnpaidLeave?: boolean
+    isExempted?: boolean
+    isCdsDay?: boolean
+    recordDate?: string
+    /** Org-wide early-closure context for this date, if any. */
+    earlyClosure?: EarlyClosureInfo
+    /** Org-wide late-resumption context for this date, if any. */
+    lateResumption?: { resumptionTime: string } | null
+  },
+  policy: AttendancePolicy = DEFAULT_ATTENDANCE_POLICY
+): UnifiedAttendanceStatus {
+  const rec = input.record
+  const explicitStatus = normalizeStoredAttendanceStatus(rec?.status)
+
+  // 1. Manual duty travel / Out of Station
+  if (explicitStatus === "out_of_station") return "out_of_station"
+
+  // 2. Public Holiday
+  if (input.isHoliday) return "holiday"
+
+  // 3. Approved Leave
+  // Unpaid leave is checked first: it is still leave, but it must not present as the covered,
+  // benign "On Leave" that paid leave gets.
+  if (input.isOnUnpaidLeave) return "lwop"
+  if (input.isOnLeave) return "on_leave"
+
+  // 4. Exemption
+  if (input.isExempted) return "exempted"
+
+  // 5. Explicit CDS / whole-day manual permissions (AWP/LWP) & waivers
+  // LEWP is handled below because it must not rescue a late arrival, only the early departure.
+  if (explicitStatus === "cds") return "cds"
+  if (explicitStatus && isPermissionAttendanceStatus(explicitStatus)) return explicitStatus
+  if (rec?.waived) return "waiver"
+  if (explicitStatus === "waiver") return "waiver"
+
+  // 6. Automated NYSC CDS Day (Community Development Service)
+  if (input.isCdsDay) return "cds"
+
+  const recordDate = input.recordDate ?? (rec as { date?: string } | null | undefined)?.date
+  const isWeekendDay = Boolean(recordDate && isWeekend(recordDate))
+
+  // 7. Weekend (Saturday / Sunday)
+  if (isWeekendDay) {
+    if (rec && (rec.clock_in || rec.clock_out)) {
+      return "present"
+    }
+    return "weekend"
+  }
+
+  // If no record or empty punches:
+  if (!rec || (!rec.clock_in && !rec.clock_out)) {
+    // 8. Workday unrecorded default
+    return "absent"
+  }
+
+  const today = toLocalISODate()
+  const isPastDate = Boolean(input.recordDate && input.recordDate < today)
+
+  const effectiveGraceCutoff = input.lateResumption?.resumptionTime ?? policy.lateCutoff
+
+  // clock_in present, no clock_out:
+  // - past day  → incomplete (no second punch on a finished day)
+  // - today (still in progress) → optimistic early/late based on policy grace cutoff
+  if (rec.clock_in && !rec.clock_out) {
+    return isPastDate
+      ? "incomplete"
+      : isLateWithPolicy(rec.clock_in, effectiveGraceCutoff)
+        ? "late"
+        : input.lateResumption
+          ? "late_resumption"
+          : "early"
+  }
+  if (!rec.clock_in) return "incomplete"
+  // Same-second double-fire — treat as incomplete
+  if (rec.clock_out && rec.clock_out <= rec.clock_in) return "incomplete"
+
+  // Both punches present. Late arrival always wins the primary label; the early
+  // departure surfaces via a secondary chip (see getEarlyDepartureFacts).
+  if (isLateWithPolicy(rec.clock_in, effectiveGraceCutoff)) return "late"
+
+  const closeTime = input.earlyClosure?.closeTime ?? null
+  const effectiveEnd = closeTime ?? policy.endTime
+  const leftEarly = rec.clock_out ? isEarlyDeparture(rec.clock_out, effectiveEnd) : false
+
+  // On time. Approved early-out (LEWP) shows as such; an unapproved early-out is
+  // "Left Early"; leaving at/after an early-closure time is "Early Closure".
+  if (explicitStatus === "early_departure_with_permission") return "early_departure_with_permission"
+  if (leftEarly) return "early_departure"
+  if (closeTime) return "early_closure"
+  if (input.lateResumption) return "late_resumption"
+  return "early"
+}

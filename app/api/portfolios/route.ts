@@ -1,0 +1,132 @@
+import { NextRequest, NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+import { getClientId, rateLimit } from "@/lib/rate-limit"
+import { logger } from "@/lib/logger"
+import { apiError, ApiErrorCode, validationError } from "@/lib/api/errors"
+import { CreatePortfolioSchema } from "@/lib/projects/schemas"
+import { computePortfolioHealth, computeProjectHealth, type ProjectHealthTask } from "@/lib/projects/health"
+import { toLocalISODate } from "@/lib/utils/date"
+
+export const dynamic = "force-dynamic"
+const log = logger("portfolios-api")
+
+type ProjectRow = {
+  id: string
+  project_name: string
+  portfolio_id: string | null
+  deployment_start_date: string | null
+  deployment_end_date: string | null
+  status: string | null
+  tasks: ProjectHealthTask[] | null
+  plans: { id: string }[] | null
+}
+
+/**
+ * GET /api/portfolios
+ *
+ * Returns each portfolio with its projects' progress rolled up. Progress is
+ * derived from the tasks on every read — nothing is stored, so it cannot drift.
+ */
+export async function GET(request: NextRequest) {
+  const rl = await rateLimit(`portfolios:${getClientId(request)}`, { limit: 60, windowSec: 60 })
+  if (!rl.allowed) {
+    return apiError("Too many requests. Please try again later.", ApiErrorCode.RATE_LIMITED, 429)
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return apiError("Unauthorized", ApiErrorCode.UNAUTHORIZED, 401)
+
+  try {
+    const [{ data: portfolios, error: portfolioError }, { data: projects, error: projectError }] = await Promise.all([
+      supabase.from("portfolios").select("*").order("name", { ascending: true }),
+      supabase
+        .from("projects")
+        .select(
+          `id, project_name, portfolio_id, deployment_start_date, deployment_end_date, status,
+           tasks:tasks(id, status, rating, is_archived, due_date, task_end_date, plan_id),
+           plans:implementation_plans(id)`
+        )
+        .order("project_name", { ascending: true }),
+    ])
+
+    if (portfolioError) throw portfolioError
+    if (projectError) throw projectError
+
+    const today = toLocalISODate()
+    const projectsByPortfolio = new Map<string, ProjectRow[]>()
+    for (const project of (projects || []) as ProjectRow[]) {
+      const key = project.portfolio_id || ""
+      const bucket = projectsByPortfolio.get(key) || []
+      bucket.push(project)
+      projectsByPortfolio.set(key, bucket)
+    }
+
+    const withHealth = (portfolioId: string) => {
+      const health = (projectsByPortfolio.get(portfolioId) || []).map((project) => ({
+        id: project.id,
+        project_name: project.project_name,
+        lifecycle_status: project.status,
+        ...computeProjectHealth({
+          startDate: project.deployment_start_date,
+          endDate: project.deployment_end_date,
+          tasks: project.tasks || [],
+          planIds: (project.plans || []).map((plan) => plan.id),
+          today,
+        }),
+      }))
+      return { projects: health, rollup: computePortfolioHealth(health) }
+    }
+
+    const data = (portfolios || []).map((portfolio) => ({ ...portfolio, ...withHealth(portfolio.id) }))
+
+    // Projects created before portfolios existed, or deliberately left out of
+    // one, still need somewhere to be seen rather than silently vanishing.
+    const unassigned = withHealth("")
+
+    return NextResponse.json({ data, unassigned })
+  } catch (error) {
+    log.error({ err: String(error) }, "Failed to load portfolios")
+    return apiError("Failed to load portfolios", ApiErrorCode.DATABASE_ERROR, 500)
+  }
+}
+
+/** POST /api/portfolios — create a portfolio. Admin-only, enforced by RLS. */
+export async function POST(request: NextRequest) {
+  const rl = await rateLimit(`portfolios-write:${getClientId(request)}`, { limit: 20, windowSec: 60 })
+  if (!rl.allowed) {
+    return apiError("Too many requests. Please try again later.", ApiErrorCode.RATE_LIMITED, 429)
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return apiError("Unauthorized", ApiErrorCode.UNAUTHORIZED, 401)
+
+  const parsed = CreatePortfolioSchema.safeParse(await request.json())
+  if (!parsed.success) {
+    return validationError(parsed.error.issues)
+  }
+
+  const { data, error } = await supabase
+    .from("portfolios")
+    .insert({
+      name: parsed.data.name,
+      code: parsed.data.code || null,
+      description: parsed.data.description || null,
+      status: parsed.data.status,
+      created_by: user.id,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    log.error({ err: error.message }, "Failed to create portfolio")
+    return apiError(error.message, ApiErrorCode.DATABASE_ERROR, 400)
+  }
+
+  return NextResponse.json({ data })
+}

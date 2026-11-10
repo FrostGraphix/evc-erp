@@ -1,0 +1,587 @@
+"use client"
+
+import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
+import { toast } from "sonner"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { EmailSetupButton, MailboxUsage, OpenMailboxButton } from "@/components/profile/mailbox-usage"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Pencil, Mail, Phone, Cake, Home, Camera, Trash2, Loader2 } from "lucide-react"
+import { formatName, cn } from "@/lib/utils"
+import { formatWATDate, formatBirthdayLabel, toLocalISODate, toLocalTimeString, formatDDMMYYYY } from "@/lib/utils/date"
+import { isWeekend } from "@/lib/hr/attendance-utils"
+import { getRoleBadgeColor, getRoleDisplayName } from "@/lib/permissions"
+import { apiFetch } from "@/lib/api-client"
+import type { UserRole } from "@/types/database"
+import type { AttendanceItem } from "@/app/(app)/profile/page"
+
+interface ProfileHeroProps {
+  profile: {
+    id: string
+    first_name?: string | null
+    last_name?: string | null
+    other_names?: string | null
+    designation?: string | null
+    department?: string | null
+    office_location?: string | null
+    company_email?: string | null
+    additional_email?: string | null
+    phone_number?: string | null
+    additional_phone?: string | null
+    birthday?: string | null
+    residential_address?: string | null
+    employment_date?: string | null
+    confirmation_date?: string | null
+    role: string
+    is_department_lead?: boolean | null
+  }
+  avatarUrl?: string | null
+  attendance: AttendanceItem[]
+  todayStatus?: { status: string; clock_in?: string | null } | null
+  onAvatarChange?: (url: string | null) => void
+  onEdit: () => void
+}
+
+const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
+  present: "Present",
+  early: "Early",
+  late: "Late",
+  lateness_with_permission: "Late (Excused)",
+  incomplete_with_permission: "Incomplete (Excused)",
+  early_departure_with_permission: "Early Departure (Excused)",
+  early_departure: "Left Early",
+  early_closure: "Early Closure",
+  late_resumption: "Late Resumption",
+  absent: "Absent",
+  absent_with_permission: "Absent (Excused)",
+  on_leave: "On Leave",
+  out_of_station: "Out of Station",
+  incomplete: "Clocked In",
+  waiver: "Waived",
+  weekend: "Weekend",
+  holiday: "Holiday",
+  exempted: "Exempted",
+  lwop: "Leave Without Pay",
+  not_clocked_in: "Not clocked in",
+}
+
+const ATTENDANCE_DOT_COLORS: Record<string, string> = {
+  present: "bg-green-500",
+  early: "bg-green-500",
+  late: "bg-amber-500",
+  lateness_with_permission: "bg-amber-500",
+  incomplete_with_permission: "bg-emerald-500",
+  early_departure_with_permission: "bg-emerald-500",
+  early_departure: "bg-orange-500",
+  early_closure: "bg-blue-500",
+  late_resumption: "bg-sky-500",
+  absent: "bg-red-500",
+  absent_with_permission: "bg-amber-500",
+  on_leave: "bg-purple-500",
+  out_of_station: "bg-indigo-500",
+  incomplete: "bg-green-500",
+  waiver: "bg-muted-foreground",
+  weekend: "bg-slate-400 dark:bg-slate-500",
+  holiday: "bg-sky-500",
+  exempted: "bg-violet-500",
+  lwop: "bg-rose-500",
+  cds: "bg-teal-500",
+  not_clocked_in: "bg-muted-foreground",
+}
+
+function getInitials(firstName?: string | null, lastName?: string | null): string {
+  return `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase()
+}
+
+// WAT, not the runtime clock: the server renders in UTC and the phone in WAT,
+// so local hours disagreed for an hour twice a day and broke hydration.
+function getGreeting(): string {
+  const hour = Number(toLocalTimeString().slice(0, 2))
+  if (hour < 12) return "Good morning"
+  if (hour < 17) return "Good afternoon"
+  return "Good evening"
+}
+
+function getTenureLabel(employmentDate?: string | null): string | null {
+  if (!employmentDate) return null
+  const ms = Date.now() - new Date(employmentDate).getTime()
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24))
+  if (days < 30) return `${days}d`
+  if (days < 365) return `${Math.floor(days / 30)}mo`
+  const years = Math.floor(days / 365)
+  const months = Math.floor((days % 365) / 30)
+  return months > 0 ? `${years}y ${months}mo` : `${years}y`
+}
+
+function AttendanceChip({
+  attendance,
+  todayStatus,
+}: {
+  attendance: AttendanceItem[]
+  todayStatus?: { status: string; clock_in?: string | null } | null
+}) {
+  const todayIso = toLocalISODate()
+  const today = attendance.find((record) => record.date === todayIso) || null
+
+  const status =
+    todayStatus?.status ??
+    (today?.status && today.status !== "absent"
+      ? today.status
+      : today?.clock_in
+        ? today.status
+        : isWeekend(todayIso)
+          ? "weekend"
+          : "not_clocked_in")
+  const clockIn = todayStatus?.clock_in ?? (today?.clock_in ? String(today.clock_in).slice(0, 5) : null)
+
+  const label = ATTENDANCE_STATUS_LABELS[status] ?? status
+  const dotColor = ATTENDANCE_DOT_COLORS[status] ?? "bg-muted-foreground"
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          href="/hr/attendance"
+          className="bg-background/60 hover:bg-accent flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+          aria-label="View attendance"
+        >
+          <span className={cn("h-2 w-2 shrink-0 rounded-full", dotColor)} aria-hidden="true" />
+          <span>{label}</span>
+          {clockIn && <span className="text-muted-foreground">· in {clockIn}</span>}
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>View attendance</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+export function ProfileHero({ profile, avatarUrl, attendance, todayStatus, onAvatarChange, onEdit }: ProfileHeroProps) {
+  const fullName = [formatName(profile.first_name), formatName(profile.other_names), formatName(profile.last_name)]
+    .filter(Boolean)
+    .join(" ")
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+  const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false)
+
+  // The upload-photo popup asks for the file picker from here, since /profile owns the input.
+  useEffect(() => {
+    const openPicker = () => fileInputRef.current?.click()
+    window.addEventListener("profile-avatar-pick-request", openPicker)
+    return () => window.removeEventListener("profile-avatar-pick-request", openPicker)
+  }, [])
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const response = await apiFetch("/api/profile/avatar", { method: "POST", body: formData })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to upload photo")
+      }
+      const newAvatarUrl = payload?.data?.avatarUrl ?? null
+      onAvatarChange?.(newAvatarUrl)
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("profile-avatar-changed", {
+            detail: { avatarUrl: newAvatarUrl },
+          })
+        )
+      }
+      toast.success("Profile photo updated")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload photo")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  async function handleRemovePhoto() {
+    setIsUploading(true)
+    try {
+      const response = await apiFetch("/api/profile/avatar", { method: "DELETE" })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.error || "Failed to remove photo")
+      }
+      onAvatarChange?.(null)
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("profile-avatar-changed", {
+            detail: { avatarUrl: null },
+          })
+        )
+      }
+      toast.success("Profile photo removed")
+      setIsRemoveConfirmOpen(false)
+      setIsLightboxOpen(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove photo")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  function handleAvatarClick() {
+    if (avatarUrl) {
+      setIsLightboxOpen(true)
+    } else {
+      fileInputRef.current?.click()
+    }
+  }
+
+  const tenure = getTenureLabel(profile.employment_date)
+  const employmentDate = profile.employment_date ? formatDDMMYYYY(profile.employment_date) : null
+  const confirmationDate = profile.confirmation_date ? formatDDMMYYYY(profile.confirmation_date) : null
+
+  const birthdayLabel = formatBirthdayLabel(profile.birthday)
+
+  const desigAndDept = [profile.designation, profile.department].filter(Boolean).join(" · ")
+
+  const renderAvatar = (sizeClass: string) => (
+    <div className="group relative shrink-0">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={handleAvatarClick}
+            disabled={isUploading}
+            aria-label={avatarUrl ? "View profile photo" : "Add profile photo"}
+            className="block rounded-full"
+          >
+            <Avatar
+              className={cn(
+                "border-background border-2 shadow-md transition-transform group-hover:scale-105",
+                sizeClass
+              )}
+            >
+              {avatarUrl && <AvatarImage src={avatarUrl} alt={fullName || "Profile photo"} />}
+              <AvatarFallback className="bg-primary text-primary-foreground text-lg font-bold sm:text-2xl">
+                {getInitials(profile.first_name, profile.last_name)}
+              </AvatarFallback>
+            </Avatar>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{avatarUrl ? "View profile photo" : "Add profile photo"}</p>
+        </TooltipContent>
+      </Tooltip>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+
+      <div
+        className={cn(
+          "border-border/50 bg-background/80 pointer-events-none absolute inset-0 flex items-center justify-center rounded-full border opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100",
+          isUploading && "opacity-100"
+        )}
+      >
+        {isUploading ? (
+          <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" />
+        ) : (
+          <Camera className="h-4 w-4 sm:h-5 sm:w-5" />
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+    <Card className="overflow-hidden border shadow-sm">
+      <CardContent className="p-4 sm:p-7 lg:p-8">
+        {/* Mobile Layout (< sm) */}
+        <div className="space-y-3 sm:hidden">
+          {/* Top header row: Avatar + Name & Badges */}
+          <div className="flex items-center gap-3.5">
+            {renderAvatar("h-16 w-16")}
+
+            <div className="min-w-0 flex-1">
+              <p className="text-muted-foreground text-xs">
+                {getGreeting()}
+                {profile.first_name ? `, ${formatName(profile.first_name)}` : ""}
+              </p>
+              <h1 className="text-foreground mt-0.5 text-lg leading-tight font-bold tracking-tight">
+                {fullName || "—"}
+              </h1>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <Badge
+                  variant="outline"
+                  className={`px-2 py-0.5 text-xs font-medium ${getRoleBadgeColor(profile.role as UserRole)}`}
+                >
+                  {getRoleDisplayName(profile.role as UserRole)}
+                </Badge>
+                {profile.is_department_lead && (
+                  <Badge
+                    variant="outline"
+                    className="text-warning border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-medium"
+                  >
+                    Dept Lead
+                  </Badge>
+                )}
+                {confirmationDate ? (
+                  <Badge
+                    variant="outline"
+                    className="text-success border-success/30 bg-success/10 px-2 py-0.5 text-xs font-medium"
+                  >
+                    Confirmed
+                  </Badge>
+                ) : profile.employment_date ? (
+                  <Badge
+                    variant="outline"
+                    className="border-border text-muted-foreground px-2 py-0.5 text-xs font-medium"
+                  >
+                    Probation (Pending Confirmation)
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          {/* Full-width identity details */}
+          {(desigAndDept || employmentDate || confirmationDate) && (
+            <div className="space-y-1 pt-0.5 text-xs">
+              {desigAndDept && <p className="text-foreground/90 text-sm font-medium">{desigAndDept}</p>}
+              {(employmentDate || confirmationDate) && (
+                <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-xs">
+                  {employmentDate && (
+                    <span>
+                      Employment Date: <span className="text-foreground/80 font-medium">{employmentDate}</span>
+                      {tenure && <span className="text-muted-foreground ml-1">({tenure})</span>}
+                    </span>
+                  )}
+                  {employmentDate && confirmationDate && <span className="opacity-30">·</span>}
+                  {confirmationDate && (
+                    <span>
+                      Confirmed: <span className="text-foreground/80 font-medium">{confirmationDate}</span>
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Bottom actions & status bar */}
+          <div className="border-border/40 flex flex-wrap items-center justify-between gap-2 border-t pt-2.5">
+            <AttendanceChip attendance={attendance} todayStatus={todayStatus} />
+            <Button onClick={onEdit} variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+              <Pencil className="h-3 w-3" />
+              Edit Profile
+            </Button>
+          </div>
+        </div>
+
+        {/* Desktop Layout (>= sm) */}
+        <div className="hidden sm:flex sm:items-start sm:justify-between sm:gap-6">
+          <div className="flex items-start gap-5">
+            {renderAvatar("h-24 w-24 lg:h-28 lg:w-28")}
+
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className="text-muted-foreground text-sm">
+                {getGreeting()}
+                {profile.first_name ? `, ${formatName(profile.first_name)}` : ""}
+                <span> · {formatWATDate(new Date(), { weekday: "long", day: "numeric", month: "long" })}</span>
+              </p>
+              <h1 className="text-foreground mt-1 text-2xl leading-tight font-bold tracking-tight lg:text-3xl">
+                {fullName || "—"}
+              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <Badge
+                  variant="outline"
+                  className={`text-xs font-medium ${getRoleBadgeColor(profile.role as UserRole)}`}
+                >
+                  {getRoleDisplayName(profile.role as UserRole)}
+                </Badge>
+                {profile.is_department_lead && (
+                  <Badge variant="outline" className="text-warning border-warning/30 bg-warning/10 text-xs font-medium">
+                    Dept Lead
+                  </Badge>
+                )}
+                {confirmationDate ? (
+                  <Badge variant="outline" className="text-success border-success/30 bg-success/10 text-xs font-medium">
+                    Confirmed
+                  </Badge>
+                ) : profile.employment_date ? (
+                  <Badge variant="outline" className="border-border text-muted-foreground text-xs font-medium">
+                    Probation (Pending Confirmation)
+                  </Badge>
+                ) : null}
+              </div>
+
+              {desigAndDept && (
+                <p className="text-foreground/90 mt-2 text-sm font-medium sm:text-base">{desigAndDept}</p>
+              )}
+
+              {(employmentDate || confirmationDate) && (
+                <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 text-xs sm:text-sm">
+                  {employmentDate && (
+                    <span>
+                      Employment Date: <span className="text-foreground/80 font-medium">{employmentDate}</span>
+                      {tenure && <span className="text-muted-foreground ml-1">({tenure})</span>}
+                    </span>
+                  )}
+                  {employmentDate && confirmationDate && <span className="opacity-30">·</span>}
+                  {confirmationDate && (
+                    <span>
+                      Confirmed: <span className="text-foreground/80 font-medium">{confirmationDate}</span>
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <AttendanceChip attendance={attendance} todayStatus={todayStatus} />
+            <Button onClick={onEdit} variant="outline" size="sm" className="gap-1.5">
+              <Pencil className="h-3 w-3" />
+              Edit Profile
+            </Button>
+          </div>
+        </div>
+
+        {/* Contact strip */}
+        <div className="text-muted-foreground mt-5 grid grid-cols-1 gap-x-6 gap-y-2.5 border-t pt-4 text-sm sm:mt-6 sm:grid-cols-2 sm:pt-5 lg:flex lg:flex-wrap lg:items-start">
+          {profile.company_email && (
+            // Email on top, its mailbox storage underneath: one item, two lines.
+            <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex min-w-0 items-center gap-1">
+                <a
+                  href={`mailto:${profile.company_email}`}
+                  className="hover:text-foreground flex min-w-0 items-center gap-1.5 transition-colors"
+                  title={profile.company_email}
+                >
+                  <Mail className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{profile.company_email}</span>
+                </a>
+                <OpenMailboxButton />
+              </div>
+              <MailboxUsage />
+              <div className="ml-5">
+                <EmailSetupButton
+                  fullName={fullName}
+                  designation={profile.designation ?? null}
+                  phone={profile.phone_number ?? null}
+                  additionalEmail={profile.additional_email ?? null}
+                />
+              </div>
+            </div>
+          )}
+          {(profile.phone_number || birthdayLabel || profile.residential_address) && (
+            // Second column, mirroring the email block: phone and birthday on one
+            // line, the home address directly under them.
+            <div className="flex min-w-0 flex-col gap-1">
+              {(profile.phone_number || birthdayLabel) && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  {profile.phone_number && (
+                    <a
+                      href={`tel:${profile.phone_number}`}
+                      className="hover:text-foreground flex items-center gap-1.5 transition-colors"
+                    >
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      {profile.phone_number}
+                    </a>
+                  )}
+                  {birthdayLabel && (
+                    <span className="flex items-center gap-1.5">
+                      <Cake className="h-3.5 w-3.5 shrink-0" />
+                      {birthdayLabel}
+                    </span>
+                  )}
+                </div>
+              )}
+              {profile.residential_address && (
+                <span className="flex min-w-0 items-center gap-1.5" title={profile.residential_address}>
+                  <Home className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{profile.residential_address}</span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
+
+      <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
+        <DialogContent className="max-w-md gap-4 p-4 sm:p-4">
+          <DialogTitle className="sr-only">Profile photo</DialogTitle>
+          <div className="bg-muted overflow-hidden rounded-lg">
+            {avatarUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- signed URL, not an optimizable static asset
+              <img src={avatarUrl} alt={fullName || "Profile photo"} className="aspect-square w-full object-cover" />
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 gap-1.5"
+              disabled={isUploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Change Photo
+            </Button>
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive flex-1 gap-1.5"
+              disabled={isUploading}
+              onClick={() => setIsRemoveConfirmOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Remove
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isRemoveConfirmOpen} onOpenChange={setIsRemoveConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove profile photo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove your profile photo. You can upload a new one at any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUploading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleRemovePhoto()
+              }}
+              disabled={isUploading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Remove"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  )
+}

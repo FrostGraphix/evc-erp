@@ -1,0 +1,106 @@
+import type { SupabaseClient } from "@supabase/supabase-js"
+import { logger } from "@/lib/logger"
+
+const log = logger("attendance-quota")
+
+/**
+ * Department leads can grant a maximum of 3 LWP/AWP permissions per employee per month.
+ * Any additional permission beyond 3 must be approved by a global admin.
+ * Admin-initiated manual alterations and Out-of-Station (OOS) are uncapped.
+ *
+ * A day whose appeal ended "resolved" does not count. Resolved means the day was closed
+ * outside the appeal: the clock-in device failed and the punches arrived late, or Admin & HR
+ * corrected the day themselves. Neither is the employee using up a permission.
+ */
+export async function validateLwpAwpMonthlyQuota(params: {
+  dataClient: SupabaseClient
+  userId: string
+  targetStatus: string
+  date: string // YYYY-MM-DD
+  isAdminLike: boolean
+  excludeRecordId?: string | null
+  isManualAlteration?: boolean
+}): Promise<{ allowed: boolean; error?: string }> {
+  // Manual alterations initiated by Admin do not count towards the 3-appeal quota
+  if (params.isManualAlteration) {
+    return { allowed: true }
+  }
+
+  // Only enforce quota for LWP, IWP, and AWP permissions (OOS is uncapped)
+  const PERMISSION_STATUS_LIST = ["lateness_with_permission", "absent_with_permission", "incomplete_with_permission"]
+  if (!PERMISSION_STATUS_LIST.includes(params.targetStatus)) {
+    return { allowed: true }
+  }
+
+  // Global Admins are exempt from the 3 per month limit
+  if (params.isAdminLike) {
+    return { allowed: true }
+  }
+
+  const parts = params.date.split("-")
+  if (parts.length < 2) return { allowed: true }
+  const year = parts[0]
+  const month = parts[1]
+
+  const monthStart = `${year}-${month}-01`
+  const lastDay = new Date(Number(year), Number(month), 0).getDate()
+  const monthEnd = `${year}-${month}-${String(lastDay).padStart(2, "0")}`
+
+  try {
+    let query = params.dataClient
+      .from("attendance_records")
+      .select("id, date")
+      .eq("user_id", params.userId)
+      .in("status", PERMISSION_STATUS_LIST)
+      .gte("date", monthStart)
+      .lte("date", monthEnd)
+
+    if (params.excludeRecordId) {
+      query = query.neq("id", params.excludeRecordId)
+    }
+
+    const { data: permissionDays, error } = await query.returns<Array<{ id: string; date: string }>>()
+
+    if (error) {
+      log.error(
+        { err: error.message, userId: params.userId, date: params.date },
+        "Error checking LWP/AWP monthly quota"
+      )
+      return { allowed: true }
+    }
+
+    let counted = permissionDays ?? []
+    if (counted.length > 0) {
+      const { data: resolved, error: resolvedError } = await params.dataClient
+        .from("attendance_appeals")
+        .select("appeal_date")
+        .eq("user_id", params.userId)
+        .eq("status", "resolved")
+        .in(
+          "appeal_date",
+          counted.map((day) => day.date)
+        )
+        .returns<Array<{ appeal_date: string }>>()
+      if (resolvedError) {
+        log.error({ err: resolvedError.message, userId: params.userId }, "Error reading resolved appeals for quota")
+      } else {
+        const resolvedDates = new Set((resolved ?? []).map((row) => row.appeal_date))
+        counted = counted.filter((day) => !resolvedDates.has(day.date))
+      }
+    }
+
+    const currentCount = counted.length
+    if (currentCount >= 3) {
+      return {
+        allowed: false,
+        error:
+          "Department leads can only grant a maximum of 3 LWP/AWP permissions per employee per calendar month. This employee already has 3 LWP/AWP permissions for this month. Additional permissions must be approved by an admin.",
+      }
+    }
+
+    return { allowed: true }
+  } catch (err) {
+    log.error({ err: String(err) }, "Failed to validate LWP/AWP monthly quota")
+    return { allowed: true }
+  }
+}

@@ -1,0 +1,653 @@
+/*
+ * Tailwind v4 otherwise auto-detects sources from the repository root. Besides
+ * needlessly watching migrations and scripts, that lets Windows reserved
+ * device entries such as `nul` reach Turbopack's dependency graph and crash
+ * CSS compilation. Keep the scan limited to code that can render UI.
+ */
+@import "tailwindcss" source(none);
+@source "./";
+@source "../components";
+@source "../config";
+@source "../hooks";
+@source "../lib";
+@source "../providers";
+@source "../shared";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── Breakpoints ──────────────────────────────────────────────────────────
+   `xl` is lowered from Tailwind's default 1280px to 1200px.
+
+   A 13.3" FHD laptop (Dell Latitude 5310 and similar) runs at Windows' 150%
+   recommended scaling, which yields a 1280px logical viewport. Subtract the
+   ~5px page scrollbar (`::-webkit-scrollbar { width: 0.3em }` below) and the
+   media-query width lands at ~1275px — missing the 1280px `xl` breakpoint by
+   five pixels. Every `xl:grid-cols-*` in the app therefore silently dropped a
+   column tier on those machines, which read to users as the UI being "zoomed"
+   and showing less information.
+
+   1200px clears that with headroom while staying above `lg` (1024px). All 41
+   `xl:` utilities in this codebase are layout density only (grid-cols, gap,
+   flex-row, items-end) — nothing depends on `xl` meaning literally 1280px.
+─────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --breakpoint-xl: 1200px;
+}
+
+:root {
+  color-scheme: light;
+  /* Brand color tokens: EVC Orange #f26522 */
+  --background: oklch(0.955 0.003 75); /* warm light grey — cards float above this */
+  --foreground: oklch(0.25 0 0);
+  --card: oklch(1 0 0); /* pure white cards */
+  --card-foreground: oklch(0.25 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.25 0 0);
+  --primary: #f26522;
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.72 0.14 42);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.93 0.003 75); /* slightly darker than background */
+  --muted-foreground: oklch(0.25 0 0);
+  --accent: #f26522;
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.875 0.002 75); /* slightly more visible borders */
+  /* Matches --border, as it already does in dark mode. At 0.975 this sat between
+     the white card (1.0) and the page (0.955), so every control drawing
+     `border-input` — Input, SelectTrigger, SearchableMultiSelect, outline Buttons
+     — had a border too faint to read in light mode. */
+  --input: oklch(0.875 0.002 75);
+  --ring: #f26522;
+  --chart-1: #f26522;
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.72 0.14 42);
+  --chart-5: oklch(0.58 0.16 42);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.972 0.003 75);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: #f26522;
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.955 0.003 75);
+  --sidebar-accent-foreground: #f26522;
+  --sidebar-border: oklch(0.9 0.002 75);
+  --sidebar-ring: #f26522;
+  --brand: #f26522;
+  --glow: #f26522;
+
+  /* ===== DESIGN SYSTEM TOKENS ===== */
+
+  /* Standard spacing */
+  --page-padding-mobile: 1rem; /* 16px */
+  --page-padding-desktop: 1.5rem; /* 24px */
+  --section-gap: 1.5rem; /* 24px */
+  --card-gap: 1rem; /* 16px */
+  --component-gap: 0.5rem; /* 8px */
+
+  /* Typography scale */
+  --text-page-title: 1.875rem; /* 30px - Page titles */
+  --text-section-title: 1.125rem; /* 18px - Section headers */
+  --text-card-title: 1rem; /* 16px - Card headers */
+  --text-body: 0.875rem; /* 14px - Body text */
+  --text-label: 0.75rem; /* 12px - Labels, muted text */
+  --text-small: 0.625rem; /* 10px - Small text */
+
+  /* Max widths */
+  --max-width-page: 80rem; /* 1280px - Full pages */
+  --max-width-content: 56rem; /* 896px - Content pages */
+  --max-width-form: 42rem; /* 672px - Forms, profiles */
+  --max-width-narrow: 32rem; /* 512px - Narrow forms, modals */
+
+  /* Admin context tokens (scoped by .admin-shell) */
+  --admin-primary: oklch(0.52 0.16 65);
+  --admin-primary-foreground: oklch(0.985 0 0);
+  /* Dept-lead scope accent. Declared at root (not only on the lead shell) so
+     chrome living outside .admin-shell — the page scrollbar on <html>, the
+     chatbot — can reference the same value. */
+  --lead-primary: oklch(0.44 0.14 258);
+  --lead-primary-foreground: oklch(0.985 0 0);
+  --admin-badge-bg: oklch(0.96 0.05 75);
+  --admin-badge-border: oklch(0.86 0.08 75);
+  --admin-accent-soft: oklch(0.95 0.03 75);
+  --admin-sidebar-bg: oklch(0.99 0.005 75);
+  --admin-sidebar-border: oklch(0.9 0.01 70);
+  --admin-content-bg: linear-gradient(to bottom, oklch(0.985 0.007 75), oklch(0.975 0.004 70));
+  --admin-ribbon-bg: oklch(0.985 0.01 75 / 0.92);
+
+  /* Matrix/EVC logo (components/matrix-logo.tsx). */
+  --logo-ink: oklch(0.24 0 0);
+  --logo-accent: #f26522;
+
+  /* Status tones. One readable ink per tone that already works on both the card
+     and its own tint, so call sites write `text-success bg-success/15` and never
+     a `dark:` override. Light inks are the 700 step, dark inks the 400 step. */
+  --success: oklch(0.527 0.154 150.069);
+  --warning: oklch(0.555 0.163 48.4);
+  --danger: oklch(0.505 0.213 27.518);
+  --info: oklch(0.488 0.243 264.376);
+  --purple: oklch(0.496 0.265 301.924);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #03090a;
+  --foreground: oklch(0.985 0 0);
+  --card: #0a1219;
+  --card-foreground: oklch(0.985 0 0);
+  --popover: #0a1219;
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: #f26522;
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.55 0.14 42);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: #0d1a24;
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: #f26522;
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: #13222e;
+  --input: #13222e;
+  --ring: #f26522;
+  --chart-1: #f26522;
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.55 0.14 42);
+  --chart-5: oklch(0.6 0.16 42);
+  --sidebar: #060e13;
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: #f26522;
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: #0f1c24;
+  --sidebar-accent-foreground: #f26522;
+  --sidebar-border: #13222e;
+  --sidebar-ring: #f26522;
+  --brand: #f26522;
+  --glow: #f26522;
+
+  --admin-primary: oklch(0.72 0.14 72);
+  --admin-primary-foreground: oklch(0.145 0 0);
+  --lead-primary: oklch(0.62 0.12 258);
+  --lead-primary-foreground: oklch(0.985 0 0);
+  --admin-badge-bg: oklch(0.36 0.05 72);
+  --admin-badge-border: oklch(0.5 0.06 72);
+  --admin-accent-soft: oklch(0.3 0.02 72);
+  --admin-sidebar-bg: #060e13;
+  --admin-sidebar-border: #13222e;
+  --admin-content-bg: linear-gradient(to bottom, #060e13, #03090a);
+  --admin-ribbon-bg: rgb(10 18 25 / 0.88);
+
+  --logo-ink: oklch(0.985 0 0);
+  --logo-accent: #f26522;
+
+  --success: oklch(0.792 0.209 151.711);
+  --warning: oklch(0.828 0.189 84.429);
+  --danger: oklch(0.704 0.191 22.216);
+  --info: oklch(0.707 0.165 254.624);
+  --purple: oklch(0.714 0.203 305.504);
+}
+
+.admin-shell {
+  --primary: var(--admin-primary);
+  --primary-foreground: var(--admin-primary-foreground);
+  /* --secondary drives Badge variant="secondary" (the active filter pills) and
+     --accent drives hover states on ghost/outline buttons and menu items. Both
+     default to the green employee brand, so without these they stayed green on
+     gold admin and navy dept routes. */
+  --secondary: var(--admin-primary);
+  --secondary-foreground: var(--admin-primary-foreground);
+  --accent: var(--admin-primary);
+  --accent-foreground: var(--admin-primary-foreground);
+}
+
+/* ── Lead scope mode: deep navy blue theme ─────────────────────────────────
+   Applied when data-scope="lead" on .admin-shell.
+   Immediately signals "you are viewing a restricted, dept-scoped view".
+   Deep navy was chosen because:
+     - It's clearly distinct from the global admin color
+     - It preserves strong contrast in both light and dark modes
+     - It communicates a focused, constrained workspace
+─────────────────────────────────────────────────────────────────────────── */
+.admin-shell[data-scope="lead"],
+/* Same tokens at <html> so chrome OUTSIDE the shell (navbar, search, portals)
+   resolves navy too. Without this, --admin-primary up there stays the root
+   gold and anything using it on a dept page renders gold. */
+html:has(.admin-shell[data-scope="lead"]) {
+  --primary: var(--lead-primary); /* deep navy blue */
+  --primary-foreground: var(--lead-primary-foreground);
+  --ring: var(--lead-primary);
+  --admin-primary: var(--lead-primary);
+  --admin-primary-foreground: var(--lead-primary-foreground);
+  --admin-badge-bg: oklch(0.95 0.03 258);
+  --admin-badge-border: oklch(0.83 0.07 258);
+  --admin-accent-soft: oklch(0.94 0.03 258);
+  --admin-ribbon-bg: oklch(0.93 0.03 258 / 0.95); /* navy-tinted ribbon */
+  --admin-sidebar-border: oklch(0.84 0.06 258);
+}
+
+.dark .admin-shell[data-scope="lead"],
+html.dark:has(.admin-shell[data-scope="lead"]) {
+  --primary: var(--lead-primary);
+  --primary-foreground: var(--lead-primary-foreground);
+  --ring: var(--lead-primary);
+  --admin-primary: var(--lead-primary);
+  --admin-primary-foreground: var(--lead-primary-foreground);
+  --admin-badge-bg: oklch(0.28 0.05 258);
+  --admin-badge-border: oklch(0.44 0.08 258);
+  --admin-accent-soft: oklch(0.26 0.04 258);
+  --admin-ribbon-bg: oklch(0.2 0.04 258 / 0.92); /* dark navy ribbon */
+  --admin-sidebar-border: oklch(0.36 0.06 258);
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-purple: var(--purple);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-brand: var(--brand);
+  --color-glow: var(--glow);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Mobile responsiveness fixes */
+  /* Use overflow-x: clip instead of hidden to prevent horizontal scroll
+     without creating a new scroll container (which breaks position: sticky) */
+  html {
+    overflow-x: clip;
+    width: 100%;
+  }
+
+  /* Radix scroll lock (sheets, dialogs) puts overflow:hidden on <body> and marks it
+     data-scroll-locked. Because <html> sets its own overflow above, body's overflow no longer
+     propagates to the viewport, so the page scrollbar (painted on <html>) stayed visible and the
+     page behind an open sheet still scrolled. Lock <html> too. Radix already pads <body> by the
+     scrollbar width, so the layout does not shift. */
+  html:has(body[data-scroll-locked]) {
+    overflow: hidden;
+  }
+
+  body {
+    overflow-x: clip;
+    width: 100%;
+    /* Fix: Radix UI Dialog sets pointer-events:none on <body> when open and
+       sometimes fails to remove it on close (print dialogs, downloads, quick
+       open/close). The dialog overlay itself blocks clicks, so this is safe. */
+    pointer-events: auto !important;
+  }
+
+  /* Prevent horizontal scroll on all containers */
+  * {
+    max-width: 100%;
+  }
+
+  /* Ensure images and media don't cause overflow */
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* ── Browser Autofill Neutralization ──────────────────────────────────────
+     Chromium and WebKit browsers inject a forced slate-blue/pale-yellow tint via
+     :-webkit-autofill and :-internal-autofill-selected when credentials or form
+     values are autofilled. This overrides transparent and custom inputs with a
+     harsh contrast-breaking background. An inset box-shadow and text-fill-color
+     preserves the application's surface tokens seamlessly.
+  ─────────────────────────────────────────────────────────────────────────── */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus,
+  textarea:-webkit-autofill:active,
+  select:-webkit-autofill,
+  select:-webkit-autofill:hover,
+  select:-webkit-autofill:focus,
+  select:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px var(--autofill-bg, var(--background)) inset !important;
+    -webkit-text-fill-color: var(--foreground) !important;
+    caret-color: var(--foreground) !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+}
+
+/* ── Portfolio-style page scrollbar ───────────────────────────────────────
+   The page scrollbar is painted on <html>, an *ancestor* of .admin-shell, so
+   it cannot inherit that scope's --primary — it always resolved to the green
+   employee brand even on admin (gold) and dept (navy) routes. Resolve the
+   active surface here instead, looking downward with :has().
+─────────────────────────────────────────────────────────────────────────── */
+html {
+  --scrollbar-thumb: var(--primary);
+
+  /* Clearance for the fixed AcoBot launcher (right-5 bottom-5, h-14 w-14). Every
+     app shell reserves this at the bottom of its content so nothing that lands in
+     the bottom-right corner — table pagination, row action menus, sticky bars —
+     ends up underneath it. Keep in sync with the launcher's size + offset. */
+  --fab-safe-area: 5.5rem;
+}
+
+/* Surface accent for everything that renders OUTSIDE .admin-shell but still
+   belongs to an admin/dept page: the page scrollbar (painted on <html>), the
+   AcoBot launcher, and — most visibly — Radix dialog/popover portals, which
+   mount on <body> and so used to render green "primary" buttons on gold admin
+   and navy dept routes. In-shell content is unaffected: .admin-shell declares
+   the same tokens at a deeper level and still wins there. */
+html:has(.admin-shell) {
+  --primary: var(--admin-primary);
+  --primary-foreground: var(--admin-primary-foreground);
+  --secondary: var(--admin-primary);
+  --secondary-foreground: var(--admin-primary-foreground);
+  --accent: var(--admin-primary);
+  --accent-foreground: var(--admin-primary-foreground);
+  --ring: var(--admin-primary);
+  --scrollbar-thumb: var(--admin-primary);
+  --logo-accent: var(--admin-primary);
+}
+
+html:has(.admin-shell[data-scope="lead"]) {
+  --primary: var(--lead-primary);
+  --primary-foreground: var(--lead-primary-foreground);
+  --secondary: var(--lead-primary);
+  --secondary-foreground: var(--lead-primary-foreground);
+  --accent: var(--lead-primary);
+  --accent-foreground: var(--lead-primary-foreground);
+  --ring: var(--lead-primary);
+  --scrollbar-thumb: var(--lead-primary);
+  --logo-accent: var(--lead-primary);
+}
+
+/* ── Matrix logo layers ──────────────────────────────────────────────────
+   Two stacked alpha masks filled with theme tokens; see components/matrix-logo.tsx.
+   -webkit-mask-* is still required by Safari/iOS. */
+.matrix-logo-layer {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+.matrix-logo-ink {
+  background-color: var(--logo-ink);
+  -webkit-mask-image: url("/images/matrix-logo-ink-mask.png");
+  mask-image: url("/images/matrix-logo-ink-mask.png");
+}
+.matrix-logo-accent {
+  background-color: var(--logo-accent);
+  -webkit-mask-image: url("/images/matrix-logo-a-mask.png");
+  mask-image: url("/images/matrix-logo-a-mask.png");
+}
+
+/* ── Opt-out: scroller with no visible bar ────────────────────────────────
+   The rules below theme every scrollbar in the app, including small horizontal
+   strips like tab/filter pill rows — where a thick primary-coloured bar reads as
+   an underline or progress meter rather than a scrollbar. `.scrollbar-none` opts
+   a single scroller out. It must win against the `!important` universal rules
+   below, hence the same flag here. */
+.scrollbar-none {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: 0.3em !important;
+  height: 0.3em !important;
+  background: transparent !important;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: transparent !important;
+  border-radius: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, var(--primary)) !important;
+  border-radius: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background-clip: border-box !important;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--scrollbar-thumb, var(--primary)) 85%, black) !important;
+}
+
+html::-webkit-scrollbar-button,
+body::-webkit-scrollbar-button,
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  -webkit-appearance: none !important;
+}
+
+html::-webkit-scrollbar-button:vertical:start:decrement,
+html::-webkit-scrollbar-button:vertical:end:increment,
+body::-webkit-scrollbar-button:vertical:start:decrement,
+body::-webkit-scrollbar-button:vertical:end:increment,
+::-webkit-scrollbar-button:vertical:start:decrement,
+::-webkit-scrollbar-button:vertical:end:increment {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  -webkit-appearance: none !important;
+}
+
+html::-webkit-scrollbar-corner,
+body::-webkit-scrollbar-corner,
+::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+/* Text selection styling */
+::selection {
+  background-color: oklch(0.676 0.189 42 / 0.3);
+  color: oklch(0.145 0 0);
+}
+
+.dark ::selection {
+  background-color: oklch(0.676 0.189 42 / 0.4);
+  color: oklch(0.985 0 0);
+}
+
+/* ── Dark theme cards and surfaces ───────────────────────────────────────
+   No box shadows or orange glow on cards or logo divs — use clean outlines:
+   sleek dark backgrounds (#0a1219 matching #03090a base) with subtle border. */
+.dark .card,
+.dark [data-slot="card"],
+.dark .bg-card {
+  box-shadow: none;
+}
+
+.dark .logo-container,
+.dark [data-slot="logo"] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* NProgress styling */
+#nprogress {
+  pointer-events: none;
+}
+
+#nprogress .bar {
+  @apply fixed top-0 left-0 z-[9999] h-[3px] w-full;
+  background-color: var(--primary);
+}
+
+#nprogress .peg {
+  @apply absolute right-0 block h-full w-[100px] opacity-100;
+  color: var(--primary);
+  box-shadow:
+    0 0 10px currentColor,
+    0 0 5px currentColor;
+  transform: rotate(3deg) translate(0px, -4px);
+}
+
+/* Table responsive scrolling */
+@layer utilities {
+  .table-responsive {
+    @apply w-full overflow-x-auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-responsive table {
+    @apply min-w-full;
+  }
+
+  /* Better scrollbar styling for tables on mobile */
+  .table-responsive::-webkit-scrollbar {
+    height: 0.3em !important;
+    background: transparent !important;
+  }
+
+  .table-responsive::-webkit-scrollbar-track {
+    background: transparent !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+  }
+
+  .table-responsive::-webkit-scrollbar-thumb {
+    background: var(--primary) !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+  }
+
+  .table-responsive::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--primary) 85%, black) !important;
+  }
+
+  .table-responsive::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+  }
+
+  /* Custom scrollbar for sidebar */
+  .scrollbar-custom {
+    scrollbar-width: auto;
+  }
+
+  .scrollbar-custom::-webkit-scrollbar {
+    width: 0.3em !important;
+    background: transparent !important;
+  }
+
+  .scrollbar-custom::-webkit-scrollbar-track {
+    background: transparent !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+  }
+
+  .scrollbar-custom::-webkit-scrollbar-thumb {
+    background: var(--primary) !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+  }
+
+  .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--primary) 85%, black) !important;
+  }
+
+  .scrollbar-custom::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+  }
+
+  /* Mobile-specific fixes */
+  @media (max-width: 768px) {
+    .mobile-stack {
+      @apply flex flex-col gap-2;
+    }
+
+    .mobile-text-xs {
+      @apply text-xs;
+    }
+
+    .mobile-hidden {
+      @apply hidden;
+    }
+
+    /* Ensure buttons don't wrap badly on mobile */
+    .button-group-mobile {
+      @apply flex flex-wrap gap-1;
+    }
+  }
+}

@@ -1,0 +1,488 @@
+import { createClient } from "@supabase/supabase-js"
+import { readBearerToken, safeCompare } from "@/lib/security/bearer-auth"
+import { NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
+import { rateLimit, getClientId } from "@/lib/rate-limit"
+import { logger } from "@/lib/logger"
+import { writeAuditLog } from "@/lib/audit/write-audit"
+import { AttendancePolicy, DEFAULT_ATTENDANCE_POLICY } from "@/lib/org-config"
+import { deriveUnifiedAttendanceStatus, isPermissionAttendanceStatus } from "@/lib/hr/attendance-status"
+import { recordAttendanceEvent } from "@/lib/hr/attendance-events"
+import { applyLunchBreak } from "@/lib/hr/attendance-ssot"
+import { closeAppealsMadeMootByDevice } from "@/lib/hr/attendance-appeals"
+
+const log = logger("hikvision-events")
+
+const HikvisionEventSchema = z.object({
+  dateTime: z.string(),
+  AccessControllerEvent: z.object({
+    employeeNoString: z.string().min(1).optional(),
+    attendanceStatus: z.string().optional(),
+    name: z.string().optional(),
+    subEventType: z.number().optional(),
+  }),
+})
+
+type ParsedEvent = z.infer<typeof HikvisionEventSchema>
+
+/**
+ * The punch could not be read or saved. The device must not get a 200 for it:
+ * a 200 tells the terminal the punch was delivered and it drops it, so on a
+ * database outage every swipe was lost (21 Oct 2026). Any other status makes
+ * it keep the punch and resend it with its backlog.
+ */
+class PunchNotStoredError extends Error {}
+
+/** A stalled database must fail fast so the device retries, not hang the request for minutes. */
+const DB_REQUEST_TIMEOUT_MS = 15_000
+/** The push log is diagnostics only; it must never hold up the answer to the device. */
+const PUSH_LOG_TIMEOUT_MS = 3_000
+
+type PunchOutcome = { outcome: "stored" } | { outcome: "skipped"; reason: string }
+
+function serviceClient(timeoutMs: number) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseServiceKey) return null
+  return createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) }) },
+  })
+}
+
+interface PushLogEntry {
+  status: number
+  outcome: "stored" | "skipped" | "not_stored" | "bad_request" | "unauthorized" | "rate_limited"
+  reason?: string
+  /** The event_log JSON as parsed, for the fields worth indexing by eye. */
+  event?: unknown
+  /** The raw event_log, kept only for pushes we refused. */
+  raw?: string | null
+  startedAt: number
+}
+
+/**
+ * Records what the device sent and what we answered (hikvision_push_log), so
+ * an outage shows whether we kept refusing a punch or the device stopped
+ * calling. Fails open.
+ */
+async function logPush(entry: PushLogEntry) {
+  const supabase = serviceClient(PUSH_LOG_TIMEOUT_MS)
+  if (!supabase) return
+  const event = (entry.event ?? {}) as {
+    eventType?: unknown
+    dateTime?: unknown
+    AccessControllerEvent?: {
+      employeeNoString?: unknown
+      attendanceStatus?: unknown
+      subEventType?: unknown
+    }
+  }
+  const ace = event.AccessControllerEvent ?? {}
+  const text = (value: unknown) => (typeof value === "string" ? value.slice(0, 200) : null)
+  try {
+    const { error } = await supabase.from("hikvision_push_log").insert({
+      status: entry.status,
+      outcome: entry.outcome,
+      reason: entry.reason?.slice(0, 500) ?? null,
+      event_type: text(event.eventType),
+      device_time: text(event.dateTime),
+      employee_no: text(ace.employeeNoString),
+      attendance_status: text(ace.attendanceStatus),
+      sub_event_type: typeof ace.subEventType === "number" ? ace.subEventType : null,
+      duration_ms: Date.now() - entry.startedAt,
+      raw_event: entry.raw ? entry.raw.slice(0, 4000) : null,
+    })
+    if (error) log.warn({ err: error.message }, "Could not write Hikvision push log")
+  } catch (err) {
+    log.warn({ err: String(err) }, "Could not write Hikvision push log")
+  }
+}
+
+async function processHikvisionEvent(event: ParsedEvent): Promise<PunchOutcome> {
+  const supabase = serviceClient(DB_REQUEST_TIMEOUT_MS)
+  if (!supabase) throw new PunchNotStoredError("Missing Supabase env vars")
+
+  // Load attendance policy configuration
+  const { data: settingRow, error: settingError } = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "attendance_policy")
+    .maybeSingle()
+  if (settingError) throw new PunchNotStoredError(`attendance policy: ${settingError.message}`)
+  // Merged over the defaults so a policy row saved before a field existed still
+  // resolves that field rather than coming back undefined.
+  const policy = { ...DEFAULT_ATTENDANCE_POLICY, ...((settingRow?.value as Partial<AttendancePolicy>) ?? {}) }
+
+  const { dateTime, AccessControllerEvent: ace } = event
+  const { employeeNoString, attendanceStatus } = ace
+
+  // Skip events with no employee ID
+  if (!employeeNoString) return { outcome: "skipped", reason: "no employee number" }
+
+  // Skip break events
+  if (attendanceStatus === "breakIn" || attendanceStatus === "breakOut") {
+    return { outcome: "skipped", reason: "break event" }
+  }
+
+  // Resolve employee by the compact device key enrolled on the Hikvision unit.
+  // device_key is derived from employee_number: full-time = numeric suffix (e.g. "063"),
+  // contract/part-time = CODE + suffix (e.g. "SIWES001"). Uppercased so casing on the
+  // device (e.g. "siwes001") still matches. This is unique per person, unlike the old
+  // suffix match which collided across namespaced ID series.
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("device_key", employeeNoString.toUpperCase())
+    .eq("employment_status", "active")
+    .maybeSingle()
+  // Without this check a database failure read as "unknown employee" and the punch was skipped.
+  if (profileError) throw new PunchNotStoredError(`profile lookup: ${profileError.message}`)
+
+  if (!profile) {
+    log.info({ employeeNoString }, "No active profile found for device employee ID — skipping")
+    return { outcome: "skipped", reason: "no active profile for device key" }
+  }
+
+  const userId = profile.id
+
+  // Strip timezone offset — use local time from the device as-is
+  const localPart = dateTime.replace(/[+-]\d{2}:\d{2}$/, "")
+  const [date, timeFull] = localPart.split("T")
+  const time = timeFull ? timeFull.substring(0, 8) : "00:00:00"
+
+  // Fetch today's record
+  const { data: existing, error: existingError } = await supabase
+    .from("attendance_records")
+    .select("id, clock_in, clock_out, status, source, manual_comment, waived")
+    .eq("user_id", userId)
+    .eq("date", date)
+    .maybeSingle()
+  if (existingError) throw new PunchNotStoredError(`attendance record: ${existingError.message}`)
+
+  // ── After-midnight exit rollback ─────────────────────────────────────────────
+  // A swipe in the small hours from someone who has no record yet for the new day
+  // but still has an *open* record from the previous day is their (very late) exit,
+  // not a fresh clock-in. Left unhandled, the device's exit punch opens a phantom
+  // clock-in for the new day and leaves the previous day stuck on "incomplete".
+  // We roll it back and use it to close out the previous day instead.
+  const AFTER_MIDNIGHT_ROLLBACK_CUTOFF = "04:00:00"
+  if (!existing?.clock_in && time < AFTER_MIDNIGHT_ROLLBACK_CUTOFF) {
+    const prevDateObj = new Date(`${date}T00:00:00Z`)
+    prevDateObj.setUTCDate(prevDateObj.getUTCDate() - 1)
+    // eslint-disable-next-line no-restricted-syntax
+    const prevDate = prevDateObj.toISOString().slice(0, 10)
+
+    const { data: prev, error: prevError } = await supabase
+      .from("attendance_records")
+      .select("id, clock_in, clock_out, status, source, manual_comment, waived")
+      .eq("user_id", userId)
+      .eq("date", prevDate)
+      .maybeSingle()
+    if (prevError) throw new PunchNotStoredError(`prior-day record: ${prevError.message}`)
+
+    if (prev?.clock_in && !prev.clock_out) {
+      // The exit crossed midnight; the schema stores clock_out as a same-day time,
+      // so cap it at end of the previous day (23:59:59) rather than the new-day time.
+      const cappedOut = "23:59:59"
+      const clockInTs = new Date(`${prevDate}T${prev.clock_in}Z`).getTime()
+      const cappedOutTs = new Date(`${prevDate}T${cappedOut}Z`).getTime()
+      const rawHours = Math.max(0, (cappedOutTs - clockInTs) / (1000 * 60 * 60))
+      const { breakMinutes: breakDuration, workedHours: totalHours } = applyLunchBreak(rawHours, policy)
+
+      const isManualStatus =
+        prev.status === "waiver" ||
+        prev.waived === true ||
+        (Boolean(prev.status) && isPermissionAttendanceStatus(prev.status))
+
+      const status = isManualStatus
+        ? prev.status
+        : deriveUnifiedAttendanceStatus(
+            {
+              record: { clock_in: prev.clock_in, clock_out: cappedOut, status: null, waived: false },
+              recordDate: prevDate,
+            },
+            policy
+          )
+
+      const { error } = await supabase
+        .from("attendance_records")
+        .update({
+          clock_out: cappedOut,
+          total_hours: totalHours,
+          break_duration: breakDuration,
+          status,
+          source: prev.source === "manual" ? "manual" : "hikvision",
+          clock_out_source: "hikvision",
+        })
+        .eq("id", prev.id)
+
+      if (error) {
+        log.error(
+          { err: String(error), userId, prevDate },
+          "Failed to close out prior-day record from after-midnight exit"
+        )
+        throw new PunchNotStoredError("prior-day close-out failed")
+      }
+
+      await writeAuditLog(
+        supabase,
+        {
+          action: "update",
+          entityType: "attendance_record",
+          entityId: prev.id,
+          newValues: { clock_out: cappedOut, total_hours: totalHours, status, source: "hikvision" },
+          context: { actorId: userId, source: "system", route: "/api/devices/hikvision/events" },
+        },
+        { failOpen: true }
+      )
+
+      await recordAttendanceEvent(supabase, {
+        userId,
+        eventDate: prevDate,
+        eventType: "device_punch_out",
+        attendanceRecordId: prev.id,
+        source: "hikvision",
+        actorId: null,
+        metadata: {
+          clock_out: cappedOut,
+          actual_exit_time: time,
+          total_hours: totalHours,
+          employee_no: employeeNoString,
+          after_midnight_rollback: true,
+        },
+      })
+
+      log.info(
+        { userId, prevDate, time, employeeNoString },
+        "Hikvision after-midnight exit rolled back to close prior day"
+      )
+      await closeAppealsMadeMootByDevice(supabase, { userId, date: prevDate, policy })
+      return { outcome: "stored" }
+    }
+  }
+
+  // ── Determine action ────────────────────────────────────────────────────────
+  const normalised = (attendanceStatus ?? "").toLowerCase().trim()
+  let action: "in" | "out"
+
+  if (normalised === "checkin") {
+    action = !existing?.clock_in ? "in" : "out"
+  } else if (normalised === "checkout") {
+    action = "out"
+  } else {
+    action = !existing?.clock_in ? "in" : "out"
+  }
+
+  if (action === "out") {
+    const incomingTs = new Date(`${date}T${time}Z`).getTime()
+
+    // Clock-out within 3 minutes of clock-in → reject (accidental tap right after entry)
+    if (existing?.clock_in) {
+      const clockInTs = new Date(`${date}T${existing.clock_in}Z`).getTime()
+      if (incomingTs - clockInTs < 3 * 60_000) {
+        log.info({ userId, date, time }, "Hikvision clock-out ignored — within 3-minute grace window of clock_in")
+        return { outcome: "skipped", reason: "clock-out within 3 minutes of clock-in" }
+      }
+    }
+  }
+
+  // ── Write attendance record ─────────────────────────────────────────────────
+  if (action === "in") {
+    const status = deriveUnifiedAttendanceStatus(
+      {
+        record: { clock_in: time, clock_out: null, status: null, waived: false },
+        recordDate: date,
+      },
+      policy
+    )
+    const { data: upserted, error } = await supabase
+      .from("attendance_records")
+      .upsert(
+        { user_id: userId, date, clock_in: time, status, source: "hikvision", clock_in_source: "hikvision" },
+        { onConflict: "user_id,date", ignoreDuplicates: false }
+      )
+      .select("id")
+      .single()
+
+    if (error) {
+      log.error({ err: String(error), userId, date }, "Failed to upsert clock-in")
+      throw new PunchNotStoredError("clock-in upsert failed")
+    }
+
+    await writeAuditLog(
+      supabase,
+      {
+        action: "create",
+        entityType: "attendance_record",
+        entityId: upserted.id,
+        newValues: { clock_in: time, status, source: "hikvision" },
+        context: { actorId: userId, source: "system", route: "/api/devices/hikvision/events" },
+      },
+      { failOpen: true }
+    )
+
+    await recordAttendanceEvent(supabase, {
+      userId,
+      eventDate: date,
+      eventType: "device_punch_in",
+      attendanceRecordId: upserted.id,
+      toStatus: status,
+      source: "hikvision",
+      actorId: null,
+      metadata: { clock_in: time, employee_no: employeeNoString },
+    })
+  } else {
+    if (!existing?.clock_in) {
+      log.warn({ userId, date, time }, "Hikvision clock-out received but no clock-in on record — skipping")
+      return { outcome: "skipped", reason: "clock-out with no clock-in" }
+    }
+
+    const clockIn = new Date(`${date}T${existing.clock_in}Z`)
+    const clockOut = new Date(`${date}T${time}Z`)
+    const rawHours = Math.max(0, (clockOut.getTime() - clockIn.getTime()) / (1000 * 60 * 60))
+    const { breakMinutes: breakDuration, workedHours: totalHours } = applyLunchBreak(rawHours, policy)
+
+    const isManualStatus =
+      existing.status === "waiver" ||
+      existing.waived === true ||
+      (Boolean(existing.status) && isPermissionAttendanceStatus(existing.status))
+
+    const status = isManualStatus
+      ? existing.status
+      : deriveUnifiedAttendanceStatus(
+          {
+            record: { clock_in: existing.clock_in, clock_out: time, status: null, waived: false },
+            recordDate: date,
+          },
+          policy
+        )
+
+    const { error } = await supabase
+      .from("attendance_records")
+      .update({
+        clock_out: time,
+        total_hours: totalHours,
+        break_duration: breakDuration,
+        status,
+        source: existing.source === "manual" ? "manual" : "hikvision",
+        clock_out_source: "hikvision",
+      })
+      .eq("user_id", userId)
+      .eq("date", date)
+
+    if (error) {
+      log.error({ err: String(error), userId, date }, "Failed to update clock-out")
+      throw new PunchNotStoredError("clock-out update failed")
+    }
+
+    await writeAuditLog(
+      supabase,
+      {
+        action: "update",
+        entityType: "attendance_record",
+        entityId: existing.id,
+        newValues: { clock_out: time, total_hours: totalHours, status, source: "hikvision" },
+        context: { actorId: userId, source: "system", route: "/api/devices/hikvision/events" },
+      },
+      { failOpen: true }
+    )
+
+    await recordAttendanceEvent(supabase, {
+      userId,
+      eventDate: date,
+      eventType: "device_punch_out",
+      attendanceRecordId: existing.id,
+      source: "hikvision",
+      actorId: null,
+      metadata: { clock_out: time, total_hours: totalHours, employee_no: employeeNoString },
+    })
+  }
+
+  // A punch that arrives late (the device has held a backlog for hours) can
+  // make a pending appeal for this day pointless; close it if so.
+  await closeAppealsMadeMootByDevice(supabase, { userId, date, policy })
+
+  log.info({ userId, date, action, employeeNoString }, "Hikvision attendance recorded")
+  return { outcome: "stored" }
+}
+
+export async function POST(request: NextRequest) {
+  const startedAt = Date.now()
+
+  // Every staff swipe arrives from the office NAT's single IP, and the morning
+  // rush can exceed one event per second; 60/min dropped real clock-ins.
+  const rl = await rateLimit(`hikvision-events:${getClientId(request)}`, { limit: 600, windowSec: 60 })
+  if (!rl.allowed) {
+    await logPush({ status: 429, outcome: "rate_limited", startedAt })
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 })
+  }
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
+  // The terminal's "HTTP Listening" mode cannot set request headers, so the
+  // token travels in the URL (?token=). A bearer header is preferred when the
+  // caller can send one. Both are compared in constant time.
+  const secret = process.env.HIKVISION_WEBHOOK_SECRET
+  const token = readBearerToken(request) ?? request.nextUrl.searchParams.get("token")
+  if (!secret || !token || !safeCompare(token, secret)) {
+    log.warn("Invalid or missing webhook token")
+    await logPush({ status: 401, outcome: "unauthorized", reason: token ? "wrong token" : "no token", startedAt })
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // ── Parse & validate body (must happen before responding) ──────────────────
+  const badRequest = async (error: string, raw: string | null, event?: unknown) => {
+    await logPush({ status: 400, outcome: "bad_request", reason: error, raw, event, startedAt })
+    return NextResponse.json({ error }, { status: 400 })
+  }
+
+  let raw: string | null = null
+  try {
+    const formData = await request.formData()
+    raw = formData.get("event_log") as string | null
+  } catch {
+    return badRequest("Invalid multipart body", null)
+  }
+
+  if (!raw) {
+    return badRequest("Missing event_log field", null)
+  }
+
+  let parsedJson: unknown
+  try {
+    parsedJson = JSON.parse(raw)
+  } catch {
+    return badRequest("event_log is not valid JSON", raw)
+  }
+
+  const result = HikvisionEventSchema.safeParse(parsedJson)
+  if (!result.success) {
+    log.warn({ issues: result.error.issues }, "Invalid Hikvision event payload")
+    return badRequest("Invalid event payload", raw, parsedJson)
+  }
+
+  // ── Process the event before responding ─────────────────────────────────────
+  // The DB write MUST complete before we return. Deferring it to after() caused
+  // the device to receive 200 while the record was silently never written.
+  // Hikvision tolerates the ~1-2s wait for Supabase to finish.
+  // Only a stored (or deliberately skipped) punch gets a 200. Anything else is a
+  // 503 so the device keeps the punch and resends it; a retry is harmless because
+  // a repeat of the same punch lands inside the 3-minute duplicate window.
+  let punch: PunchOutcome
+  try {
+    punch = await processHikvisionEvent(result.data)
+  } catch (err) {
+    log.error({ err: String(err) }, "Failed to process Hikvision event; asking the device to retry")
+    await logPush({ status: 503, outcome: "not_stored", reason: String(err), raw, event: parsedJson, startedAt })
+    return NextResponse.json({ error: "Punch not stored, retry later" }, { status: 503 })
+  }
+
+  await logPush({
+    status: 200,
+    outcome: punch.outcome,
+    reason: punch.outcome === "skipped" ? punch.reason : undefined,
+    event: parsedJson,
+    startedAt,
+  })
+  return NextResponse.json({ success: true })
+}

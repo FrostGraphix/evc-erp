@@ -1,0 +1,828 @@
+"use client"
+
+import Link from "next/link"
+import { useMemo, useState } from "react"
+import { formatWATDate, formatWATTimeDate } from "@/lib/utils/date"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { QUERY_KEYS } from "@/lib/query-keys"
+import { getCurrentOfficeWeek, getReportingOfficeWeek } from "@/lib/meeting-week"
+import { toast } from "sonner"
+import { getDefaultMeetingDateIso } from "@/lib/weekly-report-lock"
+import { getDepartmentAliases, normalizeDepartmentName } from "@/shared/departments"
+import { CalendarDays, Download, FileBarChart, FileSpreadsheet, Pencil, Plus } from "lucide-react"
+import { DataTable, DataTablePage } from "@/components/ui/data-table"
+import type { DataTableColumn, DataTableDetailAction, DataTableFilter } from "@/components/ui/data-table"
+import { StatCard } from "@/components/ui/stat-card"
+import { StatGrid } from "@/components/ui/stat-grid"
+import {
+  exportAllToPPTX,
+  autoNumberLines,
+  sortReportsByDepartment,
+  type WeeklyDeptOrder,
+  type WeeklyPptxMode,
+  type WeeklyPptxTheme,
+  type WeeklyReport,
+} from "@/lib/export-utils"
+import { WeeklyReportAdminDialog } from "@/components/admin/reports/weekly-report-dialog"
+import { PptxModeDialog } from "@/components/reports/pptx-mode-dialog"
+import { runAgendaDeckExport } from "@/components/reports/agenda-deck-export"
+import { loadWeeklyTaskSummaryOptions } from "@/lib/reports/weekly-task-summary"
+import { DeleteReportDialog } from "./_components/delete-report-dialog"
+import { Button } from "@/components/ui/button"
+import { ExportOptionsDialog } from "@/components/admin/export-options-dialog"
+import { downloadWeeklyReportDocx, downloadWeeklyReportPdf } from "@/lib/reports/export-download"
+import { Badge } from "@/components/ui/badge"
+import { apiFetch } from "@/lib/api-client"
+import { useAdminWeeklyReportLockState } from "@/hooks/use-weekly-report-lock"
+import { getDepartmentTrackerStatus } from "@/lib/reports/action-tracker-display"
+import { StaffNameWithAvatar } from "@/components/ui/staff-avatar"
+import { useStaffAvatars } from "@/hooks/use-staff-avatars"
+
+import { useShellBase } from "@/hooks/use-shell-base"
+interface AdminWeeklyReportsData {
+  reports: WeeklyReport[]
+  trackingData: TrackerStatus[]
+}
+
+async function fetchAdminWeeklyReports(weekFilter: number, yearFilter: number): Promise<AdminWeeklyReportsData> {
+  const res = await apiFetch(`/api/admin/reports/weekly-reports?week=${weekFilter}&year=${yearFilter}`, {
+    cache: "no-store",
+  })
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "Failed to load weekly reports")
+  const json = await res.json()
+  return {
+    reports: sortReportsByDepartment((json.reports || []) as WeeklyReport[]),
+    trackingData: (json.trackingData || []) as TrackerStatus[],
+  }
+}
+
+interface TrackerStatus {
+  id: string
+  department: string
+  status: string
+}
+
+interface WeeklyReportsContentProps {
+  initialDepartments: string[]
+  scopedDepartments?: string[]
+  editableDepartments?: string[]
+  currentUser: {
+    id: string
+    role: string
+    department: string | null
+    is_department_lead: boolean
+    lead_departments?: string[]
+    admin_routes?: string[] | null
+  }
+}
+
+export function WeeklyReportsContent({
+  initialDepartments,
+  scopedDepartments: _scopedDepartments = [],
+  editableDepartments = [],
+  currentUser,
+}: WeeklyReportsContentProps) {
+  const currentOfficeWeek = getCurrentOfficeWeek()
+  // Opens on the week being reported on — from Friday that is the next one, so
+  // reports arriving ahead of Monday's meeting land in the week on screen.
+  const shell = useShellBase()
+  const trackerHrefFor = (report: { week_number: number; year: number; department: string }) =>
+    shell.href(
+      `/admin/reports/general-meeting/action-tracker?week=${report.week_number}&year=${report.year}&dept=${encodeURIComponent(report.department)}`
+    )
+  const renderTrackerLink = (report: { week_number: number; year: number; department: string }) => {
+    const href = trackerHrefFor(report)
+    return href ? (
+      <Link href={href} className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline">
+        View action tracker
+      </Link>
+    ) : (
+      <span />
+    )
+  }
+  const reportingWeek = useMemo(() => getReportingOfficeWeek(), [])
+  const [weekFilter, setWeekFilter] = useState(reportingWeek.week)
+  const [yearFilter, setYearFilter] = useState(reportingWeek.year)
+  const [isAdminDialogOpen, setIsAdminDialogOpen] = useState(false)
+  const [editingReport, setEditingReport] = useState<WeeklyReport | null>(null)
+  const [pptxModeDialogOpen, setPptxModeDialogOpen] = useState(false)
+  const [pendingPptxExport, setPendingPptxExport] = useState<
+    { kind: "single"; report: WeeklyReport } | { kind: "all" } | null
+  >(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [exportOptionsOpen, setExportOptionsOpen] = useState(false)
+  const [exportTarget, setExportTarget] = useState<{ kind: "all" } | { kind: "single"; report: WeeklyReport }>({
+    kind: "all",
+  })
+
+  const queryClient = useQueryClient()
+  const normalizedRole = (currentUser.role || "").trim().toLowerCase()
+  const isGlobalReportsEditor =
+    normalizedRole === "developer" ||
+    normalizedRole === "super_admin" ||
+    (normalizedRole === "admin" &&
+      Array.isArray(currentUser.admin_routes) &&
+      (currentUser.admin_routes.includes("reports.weekly") || currentUser.admin_routes.includes("reports.other")))
+
+  const managedDepartments =
+    editableDepartments.length > 0
+      ? editableDepartments
+      : ([currentUser.department, ...(currentUser.lead_departments || [])].filter(Boolean) as string[])
+
+  const canMutateReport = (report: WeeklyReport) => {
+    if (isGlobalReportsEditor) return true
+    const normalizedReportDepartment = normalizeDepartmentName(report.department)
+    return managedDepartments.some((department) =>
+      getDepartmentAliases(department).includes(normalizedReportDepartment)
+    )
+  }
+
+  const {
+    data: reportsData,
+    isLoading,
+    refetch,
+    error,
+  } = useQuery({
+    queryKey: QUERY_KEYS.adminWeeklyReports({ weekFilter, yearFilter }),
+    queryFn: () => fetchAdminWeeklyReports(weekFilter, yearFilter),
+  })
+
+  const reports = useMemo(() => reportsData?.reports ?? [], [reportsData?.reports])
+  const trackingData = useMemo(() => reportsData?.trackingData ?? [], [reportsData?.trackingData])
+  const staffAvatars = useStaffAvatars()
+
+  const { data: lockState } = useAdminWeeklyReportLockState(weekFilter, yearFilter)
+
+  const isFilteredWeekLocked = lockState?.isLocked ?? false
+  const canMutateFilteredWeek = lockState?.canMutate ?? !isFilteredWeekLocked
+  const meetingDate = lockState?.meetingDate || getDefaultMeetingDateIso(weekFilter, yearFilter)
+
+  const handleDelete = async (id: string) => {
+    const target = reports.find((report) => report.id === id)
+    if (target && !canMutateReport(target)) {
+      toast.error("You can only modify reports you created")
+      return
+    }
+    try {
+      // Server re-checks mutate permission + week lock before deleting.
+      const res = await apiFetch(`/api/admin/reports/weekly-reports/${id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null)
+        toast.error(payload?.error || "Delete failed")
+        return
+      }
+      toast.success("Report deleted")
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.adminWeeklyReports() })
+    } catch {
+      toast.error("Delete failed")
+    }
+  }
+
+  const openAllPptxModeDialog = () => {
+    setPendingPptxExport({ kind: "all" })
+    setPptxModeDialogOpen(true)
+  }
+
+  const openSinglePptxModeDialog = (report: WeeklyReport) => {
+    setPendingPptxExport({ kind: "single", report })
+    setPptxModeDialogOpen(true)
+  }
+
+  const runPptxExport = async (
+    mode: WeeklyPptxMode,
+    theme: WeeklyPptxTheme = "light",
+    order: WeeklyDeptOrder = "default",
+    fullMeeting = false
+  ) => {
+    if (!pendingPptxExport) return
+    if (pendingPptxExport.kind === "all" && fullMeeting) {
+      setPptxModeDialogOpen(false)
+      setPendingPptxExport(null)
+      await runAgendaDeckExport({ week: weekFilter, year: yearFilter, mode, theme, order })
+      return
+    }
+    const summaryWeek = pendingPptxExport.kind === "all" ? weekFilter : pendingPptxExport.report.week_number
+    const summaryYear = pendingPptxExport.kind === "all" ? yearFilter : pendingPptxExport.report.year
+    // The full layout always carries the task counts column. If the counts
+    // cannot be loaded, still export — the deck is needed for the meeting.
+    let taskSummary
+    if (mode === "full") {
+      try {
+        taskSummary = await loadWeeklyTaskSummaryOptions(summaryWeek, summaryYear)
+      } catch {
+        toast.warning("Could not load task counts — exporting without them")
+      }
+    }
+    const exportMeetingDate = meetingDate
+    if (pendingPptxExport.kind === "all") {
+      await exportAllToPPTX(reports, weekFilter, yearFilter, mode, theme, exportMeetingDate, order, taskSummary)
+    } else {
+      const { exportToPPTX } = await import("@/lib/export-utils")
+      await exportToPPTX(pendingPptxExport.report, mode, theme, exportMeetingDate, taskSummary)
+    }
+    setPptxModeDialogOpen(false)
+    setPendingPptxExport(null)
+  }
+
+  const stats = useMemo(() => {
+    const total = reports.length
+    const withTrackerStarted = reports.filter((report) => {
+      const status = getDepartmentTrackerStatus(report.department, trackingData)
+      return status.label === "Started" || status.label === "Finished"
+    }).length
+    const finished = reports.filter(
+      (report) => getDepartmentTrackerStatus(report.department, trackingData).label === "Finished"
+    ).length
+    const locked = isFilteredWeekLocked ? reports.length : 0
+
+    return { total, withTrackerStarted, finished, locked }
+  }, [isFilteredWeekLocked, reports, trackingData])
+
+  const trackerStatusOptions = useMemo(
+    () => [
+      { value: "Pending", label: "Pending" },
+      { value: "Started", label: "Started" },
+      { value: "Finished", label: "Finished" },
+      { value: "Not Started", label: "Not Started" },
+    ],
+    []
+  )
+
+  const columns = useMemo<DataTableColumn<WeeklyReport>[]>(
+    () => [
+      {
+        key: "department",
+        label: "Department",
+        sortable: true,
+        accessor: (report) => report.department,
+        resizable: true,
+        initialWidth: 180,
+      },
+      {
+        key: "meeting_date",
+        label: "Meeting Date",
+        sortable: true,
+        hideOnMobile: true,
+        accessor: () => meetingDate,
+        render: () => {
+          const date = new Date(`${meetingDate}T00:00:00`)
+          if (Number.isNaN(date.getTime())) return "-"
+          return formatWATDate(date, { day: "2-digit", month: "short", year: "numeric" })
+        },
+      },
+      {
+        key: "week_number",
+        label: "Week",
+        sortable: true,
+        hideOnMobile: true,
+        accessor: (report) => report.week_number,
+        render: (report) => <span className="font-medium">{`W${report.week_number}`}</span>,
+      },
+      {
+        key: "year",
+        label: "Year",
+        sortable: true,
+        hideOnMobile: true,
+        accessor: (report) => report.year,
+      },
+      {
+        key: "submitted_by",
+        label: "Submitted By",
+        sortable: true,
+        hideOnMobile: true,
+        accessor: (report) => {
+          const profile = Array.isArray(report.profiles) ? report.profiles[0] : report.profiles
+          return profile ? `${profile.first_name} ${profile.last_name}` : "Unknown"
+        },
+        render: (report) => {
+          const profile = Array.isArray(report.profiles) ? report.profiles[0] : report.profiles
+          const name = profile ? `${profile.first_name} ${profile.last_name}` : "Unknown"
+          return report.user_id ? (
+            <StaffNameWithAvatar name={name} profileId={report.user_id} src={staffAvatars[report.user_id]} />
+          ) : (
+            name
+          )
+        },
+      },
+      {
+        key: "created_at",
+        label: "Submission Date",
+        sortable: true,
+        hideOnMobile: true,
+        accessor: (report) => report.created_at,
+        render: (report) => {
+          const created = formatWATTimeDate(report.created_at)
+          const updatedAt = (report as WeeklyReport & { updated_at?: string | null }).updated_at
+          const wasEdited = Boolean(updatedAt && new Date(updatedAt).getTime() > new Date(report.created_at).getTime())
+          return (
+            <div className="flex flex-col">
+              <span>{created}</span>
+              {wasEdited ? <span className="text-muted-foreground text-xs">(edited)</span> : null}
+            </div>
+          )
+        },
+      },
+      {
+        key: "tracker_status",
+        label: "Action Tracker",
+        accessor: (report) => getDepartmentTrackerStatus(report.department, trackingData).label,
+        render: (report) => {
+          const trackerStatus = getDepartmentTrackerStatus(report.department, trackingData)
+          return <Badge className={trackerStatus.color}>{trackerStatus.label}</Badge>
+        },
+      },
+    ],
+    [meetingDate, trackingData, staffAvatars]
+  )
+
+  const filters = useMemo<DataTableFilter<WeeklyReport>[]>(
+    () => [
+      {
+        key: "week_number",
+        label: "Week",
+        options: Array.from({ length: 53 }, (_, index) => {
+          const week = index + 1
+          return { value: String(week), label: `Week ${week}` }
+        }),
+        multi: false,
+        placeholder: `Week ${weekFilter}`,
+      },
+      {
+        key: "year",
+        label: "Year",
+        options: [
+          currentOfficeWeek.year - 1,
+          currentOfficeWeek.year,
+          currentOfficeWeek.year + 1,
+          currentOfficeWeek.year + 2,
+        ].map((year) => ({
+          value: String(year),
+          label: String(year),
+        })),
+        multi: false,
+        placeholder: String(yearFilter),
+      },
+      {
+        key: "department",
+        label: "Department",
+        options: initialDepartments.map((department) => ({ value: department, label: department })),
+        multi: false,
+        placeholder: "Every Department",
+      },
+      {
+        key: "tracker_status",
+        label: "Action Tracker",
+        options: trackerStatusOptions,
+      },
+    ],
+    [currentOfficeWeek.year, initialDepartments, trackerStatusOptions, weekFilter, yearFilter]
+  )
+
+  return (
+    <DataTablePage
+      title="Weekly Reports"
+      description="Review and export departmental reports."
+      icon={FileBarChart}
+      backLink={{ href: shell.backHref("/admin/reports/general-meeting"), label: "Back to General Meeting" }}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-2"
+            onClick={() => {
+              setExportTarget({ kind: "all" })
+              setExportOptionsOpen(true)
+            }}
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Export</span>
+          </Button>
+          <Button
+            onClick={() => {
+              if (!canMutateFilteredWeek) {
+                toast.error("This report week is locked after the grace period.")
+                return
+              }
+              setEditingReport(null)
+              setIsAdminDialogOpen(true)
+            }}
+            className="h-8 gap-2"
+            size="sm"
+            disabled={!canMutateFilteredWeek}
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Add Report</span>
+            <span className="sm:hidden">Add</span>
+          </Button>
+        </div>
+      }
+      stats={
+        <StatGrid>
+          <StatCard
+            variant="compact"
+            title="Reports"
+            value={stats.total}
+            icon={FileBarChart}
+            iconBgColor="bg-blue-500/10"
+            iconColor="text-blue-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Tracker Started"
+            value={stats.withTrackerStarted}
+            icon={CalendarDays}
+            iconBgColor="bg-amber-500/10"
+            iconColor="text-amber-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Finished"
+            value={stats.finished}
+            icon={FileSpreadsheet}
+            iconBgColor="bg-emerald-500/10"
+            iconColor="text-emerald-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Locked Week"
+            value={stats.locked}
+            icon={Download}
+            iconBgColor="bg-violet-500/10"
+            iconColor="text-violet-500"
+          />
+        </StatGrid>
+      }
+    >
+      <DataTable<WeeklyReport>
+        data={reports}
+        columns={columns}
+        filters={filters}
+        getRowId={(report) => report.id}
+        pagination={{ pageSize: 50 }}
+        searchPlaceholder="Search department or work done..."
+        searchFn={(report, query) => {
+          const normalizedQuery = query.toLowerCase()
+          return (
+            report.department.toLowerCase().includes(normalizedQuery) ||
+            report.work_done.toLowerCase().includes(normalizedQuery) ||
+            report.tasks_new_week.toLowerCase().includes(normalizedQuery) ||
+            report.challenges.toLowerCase().includes(normalizedQuery)
+          )
+        }}
+        isLoading={isLoading}
+        error={error instanceof Error ? error.message : null}
+        onRetry={() => {
+          void refetch()
+        }}
+        onFilterChange={(filterValues) => {
+          const weekValue = filterValues.week_number?.[0]
+          const yearValue = filterValues.year?.[0]
+
+          if (weekValue) {
+            const parsedWeek = Number(weekValue)
+            if (!Number.isNaN(parsedWeek) && parsedWeek !== weekFilter) {
+              setWeekFilter(parsedWeek)
+            }
+          }
+
+          if (yearValue) {
+            const parsedYear = Number(yearValue)
+            if (!Number.isNaN(parsedYear) && parsedYear !== yearFilter) {
+              setYearFilter(parsedYear)
+            }
+          }
+        }}
+        rowActions={[
+          {
+            label: "Edit",
+            onClick: (report) => {
+              if (!canMutateFilteredWeek) {
+                toast.error("This report week is locked after the grace period.")
+                return
+              }
+              if (!canMutateReport(report)) {
+                toast.error("You can only edit your own reports")
+                return
+              }
+              setEditingReport(report)
+              setIsAdminDialogOpen(true)
+            },
+            hidden: () => !canMutateFilteredWeek,
+          },
+          {
+            label: "Delete",
+            variant: "destructive",
+            onClick: (report) => setPendingDeleteId(report.id),
+            hidden: () => !canMutateFilteredWeek,
+          },
+          {
+            label: "Export",
+            onClick: (report) => {
+              setExportTarget({ kind: "single", report })
+              setExportOptionsOpen(true)
+            },
+          },
+        ]}
+        expandable={{
+          render: (report) => (
+            <div className="grid gap-6 md:grid-cols-3">
+              <div className="space-y-3">
+                <h4 className="text-xs font-black tracking-widest text-blue-600 uppercase">Work Done</h4>
+                <div className="border-info/30 space-y-1.5 border-l-2 pl-3 text-sm">
+                  {autoNumberLines(report.work_done)
+                    .split("\n")
+                    .map((line, index) => (
+                      <div key={`line-${index}`}>{line}</div>
+                    ))}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-xs font-black tracking-widest text-emerald-600 uppercase">Tasks for New Week</h4>
+                <div className="border-success/30 space-y-1.5 border-l-2 pl-3 text-sm">
+                  {autoNumberLines(report.tasks_new_week)
+                    .split("\n")
+                    .map((line, index) => (
+                      <div key={`line-${index}`}>{line}</div>
+                    ))}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-xs font-black tracking-widest text-rose-600 uppercase">Challenges</h4>
+                <div className="border-danger/30 space-y-1.5 border-l-2 pl-3 text-sm">
+                  {autoNumberLines(report.challenges)
+                    .split("\n")
+                    .map((line, index) => (
+                      <div key={`line-${index}`}>{line}</div>
+                    ))}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 md:col-span-3">
+                {renderTrackerLink(report)}
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1.5 text-xs"
+                    onClick={() => {
+                      setExportTarget({ kind: "single", report })
+                      setExportOptionsOpen(true)
+                    }}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export
+                  </Button>
+                  {canMutateFilteredWeek && canMutateReport(report) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={() => {
+                        setEditingReport(report)
+                        setIsAdminDialogOpen(true)
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ),
+        }}
+        viewToggle
+        contactsView
+        stickyToolbar
+        defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+        mobileRow={{
+          title: (report) => report.department,
+          subtitle: (report) => {
+            const profile = Array.isArray(report.profiles) ? report.profiles[0] : report.profiles
+            const submitterName = profile ? `${profile.first_name} ${profile.last_name}` : "Unknown"
+            return `${submitterName} (W${report.week_number}) · ${report.year}`
+          },
+          meta: (report) => {
+            const meetingDateDisplay = meetingDate ? new Date(`${meetingDate}T00:00:00`) : null
+            const formattedMeeting =
+              meetingDateDisplay && !Number.isNaN(meetingDateDisplay.getTime())
+                ? formatWATDate(meetingDateDisplay, { day: "numeric", month: "short" })
+                : null
+            return (
+              <>
+                {formattedMeeting && (
+                  <span className="bg-muted/60 text-muted-foreground inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium">
+                    📅 {formattedMeeting}
+                  </span>
+                )}
+                <span className="bg-muted/60 text-muted-foreground inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs">
+                  🕒 {formatWATTimeDate(report.created_at)}
+                </span>
+              </>
+            )
+          },
+          snippet: (report) => {
+            const snippetText = autoNumberLines(report.work_done).trim()
+            return snippetText ? `Work Done: ${snippetText}` : null
+          },
+          expandInline: true,
+          trailing: (report) => {
+            const trackerStatus = getDepartmentTrackerStatus(report.department, trackingData)
+            return <Badge className={trackerStatus.color}>{trackerStatus.label}</Badge>
+          },
+          detail: {
+            title: (report) => report.department,
+            badges: (report) => {
+              const trackerStatus = getDepartmentTrackerStatus(report.department, trackingData)
+              return <Badge className={trackerStatus.color}>{trackerStatus.label}</Badge>
+            },
+            fields: (report) => {
+              const profile = Array.isArray(report.profiles) ? report.profiles[0] : report.profiles
+              const submitterName = profile ? `${profile.first_name} ${profile.last_name}` : "Unknown"
+              const trackerStatus = getDepartmentTrackerStatus(report.department, trackingData)
+              return [
+                { label: "Week", value: `W${report.week_number}, ${report.year}` },
+                { label: "Meeting Date", value: meetingDate },
+                { label: "Submitted By", value: submitterName },
+                {
+                  label: "Action Tracker",
+                  value: trackerStatus.label,
+                  href: trackerHrefFor(report) ?? undefined,
+                },
+                { label: "Submitted", value: formatWATTimeDate(report.created_at) },
+                {
+                  label: "Work Done",
+                  value: autoNumberLines(report.work_done) || "No work recorded.",
+                  fullWidth: true,
+                  copyable: true,
+                },
+                {
+                  label: "Tasks for New Week",
+                  value: autoNumberLines(report.tasks_new_week) || "No new tasks recorded.",
+                  fullWidth: true,
+                  copyable: true,
+                },
+                {
+                  label: "Challenges",
+                  value: autoNumberLines(report.challenges) || "No challenges recorded.",
+                  fullWidth: true,
+                  copyable: true,
+                },
+              ]
+            },
+            actions: (report) => {
+              const items: DataTableDetailAction[] = [
+                {
+                  label: "Export",
+                  icon: Download,
+                  variant: "outline",
+                  onClick: () => {
+                    setExportTarget({ kind: "single", report })
+                    setExportOptionsOpen(true)
+                  },
+                },
+              ]
+              if (canMutateFilteredWeek && canMutateReport(report)) {
+                items.unshift({
+                  label: "Edit",
+                  icon: Pencil,
+                  variant: "default",
+                  onClick: () => {
+                    setEditingReport(report)
+                    setIsAdminDialogOpen(true)
+                  },
+                })
+              }
+              return items
+            },
+          },
+        }}
+        cards
+        cardRenderer={(report) => {
+          const profile = Array.isArray(report.profiles) ? report.profiles[0] : report.profiles
+          const submitterName = profile ? `${profile.first_name} ${profile.last_name}` : "Unknown"
+          const trackerStatus = getDepartmentTrackerStatus(report.department, trackingData)
+
+          return (
+            <div className="space-y-3 rounded-xl border p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">{report.department}</p>
+                  <div className="mt-1">
+                    {report.user_id ? (
+                      <StaffNameWithAvatar
+                        name={submitterName}
+                        profileId={report.user_id}
+                        src={staffAvatars[report.user_id]}
+                      />
+                    ) : (
+                      <p className="text-muted-foreground text-sm">{submitterName}</p>
+                    )}
+                  </div>
+                </div>
+                <Badge className={trackerStatus.color}>{trackerStatus.label}</Badge>
+              </div>
+              <div className="grid gap-1 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Week</span>
+                  <span>{`W${report.week_number}, ${report.year}`}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Submitted</span>
+                  <span>{formatWATTimeDate(report.created_at)}</span>
+                </div>
+              </div>
+            </div>
+          )
+        }}
+        emptyTitle="No weekly reports found"
+        emptyDescription="No records were found for the selected criteria."
+        emptyIcon={FileBarChart}
+        skeletonRows={5}
+        urlSync
+      />
+
+      <WeeklyReportAdminDialog
+        isOpen={isAdminDialogOpen}
+        onClose={() => setIsAdminDialogOpen(false)}
+        report={editingReport}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.adminWeeklyReports() })}
+        currentUser={currentUser}
+      />
+
+      <DeleteReportDialog
+        pendingDeleteId={pendingDeleteId}
+        onOpenChange={() => setPendingDeleteId(null)}
+        onConfirm={async (id) => {
+          await handleDelete(id)
+        }}
+      />
+
+      <PptxModeDialog
+        open={pptxModeDialogOpen}
+        onOpenChange={(open) => {
+          setPptxModeDialogOpen(open)
+          if (!open) setPendingPptxExport(null)
+        }}
+        onSelect={runPptxExport}
+        showOrderStep={pendingPptxExport?.kind === "all"}
+        showFullMeetingOption={pendingPptxExport?.kind === "all"}
+      />
+
+      <ExportOptionsDialog
+        open={exportOptionsOpen}
+        onOpenChange={setExportOptionsOpen}
+        title="Export Weekly Reports"
+        options={[
+          { id: "pdf", label: "PDF", icon: "pdf" },
+          { id: "word", label: "Word (.docx)", icon: "word" },
+          { id: "pptx", label: "PowerPoint (.pptx)", icon: "pptx" },
+          { id: "excel", label: "Excel (.xlsx)", icon: "excel" },
+        ]}
+        onSelect={(id) => {
+          if (exportTarget.kind === "single") {
+            const targetReport = exportTarget.report
+            if (id === "pdf") {
+              void downloadWeeklyReportPdf({
+                week: targetReport.week_number,
+                year: targetReport.year,
+                department: targetReport.department,
+              })
+              return
+            }
+            if (id === "word") {
+              void downloadWeeklyReportDocx({
+                week: targetReport.week_number,
+                year: targetReport.year,
+                department: targetReport.department,
+              })
+              return
+            }
+            if (id === "excel") {
+              void import("@/lib/export-utils").then(({ exportToXLSX }) => exportToXLSX(targetReport, meetingDate))
+              return
+            }
+            openSinglePptxModeDialog(targetReport)
+            return
+          }
+
+          if (id === "pdf") {
+            void downloadWeeklyReportPdf({ week: weekFilter, year: yearFilter })
+            return
+          }
+          if (id === "word") {
+            void downloadWeeklyReportDocx({ week: weekFilter, year: yearFilter })
+            return
+          }
+          if (id === "excel") {
+            void import("@/lib/export-utils").then(({ exportAllToXLSX }) =>
+              exportAllToXLSX(reports, weekFilter, yearFilter, meetingDate)
+            )
+            return
+          }
+          openAllPptxModeDialog()
+        }}
+      />
+    </DataTablePage>
+  )
+}

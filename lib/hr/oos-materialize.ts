@@ -1,0 +1,182 @@
+import type { SupabaseClient } from "@supabase/supabase-js"
+import { recordAttendanceEvents } from "@/lib/hr/attendance-events"
+import { resolvePendingAppealsOnManualStatus } from "@/lib/hr/attendance-appeals"
+import { toLocalISODate } from "@/lib/utils/date"
+
+/** Inclusive list of ISO dates between start and end (includes weekends for OOS directives). */
+export function oosWorkdays(start: string, end: string): string[] {
+  const dates: string[] = []
+  const cur = new Date(start + "T00:00:00Z")
+  const last = new Date(end + "T00:00:00Z")
+  while (cur <= last) {
+    const iso = toLocalISODate(cur)
+    dates.push(iso)
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+  return dates
+}
+
+/**
+ * Materialize OOS into attendance_records for the given user/date pairs.
+ *
+ * OOS stays materialized (not derived) so every existing reader of attendance_records
+ * keeps seeing it. Applies the same override rule as the bulk endpoint:
+ *   - fully-present day (clock-in AND clock-out) → NEVER converted (person was in office),
+ *   - incomplete day (clock-in, no clock-out)     → overridden (the "left mid-day" case),
+ *   - empty day                                   → fresh OOS record.
+ * Overrides preserve the punches, so removing OOS re-derives the real status.
+ *
+ * Any pending appeal on a day this changes is closed as resolved, so a later
+ * approval cannot overwrite the OOS.
+ */
+export async function materializeOos(
+  dataClient: SupabaseClient,
+  userIds: string[],
+  dates: string[],
+  comment: string,
+  actorId: string | null
+): Promise<{ created: number; overrode: number; skipped: number }> {
+  if (userIds.length === 0 || dates.length === 0) return { created: 0, overrode: 0, skipped: 0 }
+
+  type ExistingRow = { id: string; user_id: string; date: string; clock_in: string | null; clock_out: string | null }
+  const { data: existingRecords } = await dataClient
+    .from("attendance_records")
+    .select("id, user_id, date, clock_in, clock_out")
+    .in("user_id", userIds)
+    .in("date", dates)
+  const existingByKey = new Map<string, ExistingRow>()
+  for (const r of (existingRecords ?? []) as ExistingRow[]) existingByKey.set(`${r.user_id}::${r.date}`, r)
+
+  const toInsert: Record<string, unknown>[] = []
+  const overrides: ExistingRow[] = []
+  let skipped = 0
+  for (const userId of userIds) {
+    for (const date of dates) {
+      const existing = existingByKey.get(`${userId}::${date}`)
+      if (existing) {
+        if (existing.clock_in && existing.clock_out) {
+          skipped++
+          continue
+        }
+        overrides.push(existing)
+        continue
+      }
+      toInsert.push({
+        user_id: userId,
+        date,
+        status: "out_of_station",
+        source: "manual",
+        manual_comment: comment,
+        waived: false,
+      })
+    }
+  }
+
+  const changed: Array<{ user_id: string; date: string }> = []
+  let overrode = 0
+  if (overrides.length > 0) {
+    const { error } = await dataClient
+      .from("attendance_records")
+      .update({ status: "out_of_station", source: "manual", manual_comment: comment, waived: false })
+      .in(
+        "id",
+        overrides.map((o) => o.id)
+      )
+    if (!error) {
+      overrode = overrides.length
+      changed.push(...overrides)
+      await recordAttendanceEvents(
+        dataClient,
+        overrides.map((o) => ({
+          userId: o.user_id,
+          eventDate: o.date,
+          eventType: "bulk_grant" as const,
+          attendanceRecordId: o.id,
+          toStatus: "out_of_station",
+          source: "manual" as const,
+          comment,
+          actorId,
+          metadata: { override: true, had_punch: Boolean(o.clock_in || o.clock_out), oos_period: true },
+        }))
+      )
+    }
+  }
+
+  let created = 0
+  if (toInsert.length > 0) {
+    const { data: inserted, error } = await dataClient
+      .from("attendance_records")
+      .insert(toInsert)
+      .select("id, user_id, date")
+    if (!error && inserted) {
+      created = inserted.length
+      changed.push(...(inserted as Array<{ user_id: string; date: string }>))
+      await recordAttendanceEvents(
+        dataClient,
+        (inserted as Array<{ id: string; user_id: string; date: string }>).map((row) => ({
+          userId: row.user_id,
+          eventDate: row.date,
+          eventType: "bulk_grant" as const,
+          attendanceRecordId: row.id,
+          toStatus: "out_of_station",
+          source: "manual" as const,
+          comment,
+          actorId,
+          metadata: { oos_period: true },
+        }))
+      )
+    }
+  }
+
+  const datesByUser = new Map<string, string[]>()
+  for (const row of changed) datesByUser.set(row.user_id, [...(datesByUser.get(row.user_id) ?? []), row.date])
+  for (const [userId, userDates] of datesByUser) {
+    await resolvePendingAppealsOnManualStatus(dataClient, {
+      userId,
+      dates: userDates,
+      status: "out_of_station",
+      comment,
+      actorId,
+    })
+  }
+
+  return { created, overrode, skipped }
+}
+
+/** A requested open-ended Out of Station directive, staged on an appeal until confirmed. */
+export type OosPeriodChange = { start_date: string; reason: string }
+
+/**
+ * Opens a confirmed open-ended OOS directive: records it (NULL end_date, active) unless
+ * one is already open, and materializes OOS from its start date through today. The
+ * attendance cron extends it forward from there.
+ */
+export async function openOosPeriod(
+  dataClient: SupabaseClient,
+  userId: string,
+  change: OosPeriodChange,
+  actorId: string
+): Promise<{ error: string | null }> {
+  const { data: open } = await dataClient
+    .from("attendance_oos_periods")
+    .select("id")
+    .eq("user_id", userId)
+    .is("end_date", null)
+    .eq("status", "active")
+    .limit(1)
+  if (!open?.length) {
+    const { error } = await dataClient.from("attendance_oos_periods").insert({
+      user_id: userId,
+      start_date: change.start_date,
+      end_date: null,
+      kind: "infinite",
+      reason: change.reason,
+      status: "active",
+      created_by: actorId,
+    })
+    if (error) return { error: "Failed to open the Out of Station directive" }
+  }
+  const today = toLocalISODate()
+  await materializeOos(dataClient, [userId], oosWorkdays(change.start_date, today), change.reason, actorId)
+  return { error: null }
+}

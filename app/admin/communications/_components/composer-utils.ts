@@ -1,0 +1,47 @@
+import { toLocalISODate, formatWATDate } from "@/lib/utils/date"
+import { DEFAULT_TEAMS_LINK } from "@/lib/events/types"
+import { GENERAL_MEETING_AGENDA_LINES } from "@/lib/reports/general-meeting-agenda"
+
+export { DEFAULT_TEAMS_LINK }
+
+export const LEGACY_DEFAULT_AGENDA = [
+  "Opening Prayer",
+  "Knowledge Sharing Session (30 minutes)",
+  "Departmental Updates",
+  "Progress on Ongoing Projects",
+  "Upcoming Events and Deadlines",
+  "Any Other Business",
+  "Adjournment",
+]
+
+export const DEFAULT_AGENDA = GENERAL_MEETING_AGENDA_LINES
+
+export function getNextMondayFormatted(): string {
+  const now = new Date()
+  const day = now.getDay()
+  const daysUntilMonday = day === 0 ? 1 : day === 1 ? 0 : 8 - day
+  const nextMonday = new Date(now)
+  nextMonday.setDate(now.getDate() + daysUntilMonday)
+  return toLocalISODate(nextMonday)
+}
+
+export function formatDateNice(dateStr: string): string {
+  if (!dateStr) return ""
+  const d = new Date(dateStr + "T00:00:00")
+  const day = d.getDate()
+  const suffix = [1, 21, 31].includes(day) ? "st" : [2, 22].includes(day) ? "nd" : [3, 23].includes(day) ? "rd" : "th"
+  const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "Africa/Lagos" }).format(d)
+  const month = new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "Africa/Lagos" }).format(d)
+  const year = d.getFullYear()
+  return `${weekday} ${day}${suffix} ${month} ${year}`
+}
+
+export { capitalize } from "@/lib/format"
+
+export function stripHtmlToText(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}

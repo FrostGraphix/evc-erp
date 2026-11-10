@@ -1,0 +1,566 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { DataTable, DataTablePage } from "@/components/ui/data-table"
+import { StatCard } from "@/components/ui/stat-card"
+import { StatGrid } from "@/components/ui/stat-grid"
+import { StaffAvatar, type StaffAvatarSize } from "@/components/ui/staff-avatar"
+import type { DataTableColumn, DataTableFilter, DataTableTab } from "@/components/ui/data-table"
+import { ExportOptionsDialog } from "@/components/admin/export-options-dialog"
+import { QUERY_KEYS } from "@/lib/query-keys"
+import { toLocalISODate } from "@/lib/utils/date"
+import { exportDirectoryToCsv, exportDirectoryToExcel, type DirectoryExportRow } from "@/lib/directory/export"
+import {
+  Briefcase,
+  Building2,
+  Check,
+  Copy,
+  Download,
+  FileSignature,
+  Mail,
+  MapPin,
+  Phone,
+  ShieldCheck,
+  Users,
+} from "lucide-react"
+import { toast } from "sonner"
+import { cn } from "@/lib/utils"
+import { fetchDirectoryRows } from "@/lib/directory/client"
+
+type DirectoryRow = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  full_name: string | null
+  company_email: string | null
+  additional_email: string | null
+  phone_number: string | null
+  additional_phone: string | null
+  department: string | null
+  designation: string | null
+  office_location: string | null
+  is_department_lead: boolean | null
+  lead_departments: string[] | null
+  employment_status: string | null
+  employment_type: string | null
+  /** Short-lived signed URL; the private storage path never leaves the server. */
+  avatar_url: string | null
+}
+
+/** Field contractors on payroll (CTR group without company email). */
+function isContractStaff(row: DirectoryRow): boolean {
+  return (
+    ((row.employment_status || "").toLowerCase() === "contract" ||
+      (row.employment_type || "").toLowerCase() === "contract") &&
+    !row.company_email
+  )
+}
+
+/**
+ * Directory values copy on click rather than launching anything. Opening a mail client
+ * is rarely what people want here — they are looking a colleague up to paste the detail
+ * somewhere else. Rendered as a <button> so the data table's row handler ignores the
+ * click and doesn't expand the row underneath.
+ */
+function CopyValue({ value, className, muted }: { value: string | null; className?: string; muted?: boolean }) {
+  const [copied, setCopied] = useState(false)
+
+  if (!value) return <span className="text-muted-foreground">-</span>
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      toast.success("Copied", { description: value })
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast.error("Couldn't copy — your browser blocked clipboard access")
+    }
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={copied ? "Copied" : "Click to copy"}
+          className={cn(
+            "hover:text-primary inline-flex max-w-full items-center gap-1.5 text-left transition-colors",
+            muted && "text-muted-foreground",
+            className
+          )}
+        >
+          <span className="truncate">{value}</span>
+          {copied ? (
+            <Check className="text-success h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Copy className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-60" />
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{copied ? "Copied to clipboard!" : "Click to copy"}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/**
+ * The person, in every view. A directory is a list of people, so the face (or
+ * the initials standing in for it) belongs in the table cell and the card as
+ * much as in the contacts row.
+ */
+function DirectoryAvatar({
+  row,
+  size = "md",
+  viewable = true,
+}: {
+  row: DirectoryRow
+  size?: StaffAvatarSize
+  /** False inside the mobile row, which is itself a button. */
+  viewable?: boolean
+}) {
+  return <StaffAvatar name={displayName(row)} src={row.avatar_url} size={size} profileId={viewable ? row.id : null} />
+}
+
+/**
+ * "Surname, Firstname" — a directory is scanned down the surname column and grouped
+ * by its initial, so the surname has to lead. Falls back to whatever is available:
+ * a row with only `full_name` keeps its last word as the surname.
+ */
+function displayName(row: DirectoryRow): string {
+  const first = row.first_name?.trim()
+  const last = row.last_name?.trim()
+  if (last && first) return `${last}, ${first}`
+  if (last) return last
+
+  const full = row.full_name?.trim()
+  if (full) {
+    const parts = full.split(/\s+/)
+    if (parts.length > 1) return `${parts[parts.length - 1]}, ${parts.slice(0, -1).join(" ")}`
+    return full
+  }
+
+  return first || row.company_email || "Unknown"
+}
+
+const fetchDirectory = () => fetchDirectoryRows<DirectoryRow>()
+
+export function DirectoryContent() {
+  const [exportOpen, setExportOpen] = useState(false)
+  // Rows currently visible in the table (after search + filters + sort).
+  const [processedRows, setProcessedRows] = useState<DirectoryRow[]>([])
+
+  type DirectoryTab = "employees" | "contract" | "all"
+  const [activeTab, setActiveTab] = useState<DirectoryTab>("employees")
+
+  // Controlled only so the "leads" metric can toggle its own filter; the toolbar
+  // still renders and drives these values exactly as it does uncontrolled.
+  const [filterValues, setFilterValues] = useState<Record<string, string[]>>({})
+  const leadsOnly = filterValues.is_department_lead?.length === 1 && filterValues.is_department_lead[0] === "lead"
+
+  const {
+    data: rows = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({ queryKey: QUERY_KEYS.directory(), queryFn: fetchDirectory })
+
+  const tabs: DataTableTab[] = useMemo(() => {
+    const contract = rows.filter(isContractStaff).length
+    const regular = rows.length - contract
+
+    return [
+      { key: "employees", label: `Employees (${regular})`, icon: Briefcase },
+      { key: "contract", label: `Contract (${contract})`, icon: FileSignature },
+      { key: "all", label: `All (${rows.length})`, icon: Users },
+    ]
+  }, [rows])
+
+  const scopedRows = useMemo(() => {
+    if (activeTab === "employees") {
+      return rows.filter((r) => !isContractStaff(r))
+    }
+    if (activeTab === "contract") {
+      return rows.filter(isContractStaff)
+    }
+    return rows
+  }, [rows, activeTab])
+
+  const handleExport = (format: string) => {
+    const source = processedRows.length ? processedRows : scopedRows
+    const exportRows: DirectoryExportRow[] = source.map((r) => ({
+      Name: displayName(r),
+      Designation: r.designation || "",
+      Department: r.department || "",
+      "Department Lead": r.is_department_lead ? "Yes" : "No",
+      "Company Email": r.company_email || "",
+      "Additional Email": r.additional_email || "",
+      Phone: r.phone_number || "",
+      "Additional Phone": r.additional_phone || "",
+      Office: r.office_location || "",
+    }))
+    const filename = `acob-staff-directory-${toLocalISODate(new Date())}`
+    if (format === "excel") void exportDirectoryToExcel(exportRows, filename)
+    else exportDirectoryToCsv(exportRows, filename)
+  }
+
+  const departmentOptions = useMemo(
+    () =>
+      Array.from(new Set(scopedRows.map((r) => r.department).filter((d): d is string => Boolean(d))))
+        .sort()
+        .map((d) => ({ value: d, label: d })),
+    [scopedRows]
+  )
+
+  const officeOptions = useMemo(
+    () =>
+      Array.from(new Set(scopedRows.map((r) => r.office_location).filter((o): o is string => Boolean(o))))
+        .sort()
+        .map((o) => ({ value: o, label: o })),
+    [scopedRows]
+  )
+
+  // Stats follow what the table is actually showing within the active tab scope.
+  const stats = useMemo(() => {
+    const source = processedRows.length ? processedRows : scopedRows
+    const total = source.length
+    const departments = new Set(source.map((r) => r.department).filter(Boolean)).size
+    const leads = source.filter((r) => r.is_department_lead).length
+    const offices = new Set(source.map((r) => r.office_location).filter(Boolean)).size
+    return { total, departments, leads, offices }
+  }, [scopedRows, processedRows])
+
+  const columns = useMemo<DataTableColumn<DirectoryRow>[]>(
+    () => [
+      {
+        key: "full_name",
+        label: "Name",
+        sortable: true,
+        accessor: (r) => displayName(r),
+        render: (r) => (
+          <div className="group flex items-center gap-2.5">
+            <DirectoryAvatar row={r} size="sm" />
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2">
+                <CopyValue value={displayName(r)} className="font-medium" />
+                {r.is_department_lead && (
+                  <Badge variant="outline" className="text-success">
+                    Lead
+                  </Badge>
+                )}
+              </div>
+              {r.designation && <p className="text-muted-foreground text-xs">{r.designation}</p>}
+            </div>
+          </div>
+        ),
+      },
+      {
+        key: "company_email",
+        label: "Email",
+        sortable: true,
+        accessor: (r) => r.company_email || "",
+        render: (r) => (
+          <div className="group space-y-0.5">
+            <CopyValue value={r.company_email} />
+            {r.additional_email && <CopyValue value={r.additional_email} className="text-xs" muted />}
+          </div>
+        ),
+      },
+      {
+        key: "department",
+        label: "Department",
+        sortable: true,
+        accessor: (r) => r.department || "",
+        render: (r) => (
+          <div className="group">
+            <CopyValue value={r.department} />
+          </div>
+        ),
+      },
+      {
+        key: "phone_number",
+        label: "Phone",
+        accessor: (r) => r.phone_number || "",
+        hideOnMobile: true,
+        render: (r) => (
+          <div className="group space-y-0.5">
+            <CopyValue value={r.phone_number} />
+            {r.additional_phone && <CopyValue value={r.additional_phone} className="text-xs" muted />}
+          </div>
+        ),
+      },
+      {
+        key: "office_location",
+        label: "Office",
+        accessor: (r) => r.office_location || "",
+        hideOnMobile: true,
+        render: (r) => (
+          <div className="group">
+            <CopyValue value={r.office_location} />
+          </div>
+        ),
+      },
+    ],
+    []
+  )
+
+  const filters = useMemo<DataTableFilter<DirectoryRow>[]>(
+    () => [
+      { key: "department", label: "Department", options: departmentOptions },
+      { key: "office_location", label: "Office", options: officeOptions },
+      {
+        // Not "Role" — that means the system role (admin/employee) on the HR employees page,
+        // and using the same word for two different things made the two pages read alike.
+        key: "is_department_lead",
+        label: "Position",
+        options: [
+          { value: "lead", label: "Department leads" },
+          { value: "member", label: "Team members" },
+        ],
+        mode: "custom",
+        filterFn: (row, value) => {
+          const v = row.is_department_lead ? "lead" : "member"
+          return Array.isArray(value) ? value.includes(v) : v === value
+        },
+      },
+    ],
+    [departmentOptions, officeOptions]
+  )
+
+  return (
+    <DataTablePage
+      title="Directory"
+      description="Contact details for everyone at ACOB — search by name, department or office."
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={(tab) => {
+        setActiveTab(tab as DirectoryTab)
+        setFilterValues({})
+      }}
+      actions={
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setExportOpen(true)} disabled={rows.length === 0}>
+            <Download className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Export</span>
+          </Button>
+        </div>
+      }
+      // box in the first screenful, which four stat cards do not allow.
+      // Paired with `statBadges`: the line carries mobile, these take over from `md`
+      // where there is room. `compact` keeps them to a slim band rather than the
+      // full-height cards that used to push search off a small screen.
+      stats={
+        <StatGrid>
+          <StatCard
+            variant="compact"
+            title={activeTab === "contract" ? "Contract Staff" : "Colleagues"}
+            value={stats.total === scopedRows.length ? stats.total : `${stats.total} of ${scopedRows.length}`}
+            icon={Users}
+            iconBgColor="bg-blue-500/10"
+            iconColor="text-blue-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Departments"
+            value={stats.departments}
+            icon={Building2}
+            iconBgColor="bg-violet-500/10"
+            iconColor="text-violet-500"
+          />
+          {/* Clickable like its badge counterpart — the toggle must not vanish just
+              because the viewport crossed `md`. Shown on the same condition as that
+              badge too, so the two never disagree about which metrics exist. */}
+          {(stats.leads > 0 || leadsOnly) && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilterValues((prev) => ({ ...prev, is_department_lead: leadsOnly ? [] : ["lead"] }))
+                  }
+                  aria-pressed={leadsOnly}
+                  className="rounded-xl text-left transition-colors"
+                >
+                  <StatCard
+                    variant="compact"
+                    title={leadsOnly ? "Leads · filtered" : "Department Leads"}
+                    value={stats.leads}
+                    icon={ShieldCheck}
+                    iconBgColor="bg-emerald-500/10"
+                    iconColor="text-emerald-500"
+                    className={cn("h-full", leadsOnly && "border-primary/50 bg-primary/5")}
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">{leadsOnly ? "Show everyone" : "Show department leads only"}</TooltipContent>
+            </Tooltip>
+          )}
+          {stats.offices > 0 && (
+            <StatCard
+              variant="compact"
+              title="Offices"
+              value={stats.offices}
+              icon={MapPin}
+              iconBgColor="bg-amber-500/10"
+              iconColor="text-amber-500"
+            />
+          )}
+        </StatGrid>
+      }
+      spacing="tight"
+      actionsPlacement="inline-always"
+    >
+      <ExportOptionsDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        title="Export Staff Directory"
+        options={[
+          { id: "excel", label: "Excel (.xlsx)", icon: "excel" },
+          { id: "csv", label: "CSV (.csv)", icon: "excel" },
+        ]}
+        onSelect={handleExport}
+      />
+
+      <DataTable<DirectoryRow>
+        data={scopedRows}
+        columns={columns}
+        filters={filters}
+        filterValues={filterValues}
+        onFilterValuesChange={setFilterValues}
+        getRowId={(r) => r.id}
+        onProcessedDataChange={setProcessedRows}
+        pagination={{ pageSize: 50 }}
+        searchPlaceholder="Search name, email, department, phone…"
+        searchFn={(row, query) => {
+          const q = query.toLowerCase()
+          return (
+            displayName(row).toLowerCase().includes(q) ||
+            (row.company_email || "").toLowerCase().includes(q) ||
+            (row.additional_email || "").toLowerCase().includes(q) ||
+            (row.department || "").toLowerCase().includes(q) ||
+            (row.designation || "").toLowerCase().includes(q) ||
+            (row.phone_number || "").toLowerCase().includes(q) ||
+            (row.office_location || "").toLowerCase().includes(q)
+          )
+        }}
+        isLoading={isLoading}
+        error={error instanceof Error ? error.message : null}
+        onRetry={() => {
+          void refetch()
+        }}
+        mobileRow={{
+          // A-Z sections, contacts-app style
+          groupBy: (r) => {
+            const letter = displayName(r).trim()[0]?.toUpperCase() || "#"
+            return /[A-Z]/.test(letter) ? letter : "#"
+          },
+          leading: (r) => <DirectoryAvatar row={r} viewable={false} />,
+          title: (r) => displayName(r),
+          subtitle: (r) => [r.designation, r.department].filter(Boolean).join(" · ") || "—",
+          trailing: (r) =>
+            r.is_department_lead ? (
+              <Badge variant="outline" className="text-success text-xs">
+                Lead
+              </Badge>
+            ) : null,
+          detail: {
+            title: (r) => displayName(r),
+            subtitle: (r) => r.designation,
+            avatar: (r) => <DirectoryAvatar row={r} size="xl" />,
+            badges: (r) =>
+              r.is_department_lead ? (
+                <Badge variant="outline" className="text-success border-success/40 bg-success/10 text-xs">
+                  Lead
+                </Badge>
+              ) : null,
+            fields: (r) => [
+              { icon: Mail, label: "Email", value: r.company_email, fullWidth: true, copyable: true },
+              {
+                icon: Mail,
+                label: "Alt. email",
+                value: r.additional_email,
+                muted: true,
+                fullWidth: true,
+                copyable: true,
+              },
+              { icon: Phone, label: "Phone", value: r.phone_number, copyable: true },
+              { icon: Phone, label: "Alt. phone", value: r.additional_phone, muted: true, copyable: true },
+              { icon: Building2, label: "Department", value: r.department },
+              { icon: MapPin, label: "Office", value: r.office_location },
+            ],
+            actions: (r) => [
+              ...(r.phone_number
+                ? [
+                    {
+                      label: "Call",
+                      icon: Phone,
+                      href: `tel:${r.phone_number.replace(/\s+/g, "")}`,
+                    },
+                  ]
+                : []),
+              ...(r.company_email
+                ? [{ label: "Email", icon: Mail, href: `mailto:${r.company_email}`, variant: "outline" as const }]
+                : []),
+            ],
+          },
+        }}
+        viewToggle
+        contactsView
+        defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+        cards
+        cardRenderer={(r) => (
+          <div className="group bg-card text-card-foreground border-border/60 hover:border-primary/40 space-y-3 rounded-xl border p-4 shadow-sm transition-all">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <DirectoryAvatar row={r} size="lg" />
+                <div className="min-w-0">
+                  <CopyValue value={displayName(r)} className="font-medium" />
+                  {r.designation && <p className="text-muted-foreground text-sm">{r.designation}</p>}
+                </div>
+              </div>
+              {r.is_department_lead && (
+                <Badge variant="outline" className="text-success shrink-0">
+                  Lead
+                </Badge>
+              )}
+            </div>
+            <div className="grid gap-1 text-sm">
+              <div className="flex items-center gap-2">
+                <Mail className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                <div className="space-y-0.5">
+                  <CopyValue value={r.company_email} />
+                  {r.additional_email && <CopyValue value={r.additional_email} className="text-xs" muted />}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Phone className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                <div className="space-y-0.5">
+                  <CopyValue value={r.phone_number} />
+                  {r.additional_phone && <CopyValue value={r.additional_phone} className="text-xs" muted />}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Building2 className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                <CopyValue value={r.department} />
+              </div>
+              <div className="flex items-center gap-2">
+                <MapPin className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                <CopyValue value={r.office_location} />
+              </div>
+            </div>
+          </div>
+        )}
+        emptyTitle="No colleagues found"
+        emptyDescription="Staff contact details will appear here."
+        emptyIcon={Users}
+        skeletonRows={6}
+        stickyToolbar
+        urlSync
+      />
+    </DataTablePage>
+  )
+}

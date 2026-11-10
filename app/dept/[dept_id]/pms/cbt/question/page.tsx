@@ -1,0 +1,15 @@
+import { requireDeptScope } from "@/lib/dept/require-dept-scope"
+import { CbtQuestionManager } from "@/components/pms/cbt-question-manager"
+
+export const metadata: Metadata = { title: "Dept Question" }
+import type { Metadata } from "next"
+
+interface Props {
+  params: Promise<{ dept_id: string }>
+}
+
+export default async function DeptPmsCbtQuestionPage({ params }: Props) {
+  const { dept_id } = await params
+  const scope = await requireDeptScope(dept_id)
+  return <CbtQuestionManager basePath={`/dept/${dept_id}/pms/cbt`} lockDepartment={scope.deptName} />
+}

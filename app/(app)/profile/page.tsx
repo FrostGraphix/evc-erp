@@ -1,0 +1,595 @@
+import { redirect } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
+import { getServiceRoleClientOrFallback } from "@/lib/supabase/admin"
+import { ProfileContent } from "./profile-content"
+import { normalizeToken, isExcludedActivity } from "@/components/admin/dashboard-helpers"
+import { buildPersonalActivity } from "@/components/profile/personal-activity"
+import type { PersonalRecentActivityItem } from "@/components/profile/personal-recent-activity-feed"
+import { getAvatarSignedUrl } from "@/lib/profile-photos"
+import { getLeaveEntitlements } from "@/lib/hr/leave-entitlement"
+import { loadUserTasks } from "@/components/tasks/user-tasks-data"
+import type { Task, TaskUserProfile } from "@/types/task"
+import { loadDayContext } from "@/lib/hr/attendance-day-context"
+import { loadAttendancePolicy, toLocalISODate, isWeekend } from "@/lib/hr/attendance-utils"
+import { deriveUnifiedAttendanceStatus } from "@/lib/hr/attendance-status"
+import { addIsoDays } from "@/lib/hr/leave-days"
+
+import type { Metadata } from "next"
+
+export const metadata: Metadata = { title: "Dashboard" }
+
+export const dynamic = "force-dynamic"
+
+export type { Task }
+
+export interface TodayAttendanceStatus {
+  status: string
+  clock_in?: string | null
+}
+
+export interface WorkDayAttendanceItem {
+  date: string
+  clock_in: string | null
+  clock_out: string | null
+  status: string
+  leave_type?: string | null
+}
+
+export interface UserProfile {
+  id: string
+  first_name: string
+  last_name: string
+  other_names: string | null
+  company_email: string
+  department: string
+  designation: string | null
+  role: string
+  phone_number: string | null
+  additional_phone: string | null
+  residential_address: string | null
+  office_location: string | null
+  is_admin: boolean
+  is_department_lead: boolean
+  lead_departments: string[]
+  employment_date: string | null
+  confirmation_date: string | null
+  created_at: string
+  updated_at: string
+  additional_email?: string | null
+  birthday?: string | null
+  avatar_path?: string | null
+  attendance_exempt?: boolean | null
+}
+
+export interface Asset {
+  id: string
+  asset_name?: string
+  asset_type: string
+  asset_model: string | null
+  serial_number: string | null
+  unique_code: string | null
+  status: string
+  assigned_at: string
+  assignment_type?: "individual" | "department" | "office"
+  department?: string
+  office_location?: string
+}
+
+export interface Documentation {
+  id: string
+  title: string
+  category: string | null
+  created_at: string
+}
+
+export interface Feedback {
+  id: string
+  feedback_type: string
+  title: string
+  description: string | null
+  status: string
+  created_at: string
+}
+
+export interface CorrespondenceItem {
+  id: string
+  reference_number: string
+  subject: string
+  status: string
+  created_at: string
+}
+
+export interface HelpDeskItem {
+  id: string
+  ticket_number: string
+  title: string
+  status: string
+  priority: string
+  created_at: string
+}
+
+export interface PaymentItem {
+  id: string
+  title: string
+  payment_type: string
+  status: string
+  amount: number | null
+  currency: string
+  payment_date: string | null
+  created_at: string
+}
+
+export interface LeaveItem {
+  id: string
+  leave_type: string
+  status: string
+  start_date: string
+  end_date: string
+  days_requested: number
+  created_at: string
+}
+
+type LeaveRequestRow = {
+  id: string
+  status: string
+  start_date: string
+  end_date: string
+  days_count: number | null
+  created_at: string
+  leave_type: { name: string | null } | { name: string | null }[] | null
+}
+
+export interface AttendanceItem {
+  id: string
+  date: string
+  status: string
+  clock_in: string | null
+  clock_out: string | null
+  created_at: string
+}
+
+export interface LunchLogItem {
+  id: string
+  date: string
+  cost: number
+  company_subsidy: number
+  employee_deduction: number
+}
+
+type ProfileRow = UserProfile & {
+  department_id?: string | null
+}
+
+type DepartmentNameRow = {
+  name: string
+}
+
+type TaskAssignmentRow = {
+  task_id: string
+}
+
+type AssetRow = Asset & {
+  created_at?: string
+  deleted_at?: string | null
+}
+
+type AssetAssignmentRow = {
+  assigned_at: string
+  asset: AssetRow | null
+}
+
+type ActivityLogRow = {
+  id: string
+  user_id: string | null
+  created_at: string
+  action?: string | null
+  operation?: string | null
+  entity_type?: string | null
+  table_name?: string | null
+  entity_id?: string | null
+  metadata?: Record<string, unknown> | null
+  changed_fields?: unknown
+  new_values?: Record<string, unknown> | null
+  old_values?: Record<string, unknown> | null
+}
+
+const isDefined = <T,>(value: T | null | undefined): value is T => value != null
+
+async function getProfileData() {
+  const supabase = await createClient()
+  const dataClient = getServiceRoleClientOrFallback(supabase)
+  const loadErrors: string[] = []
+
+  // Get current user
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    return { redirect: "/auth/login" as const }
+  }
+
+  const userId = user.id
+
+  // Load profile
+  const { data: profileData, error: profileError } = await dataClient
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .single<ProfileRow>()
+
+  if (profileError || !profileData) {
+    return {
+      profile: null,
+      avatarUrl: null,
+      tasks: [],
+      assets: [],
+      documentation: [],
+      feedback: [],
+      correspondence: [],
+      helpDesk: [],
+      payments: [],
+      leave: [],
+      annualLeaveRemaining: 0,
+      attendance: [],
+      recentWorkDaysAttendance: [],
+      recentActivity: [],
+    }
+  }
+
+  const todayIso = toLocalISODate()
+  const lookbackStartIso = addIsoDays(todayIso, -20)
+
+  // Tasks need the resolved department name; nothing else depends on another
+  // query, so everything runs at once. These used to run one after another —
+  // ~16 round trips before the landing page could render.
+  const loadTasks = async (): Promise<Task[]> => {
+    let resolvedDepartment = profileData.department || null
+    if (profileData.department_id) {
+      const { data: deptById } = await dataClient
+        .from("departments")
+        .select("name")
+        .eq("id", profileData.department_id)
+        .maybeSingle<DepartmentNameRow>()
+      if (deptById?.name) resolvedDepartment = deptById.name
+    }
+    if (String(resolvedDepartment || "").toLowerCase() === "finance") {
+      resolvedDepartment = "Accounts"
+    }
+    // Shared loader: individual, multiple-user and department tasks.
+    const taskUserProfile: TaskUserProfile = {
+      id: userId,
+      department: resolvedDepartment,
+      role: profileData.role,
+      is_department_lead: profileData.is_department_lead,
+      lead_departments: profileData.lead_departments,
+    }
+    try {
+      return await loadUserTasks(dataClient as unknown as Parameters<typeof loadUserTasks>[0], userId, taskUserProfile)
+    } catch {
+      loadErrors.push("tasks")
+      return []
+    }
+  }
+
+  const loadAnnualLeaveRemaining = async () => {
+    try {
+      const entitlements = await getLeaveEntitlements(dataClient, userId)
+      const annual = entitlements.find(
+        (e) => e.code?.toLowerCase() === "annual" || e.name.toLowerCase().includes("annual")
+      )
+      return annual ? annual.remainingDays : 0
+    } catch {
+      // Fail-safe fallback if leave entitlements computation fails
+      return 0
+    }
+  }
+
+  let paymentsQuery = dataClient
+    .from("department_payments")
+    .select("id, title, payment_type, status, amount, currency, payment_date, created_at")
+    .order("created_at", { ascending: false })
+    .limit(20)
+  if (profileData.department_id) {
+    paymentsQuery = paymentsQuery.or(`created_by.eq.${userId},department_id.eq.${profileData.department_id}`)
+  } else {
+    paymentsQuery = paymentsQuery.eq("created_by", userId)
+  }
+
+  const [
+    allTasks,
+    { data: individualAssignments, error: individualAssignmentsError },
+    { data: docsData, error: docsError },
+    { data: feedbackData, error: feedbackError },
+    { data: correspondenceData, error: correspondenceError },
+    { data: helpDeskData, error: helpDeskError },
+    { data: paymentsData, error: paymentsError },
+    { data: leaveRows, error: leaveError },
+    annualLeaveRemaining,
+    { data: todayRecord },
+    { data: attendanceData, error: attendanceError },
+    dayCtx,
+    policy,
+    { data: lunchLogsData },
+    { data: rawActivity },
+    avatarUrl,
+  ] = await Promise.all([
+    loadTasks(),
+    dataClient
+      .from("asset_assignments")
+      .select(
+        `
+      assigned_at,
+      asset:assets(
+        id,
+        asset_type,
+        asset_model,
+        serial_number,
+        status,
+        unique_code,
+        created_at,
+        deleted_at
+      )
+    `
+      )
+      .eq("assigned_to", userId)
+      .eq("is_current", true)
+      .returns<AssetAssignmentRow[]>(),
+    // Documentation and feedback created by the user
+    dataClient
+      .from("user_documentation")
+      .select("id, title, category, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
+    dataClient
+      .from("feedback")
+      .select("id, feedback_type, title, description, status, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
+    dataClient
+      .from("correspondence_records")
+      .select("id, reference_number, subject, status, created_at")
+      .or(`originator_id.eq.${userId},responsible_officer_id.eq.${userId}`)
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .returns<CorrespondenceItem[]>(),
+    dataClient
+      .from("help_desk_tickets")
+      .select("id, ticket_number, title, status, priority, created_at")
+      .or(`requester_id.eq.${userId},assigned_to.eq.${userId}`)
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .returns<HelpDeskItem[]>(),
+    paymentsQuery.returns<PaymentItem[]>(),
+    // Production's leave_requests has leave_type_id/days_count only. The old
+    // leave_type/days_requested query errored on every load and its fallback
+    // showed the type's UUID as its name, so join the name the way /hr/leave does.
+    dataClient
+      .from("leave_requests")
+      .select("id, status, start_date, end_date, days_count, created_at, leave_type:leave_types(name)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .returns<LeaveRequestRow[]>(),
+    loadAnnualLeaveRemaining(),
+    dataClient
+      .from("attendance_records")
+      .select("id, date, status, clock_in, clock_out, created_at")
+      .eq("user_id", userId)
+      .eq("date", todayIso)
+      .maybeSingle<AttendanceItem>(),
+    dataClient
+      .from("attendance_records")
+      .select("id, date, status, clock_in, clock_out, created_at")
+      .eq("user_id", userId)
+      .lte("date", todayIso)
+      .order("date", { ascending: false })
+      .limit(20)
+      .returns<AttendanceItem[]>(),
+    loadDayContext(dataClient, { userIds: [userId], start: lookbackStartIso, end: todayIso }),
+    loadAttendancePolicy(dataClient),
+    dataClient
+      .from("attendance_lunch_log")
+      .select("id, date, cost, company_subsidy, employee_deduction")
+      .eq("user_id", userId)
+      .order("date", { ascending: false })
+      .limit(30)
+      .returns<LunchLogItem[]>(),
+    dataClient
+      .from("audit_logs")
+      .select(
+        "id, user_id, created_at, action, operation, entity_type, table_name, entity_id, metadata, changed_fields, new_values, old_values"
+      )
+      .neq("action", "client_error")
+      .neq("entity_type", "ui_runtime")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .returns<ActivityLogRow[]>(),
+    getAvatarSignedUrl(dataClient, profileData.avatar_path),
+  ])
+
+  if (individualAssignmentsError) loadErrors.push("assets")
+  if (docsError) loadErrors.push("documentation")
+  if (feedbackError) loadErrors.push("feedback")
+  if (correspondenceError) loadErrors.push("correspondence")
+  if (helpDeskError) loadErrors.push("help desk")
+  if (paymentsError) loadErrors.push("payments")
+  if (attendanceError) loadErrors.push("attendance")
+
+  let allAssets: Asset[] = []
+  if (individualAssignments) {
+    allAssets = individualAssignments
+      .map((a): Asset | null =>
+        a.asset && !a.asset.deleted_at
+          ? {
+              ...a.asset,
+              assigned_at: a.assigned_at,
+              assignment_type: "individual",
+            }
+          : null
+      )
+      .filter(isDefined)
+  }
+
+  let leaveData: LeaveItem[] = []
+  if (leaveError) {
+    loadErrors.push("leave")
+  } else if (leaveRows) {
+    leaveData = leaveRows.map((row) => {
+      const leaveType = Array.isArray(row.leave_type) ? row.leave_type[0] : row.leave_type
+      return {
+        id: row.id,
+        leave_type: leaveType?.name || "Leave",
+        status: row.status,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        days_requested: row.days_count || 0,
+        created_at: row.created_at,
+      }
+    })
+  }
+
+  const unifiedTodayStatus = deriveUnifiedAttendanceStatus(
+    {
+      record: todayRecord,
+      isHoliday: dayCtx.isHoliday(todayIso),
+      isOnLeave: dayCtx.isOnLeave(userId, todayIso),
+      isOnUnpaidLeave: dayCtx.isOnUnpaidLeave(userId, todayIso),
+      isExempted: Boolean(profileData.attendance_exempt) || dayCtx.isExempt(userId, todayIso),
+      isCdsDay: dayCtx.isCdsDay(userId, todayIso),
+      recordDate: todayIso,
+      earlyClosure: dayCtx.earlyCloseTime(todayIso) ? { closeTime: dayCtx.earlyCloseTime(todayIso)! } : null,
+      lateResumption: dayCtx.lateResumptionTime(todayIso)
+        ? { resumptionTime: dayCtx.lateResumptionTime(todayIso)! }
+        : null,
+    },
+    policy
+  )
+
+  const derivedTodayStatus =
+    unifiedTodayStatus === "absent" && !todayRecord?.clock_in ? "not_clocked_in" : unifiedTodayStatus
+
+  const todayStatus: TodayAttendanceStatus = {
+    status: derivedTodayStatus,
+    clock_in: todayRecord?.clock_in ?? null,
+  }
+
+  // Calculate the last 5 actual company workdays (Mon–Fri, excluding org holidays)
+  const recentWorkDays: string[] = []
+  if (isWeekend(todayIso) && todayRecord?.clock_in) {
+    recentWorkDays.push(todayIso)
+  }
+  let workDayCursor = isWeekend(todayIso) ? addIsoDays(todayIso, -1) : todayIso
+  while (recentWorkDays.length < 5) {
+    if (!isWeekend(workDayCursor) && !dayCtx.isHoliday(workDayCursor)) {
+      recentWorkDays.push(workDayCursor)
+    }
+    workDayCursor = addIsoDays(workDayCursor, -1)
+  }
+
+  const attendanceByDate = new Map<string, AttendanceItem>()
+  for (const rec of attendanceData || []) {
+    if (rec.date) attendanceByDate.set(rec.date, rec)
+  }
+  if (todayRecord) {
+    attendanceByDate.set(todayIso, todayRecord)
+  }
+
+  const recentWorkDaysAttendance: WorkDayAttendanceItem[] = recentWorkDays.map((d) => {
+    const record = attendanceByDate.get(d) || null
+    const isToday = d === todayIso
+
+    let status: string
+    if (isToday) {
+      status = derivedTodayStatus
+    } else {
+      status = deriveUnifiedAttendanceStatus(
+        {
+          record,
+          isHoliday: dayCtx.isHoliday(d),
+          isOnLeave: dayCtx.isOnLeave(userId, d),
+          isOnUnpaidLeave: dayCtx.isOnUnpaidLeave(userId, d),
+          isExempted: Boolean(profileData.attendance_exempt) || dayCtx.isExempt(userId, d),
+          isCdsDay: dayCtx.isCdsDay(userId, d),
+          recordDate: d,
+          earlyClosure: dayCtx.earlyCloseTime(d) ? { closeTime: dayCtx.earlyCloseTime(d)! } : null,
+          lateResumption: dayCtx.lateResumptionTime(d) ? { resumptionTime: dayCtx.lateResumptionTime(d)! } : null,
+        },
+        policy
+      )
+    }
+
+    let leaveType: string | null = null
+    if (status === "on_leave" || status === "lwop") {
+      const matched = leaveData.find((l) => d >= l.start_date && d <= l.end_date)
+      if (matched) leaveType = matched.leave_type
+    }
+
+    return {
+      date: d,
+      clock_in: record?.clock_in || null,
+      clock_out: record?.clock_out || null,
+      status,
+      leave_type: leaveType,
+    }
+  })
+
+  const loadError = loadErrors.length > 0 ? "Some profile sections failed to load. Please refresh." : null
+
+  const filteredRawActivity = (rawActivity || []).filter((item) => !isExcludedActivity(item)).slice(0, 50)
+
+  const recentActivity = buildPersonalActivity(filteredRawActivity, userId)
+
+  return {
+    profile: profileData,
+    avatarUrl,
+    tasks: allTasks,
+    assets: allAssets,
+    documentation: (docsData || []) as Documentation[],
+    feedback: (feedbackData || []) as Feedback[],
+    correspondence: correspondenceData || [],
+    helpDesk: helpDeskData || [],
+    payments: paymentsData || [],
+    leave: leaveData,
+    annualLeaveRemaining,
+    attendance: attendanceData || [],
+    recentWorkDaysAttendance,
+    todayStatus,
+    lunchLogs: lunchLogsData || [],
+    recentActivity,
+    loadError,
+  }
+}
+
+export default async function ProfilePage() {
+  const data = await getProfileData()
+
+  if ("redirect" in data && data.redirect) {
+    redirect(data.redirect)
+  }
+
+  // Type assertion since we've checked for redirect above
+  const profileData = data as Exclude<Awaited<ReturnType<typeof getProfileData>>, { redirect: "/auth/login" }>
+
+  return (
+    <ProfileContent
+      profile={profileData.profile}
+      avatarUrl={profileData.avatarUrl}
+      tasks={profileData.tasks}
+      assets={profileData.assets}
+      correspondence={profileData.correspondence}
+      helpDesk={profileData.helpDesk}
+      payments={profileData.payments}
+      leave={profileData.leave}
+      annualLeaveRemaining={profileData.annualLeaveRemaining}
+      attendance={profileData.attendance}
+      recentWorkDaysAttendance={profileData.recentWorkDaysAttendance || []}
+      todayStatus={profileData.todayStatus}
+      lunchLogs={profileData.lunchLogs || []}
+      recentActivity={profileData.recentActivity}
+      initialError={profileData.loadError}
+    />
+  )
+}

@@ -1,0 +1,977 @@
+"use client"
+
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { cn, formatName, getInitials } from "@/lib/utils"
+import { useDrawerA11y } from "@/hooks/use-drawer-a11y"
+import { isActiveChild } from "@/lib/navigation/active-child"
+import { StaffAvatar } from "@/components/ui/staff-avatar"
+import { useStaffAvatars } from "@/hooks/use-staff-avatars"
+import { Button } from "@/components/ui/button"
+import {
+  Briefcase,
+  CalendarDays,
+  ChevronsUpDown,
+  ChevronRight,
+  LayoutDashboard,
+  ClipboardList,
+  Ticket,
+  FileText,
+  Landmark,
+  MessageSquare,
+  LogOut,
+  Settings,
+  Server,
+  FileBarChart,
+  Mail,
+  Megaphone,
+  ShieldCheck,
+  FlaskConical,
+  History,
+  User,
+  Users,
+  Building2,
+  Layers,
+  Target,
+  TrendingUp,
+} from "lucide-react"
+import { useState, useEffect, useMemo } from "react"
+import { useSidebar } from "@/components/sidebar-context"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import type { UserRole } from "@/types/database"
+import type { DeptConsole } from "@/lib/dept/consoles"
+import { getRoleDisplayName } from "@/lib/permissions"
+import { motion } from "framer-motion"
+import { useShellTransition } from "@/hooks/use-shell-transition"
+import { normalizeDepartmentName } from "@/shared/departments"
+import { mdDeskNavChildren } from "@/components/md-desk/sections"
+import { pmsNavChildren } from "@/lib/pms/sections"
+import { findActiveBranchHref } from "@/lib/nav/match"
+import { usePendingRsvpCount } from "@/components/events/use-events"
+import type { NavChild, RouteAliases } from "@/lib/nav/types"
+import { buildDeptNavigation, filterDeptNavigationForDelegate, type NavItem } from "@/components/dept-navigation"
+import {
+  canAccessRouteV2,
+  resolveAdminRouteKeyV2,
+  GRANTABLE_ADMIN_ROUTES,
+  type AccessContextV2,
+  type AdminRouteKeyV2,
+} from "@/lib/admin/policy-v2"
+import { useDepartmentCode } from "@/hooks/use-department-code"
+
+import { useLogout } from "@/hooks/use-logout"
+interface AdminSidebarProps {
+  user?: {
+    email?: string
+    user_metadata?: {
+      first_name?: string
+      last_name?: string
+    }
+  }
+  profile?: {
+    id?: string
+    first_name?: string
+    last_name?: string
+    department?: string
+    role?: UserRole
+    is_department_lead?: boolean
+    admin_routes?: string[] | null
+    lead_departments?: string[]
+  }
+  adminScopeMode?: "global" | "lead"
+  /**
+   * When set, the sidebar knows it is rendered inside the /dept/[deptId]/ shell.
+   * Used to:
+   *  1. Switch nav links to /dept/[id]/... hrefs so navigation stays in the dept shell.
+   *  2. Show a "Go to Admin" link in the account dropdown for admin-like users.
+   */
+  deptId?: string
+  /** Dept shell, delegate only: the page keys they were given. The nav shows just these. */
+  delegatedPages?: string[]
+  /**
+   * Admin shell only: the dept consoles this lead may open. Each is listed in
+   * the account dropdown so an admin+lead can jump to any dept shell they hold.
+   */
+  deptConsoles?: DeptConsole[]
+  /** Admin shell only: the viewer is the MD or an MD's Desk delegate. */
+  showMdDesk?: boolean
+}
+
+function normalizeAdminRoutes(routes: string[] | null | undefined): AdminRouteKeyV2[] {
+  if (!Array.isArray(routes)) return []
+  return Array.from(
+    new Set(
+      routes
+        .map((value) =>
+          String(value || "")
+            .trim()
+            .toLowerCase()
+        )
+        .filter(Boolean)
+    )
+  ).filter((value): value is AdminRouteKeyV2 => GRANTABLE_ADMIN_ROUTES.includes(value as AdminRouteKeyV2))
+}
+
+/**
+ * Management runs people -> performance -> money -> what the money bought ->
+ * delivery -> governance, and Operations runs day-to-day work first, then the
+ * things that report on it. navigationSections in sidebar.tsx lists the same
+ * items in the same relative order; keep them in step.
+ *
+ * Purchasing and Inventory sit inside Accounts rather than beside it, so the
+ * accounts -> purchase -> stock workflow reads as one node. They keep their own
+ * grantable route keys, and filterNavChildren gates each one separately, so a
+ * viewer granted only inventory.main still sees Inventory and nothing else —
+ * with the Accounts row rendering as a toggle rather than a link, since it
+ * would otherwise point at a page whose name does not match the label.
+ */
+const adminNavigation: NavItem[] = [
+  {
+    section: "overview",
+    name: "Dashboard",
+    href: "/admin",
+    icon: LayoutDashboard,
+  },
+  {
+    section: "management",
+    name: "HR",
+    description: "Human Resources",
+    href: "/admin/hr",
+    icon: Users,
+    children: [
+      { name: "Employees", href: "/admin/hr/employees" },
+      { name: "Departments", href: "/admin/hr/departments" },
+      { name: "Job Descriptions", href: "/admin/hr/job-descriptions" },
+      { name: "Attendance", href: "/admin/hr/attendance" },
+      { name: "Leave", href: "/admin/hr/leave" },
+      { name: "Lunch Register", href: "/admin/hr/lunch" },
+      { name: "Resource Booking", href: "/admin/hr/resources" },
+      { name: "Offices & Rooms", href: "/admin/hr/offices-rooms" },
+    ],
+  },
+  {
+    section: "management",
+    name: "IT",
+    description: "Information Technology",
+    href: "/admin/it",
+    icon: Server,
+    children: [
+      { name: "Onboarding", href: "/admin/it/onboarding" },
+      { name: "Mailboxes", href: "/admin/it/mailboxes" },
+      { name: "Starlink Kits", href: "/admin/it/starlink" },
+      { name: "Network Activity", href: "/admin/it/network-activity" },
+      { name: "Bypass & Override", href: "/admin/it/bypass-override" },
+    ],
+  },
+  {
+    // Shown to the MD, delegates, super admins and developers (showMdDesk); the page re-checks.
+    section: "management",
+    name: "MD's Desk",
+    href: "/admin/md-desk",
+    icon: Briefcase,
+    children: mdDeskNavChildren("/admin/md-desk"),
+  },
+  {
+    // Split out of HR — it had grown to 11 sub-items nested three levels
+    // deep. Routes are unchanged (still /admin/hr/pms/*), only the sidebar
+    // grouping moved.
+    section: "management",
+    name: "PMS",
+    description: "Performance Management System",
+    href: "/admin/hr/pms",
+    icon: TrendingUp,
+    children: pmsNavChildren("/admin/hr/pms"),
+  },
+  {
+    // Accounts also surfaces Purchasing, Inventory and Assets as nested groups
+    // so the financial workflow (accounts → purchase → stock → what it bought)
+    // is one coherent node rather than four separate top-level items. This
+    // matches the staff sidebar, which has always listed Assets under Accounts.
+    section: "management",
+    name: "Accounts",
+    href: "/admin/accounts",
+    icon: Landmark,
+    children: [
+      { name: "Requisitions", href: "/admin/accounts/requisitions" },
+      { name: "Payroll", href: "/admin/accounts/payroll" },
+      {
+        name: "Inventory",
+        href: "/admin/accounts/inventory",
+        children: [
+          { name: "Products", href: "/admin/accounts/inventory/products" },
+          { name: "Categories", href: "/admin/accounts/inventory/categories" },
+          { name: "Warehouses", href: "/admin/accounts/inventory/warehouses" },
+          { name: "Movements", href: "/admin/accounts/inventory/movements" },
+        ],
+      },
+      {
+        name: "Assets",
+        href: "/admin/accounts/assets",
+      },
+    ],
+  },
+  {
+    section: "management",
+    name: "Portfolios",
+    href: "/admin/portfolios",
+    icon: Layers,
+    children: [
+      { name: "Portfolios", href: "/admin/portfolios" },
+      { name: "Projects", href: "/admin/projects" },
+      { name: "Sites", href: "/admin/portfolios/sites" },
+    ],
+  },
+  {
+    section: "management",
+    name: "Corporate Services",
+    href: "/admin/corporate-services",
+    icon: Target,
+    children: [
+      { name: "Scorecard", href: "/admin/corporate-services/scorecard" },
+      { name: "Risk Register", href: "/admin/corporate-services/risk-register" },
+    ],
+  },
+  {
+    // Operations, not Management: tasks are day-to-day work, and the staff shell
+    // has always listed them there.
+    section: "operations",
+    name: "Tasks",
+    href: "/admin/tasks",
+    icon: ClipboardList,
+  },
+  {
+    section: "operations",
+    name: "Help Desk",
+    href: "/admin/help-desk",
+    icon: Ticket,
+  },
+  {
+    section: "operations",
+    name: "Events",
+    href: "/admin/events",
+    icon: CalendarDays,
+  },
+  {
+    section: "operations",
+    name: "Reports",
+    href: "/admin/reports",
+    icon: FileBarChart,
+    children: [
+      {
+        name: "General Meeting",
+        href: "/admin/reports/general-meeting",
+        children: [
+          { name: "Attendance", href: "/admin/reports/general-meeting/attendance" },
+          { name: "Action Tracker", href: "/admin/reports/general-meeting/action-tracker" },
+          { name: "Challenges", href: "/admin/reports/general-meeting/challenges" },
+          { name: "KSS", href: "/admin/reports/general-meeting/kss" },
+          { name: "Minutes", href: "/admin/reports/general-meeting/minutes-of-meeting" },
+          { name: "Weekly", href: "/admin/reports/general-meeting/weekly-reports" },
+          { name: "Records", href: "/admin/reports/general-meeting/records" },
+        ],
+      },
+    ],
+  },
+  {
+    section: "operations",
+    name: "Correspondence",
+    href: "/admin/correspondence",
+    icon: Mail,
+  },
+  {
+    section: "operations",
+    name: "Communications",
+    href: "/admin/communications",
+    icon: Megaphone,
+    children: [
+      { name: "Broadcast", href: "/admin/communications/broadcast" },
+      {
+        // Not to be confused with Reports > General Meeting, which is the
+        // reports themselves. This branch is the mail-out and the reminders
+        // that go with them.
+        name: "Meeting Mail",
+        href: "/admin/communications/meetings",
+        children: [
+          { name: "Report Mail-out", href: "/admin/communications/meetings/mail" },
+          { name: "Reminders", href: "/admin/communications/meetings/reminders" },
+          { name: "Knowledge Sharing", href: "/admin/communications/meetings/kss" },
+        ],
+      },
+    ],
+  },
+  {
+    section: "operations",
+    name: "Documentation",
+    href: "/admin/documentation",
+    icon: FileText,
+    children: [
+      { name: "Policies", href: "/admin/documentation/policies" },
+      { name: "SOPs", href: "/admin/documentation/sops" },
+      { name: "Personal", href: "/admin/documentation/personal" },
+      { name: "Department", href: "/admin/documentation/department" },
+    ],
+  },
+  {
+    section: "system",
+    name: "Audit Logs",
+    href: "/admin/audit-logs",
+    icon: ShieldCheck,
+  },
+  {
+    section: "system",
+    name: "Version History",
+    href: "/admin/version-history",
+    icon: History,
+  },
+  {
+    section: "system",
+    name: "Settings",
+    href: "/admin/settings",
+    icon: Settings,
+    children: [
+      { name: "Users", href: "/admin/settings/users" },
+      { name: "Roles", href: "/admin/settings/roles" },
+      { name: "Access", href: "/admin/settings/access" },
+      { name: "Company", href: "/admin/settings/company" },
+      { name: "Mail", href: "/admin/it/mail" },
+      { name: "Maintenance", href: "/admin/settings/maintenance" },
+    ],
+  },
+  {
+    // Its own collapsible item under System. Developer-only —
+    // /admin/dev resolves to dev.main, which canAccessRouteV2 gates to the
+    // developer role, so the whole branch is hidden from admin / super_admin.
+    section: "system",
+    name: "Developer",
+    href: "/admin/dev",
+    icon: FlaskConical,
+    children: [
+      { name: "Login Logs", href: "/admin/dev/login-logs" },
+      { name: "Role Escalations", href: "/admin/dev/role-escalations" },
+      { name: "Area Owners", href: "/admin/dev/area-owners" },
+      { name: "Security Events", href: "/admin/dev/security-events" },
+      { name: "Impersonation", href: "/admin/dev/impersonation" },
+      { name: "Error Monitor", href: "/admin/dev/ui-errors" },
+      { name: "Tests", href: "/admin/dev/tests" },
+      { name: "ACOBot", href: "/admin/dev/acobot" },
+    ],
+  },
+]
+const adminSections = [
+  { key: "overview", label: "Overview" },
+  { key: "management", label: "Management" },
+  { key: "operations", label: "Operations" },
+  { key: "system", label: "System" },
+]
+
+const ADMIN_ROUTE_ALIASES: RouteAliases = {
+  // Accounts — legacy /admin/finance and /admin/payments/* redirect into accounts.
+  "/admin/accounts": ["/admin/finance", "/admin/payments"],
+  "/admin/finance": ["/admin/payments"],
+  // Corporate Services — legacy /admin/corporate-scorecard redirects into scorecard.
+  "/admin/corporate-services": ["/admin/corporate-scorecard"],
+  // Audit Logs — legacy /admin/security redirects into audit-logs.
+  "/admin/audit-logs": ["/admin/security"],
+}
+
+export function AdminSidebar({
+  user,
+  profile,
+  adminScopeMode = "global",
+  deptId,
+  delegatedPages,
+  deptConsoles = [],
+  showMdDesk = false,
+}: AdminSidebarProps) {
+  const pathname = usePathname()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const drawerProps = useDrawerA11y(isMobileMenuOpen, () => setIsMobileMenuOpen(false))
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const { isCollapsed } = useSidebar()
+  const shellTransition = useShellTransition()
+  const staffAvatars = useStaffAvatars()
+  const accountAvatarUrl = profile?.id ? staffAvatars[profile.id] : undefined
+  const { data: pendingRsvps } = usePendingRsvpCount()
+
+  // Listen for toggle event from navbar
+  useEffect(() => {
+    const handleToggle = (e: Event) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsMobileMenuOpen((prev) => !prev)
+    }
+    const targets = [window, document]
+    targets.forEach((target) => target.addEventListener("toggle-mobile-sidebar", handleToggle))
+    return () => targets.forEach((target) => target.removeEventListener("toggle-mobile-sidebar", handleToggle))
+  }, [])
+
+  // Notify navbar of sidebar state changes
+  useEffect(() => {
+    const event = new CustomEvent("sidebar-state-change", {
+      detail: { isOpen: isMobileMenuOpen },
+    })
+    window.dispatchEvent(event)
+  }, [isMobileMenuOpen])
+
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set())
+  const [openSubSections, setOpenSubSections] = useState<Set<string>>(new Set())
+  const departmentCode = useDepartmentCode(profile?.department)
+
+  const toggleSection = (href: string) => {
+    setOpenSections((prev) => {
+      if (prev.has(href)) return new Set<string>()
+      return new Set<string>([href])
+    })
+  }
+
+  const toggleSubSection = (href: string) => {
+    setOpenSubSections((prev) => {
+      if (prev.has(href)) return new Set<string>()
+      return new Set<string>([href])
+    })
+  }
+
+  useEffect(() => {
+    if (!pathname) return
+    // Use dept nav when in dept shell so the correct parent sections auto-expand.
+    const nav = deptId ? buildDeptNavigation(deptId) : adminNavigation
+    for (const item of nav) {
+      if (!item.children) continue
+      for (const child of item.children) {
+        const childActive = pathname === child.href || pathname.startsWith(child.href + "/")
+        if (childActive) {
+          setOpenSections((prev) => new Set([...prev, item.href]))
+        }
+        if (child.children) {
+          const grandchildActive = child.children.some(
+            (gc) => pathname === gc.href || pathname.startsWith(gc.href + "/")
+          )
+          if (grandchildActive) {
+            setOpenSections((prev) => new Set([...prev, item.href]))
+            setOpenSubSections((prev) => new Set([...prev, child.href]))
+          }
+        }
+      }
+    }
+  }, [pathname, deptId])
+
+  const handleLogout = useLogout()
+
+  const adminRoutes = useMemo(() => normalizeAdminRoutes(profile?.admin_routes), [profile?.admin_routes])
+  const accessContext = useMemo<AccessContextV2 | null>(() => {
+    if (!profile?.role) return null
+    const managedDepartmentSet = new Set<string>()
+    if (profile.department) {
+      managedDepartmentSet.add(normalizeDepartmentName(profile.department))
+    }
+    for (const department of profile.lead_departments || []) {
+      managedDepartmentSet.add(normalizeDepartmentName(department))
+    }
+
+    return {
+      baseRole: String(profile.role).toLowerCase(),
+      isDepartmentLead: Boolean(profile.is_department_lead),
+      isAdminLike: ["developer", "admin", "super_admin"].includes(String(profile.role).toLowerCase()),
+      adminRoutes,
+      actingContext:
+        adminScopeMode === "lead" ||
+        (!["developer", "admin", "super_admin"].includes(String(profile.role).toLowerCase()) &&
+          Boolean(profile.is_department_lead))
+          ? "department_lead"
+          : "global_admin",
+      managedDepartments: Array.from(managedDepartmentSet),
+    }
+  }, [
+    adminRoutes,
+    adminScopeMode,
+    profile?.department,
+    profile?.is_department_lead,
+    profile?.lead_departments,
+    profile?.role,
+  ])
+
+  const canAccessRoute = (href: string) => {
+    if (!profile?.role || !accessContext) return false
+    // Legacy role arrays are no longer authoritative under RBAC V2.
+    // Use centralized policy evaluation so department leads with base role "employee"
+    // still see allowed admin routes.
+    return canAccessRouteV2(accessContext, resolveAdminRouteKeyV2(href))
+  }
+
+  // In the dept shell use dept-scoped hrefs. That navigation is not filtered here:
+  // access is guarded by requireDeptScope on the server.
+  const activeNavigation = deptId ? buildDeptNavigation(deptId) : adminNavigation
+
+  /**
+   * Children and grandchildren carry their own grantable route keys (a nested
+   * "Inventory" resolves to inventory.main, not to its parent's key), so they
+   * are filtered individually rather than inheriting the parent's visibility.
+   * A branch survives if it is reachable itself or if any descendant is; when
+   * only a descendant is reachable, the branch link retargets to it so the
+   * parent never points at a page the viewer is blocked from.
+   */
+  const filterNavChildren = (children: NavChild[] | undefined): NavChild[] | undefined => {
+    if (!children) return undefined
+    const kept: NavChild[] = []
+    for (const child of children) {
+      const grandchildren = child.children?.filter((gc) => canAccessRoute(gc.href))
+      const selfAllowed = canAccessRoute(child.href)
+      if (!selfAllowed && !grandchildren?.length) continue
+      kept.push({
+        ...child,
+        href: selfAllowed ? child.href : grandchildren![0].href,
+        retargeted: !selfAllowed,
+        children: grandchildren?.length ? grandchildren : undefined,
+      })
+    }
+    return kept.length ? kept : undefined
+  }
+
+  const filteredNavigation = deptId
+    ? delegatedPages
+      ? filterDeptNavigationForDelegate(activeNavigation, delegatedPages)
+      : activeNavigation
+    : activeNavigation.reduce<NavItem[]>((acc, item) => {
+        if (item.href === "/admin/md-desk" && !showMdDesk) return acc
+        const children = filterNavChildren(item.children)
+        const selfAllowed = canAccessRoute(item.href)
+        if (!selfAllowed && !children) return acc
+        const badge = item.href === "/admin/events" && pendingRsvps && pendingRsvps > 0 ? pendingRsvps : undefined
+        acc.push({
+          ...item,
+          href: selfAllowed ? item.href : children![0].href,
+          retargeted: !selfAllowed,
+          children,
+          badge,
+        })
+        return acc
+      }, [])
+
+  const groupedNavigation = adminSections
+    .map((section) => ({
+      ...section,
+      items: filteredNavigation.filter((item) => item.section === section.key),
+    }))
+    .filter((section) => section.items.length > 0)
+
+  const activeTopLevelHref = useMemo(() => {
+    const shellRoot = deptId ? `/dept/${deptId}` : "/admin"
+    return findActiveBranchHref(activeNavigation, pathname, ADMIN_ROUTE_ALIASES, (href) => href === shellRoot)
+  }, [pathname, activeNavigation, deptId])
+
+  // True for roles that can access the /admin shell (developer / admin / super_admin).
+  const isAdminLikeUser = ["developer", "admin", "super_admin"].includes(String(profile?.role || "").toLowerCase())
+
+  // After Phase 6, pure leads no longer enter /admin.
+  // The isLead flag here only applies to admin+lead users in the admin shell.
+  const isLead = Boolean(
+    profile?.is_department_lead || (profile?.lead_departments && profile.lead_departments.length > 0)
+  )
+
+  const accountName =
+    profile?.first_name && profile?.last_name
+      ? `${formatName(profile.first_name)} ${formatName(profile.last_name)}`
+      : user?.email?.split("@")[0] || "Account"
+  const accountDepartment = profile?.department
+    ? `${departmentCode || formatName(profile.department)}${isLead ? " (Lead)" : ""}`
+    : null
+  const accountRole = profile?.role ? getRoleDisplayName(profile.role) : null
+
+  const sidebarJSX = (
+    <>
+      {/* Empty space for logo (moved to navbar) */}
+      <div className={cn("transition-[padding] duration-300 ease-in-out", isCollapsed ? "px-2 py-2" : "px-3 py-2")}>
+        {/* Logo space maintained but empty */}
+      </div>
+
+      {/* Navigation */}
+      <nav className="scrollbar-custom flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3">
+        {groupedNavigation.map((section) => (
+          <div key={section.key} className="space-y-0.5">
+            {isCollapsed ? (
+              // Collapsed the headings are gone, so a rule stands in for them —
+              // otherwise the rail is one undifferentiated column of icons.
+              section.key !== "overview" && (
+                <div className="mx-1.5 my-1.5 border-t border-[var(--admin-sidebar-border)]" />
+              )
+            ) : (
+              <p className="text-muted-foreground px-3 pt-1 pb-1 text-xs font-semibold">{section.label}</p>
+            )}
+            {section.items.map((item) => {
+              const hasChildren = !isCollapsed && item.children && item.children.length > 0
+              const isOpen = openSections.has(item.href)
+              const highlighted = item.href === activeTopLevelHref
+              const activeCls =
+                "bg-[var(--admin-primary)] text-white shadow-sm dark:text-[var(--admin-primary-foreground)]"
+              const inactiveCls =
+                "text-muted-foreground hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+
+              return (
+                <div key={item.name}>
+                  {hasChildren ? (
+                    <div
+                      className={cn(
+                        "flex min-h-[36px] items-center rounded-md text-sm font-medium transition-colors duration-150",
+                        highlighted ? activeCls : inactiveCls
+                      )}
+                    >
+                      {item.retargeted ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleSection(item.href)}
+                          className="flex flex-1 items-center gap-2.5 px-3 py-2 text-left"
+                          aria-expanded={isOpen}
+                        >
+                          <item.icon className="h-4 w-4 shrink-0" />
+                          <span className="flex-1 overflow-hidden whitespace-nowrap">{item.name}</span>
+                        </button>
+                      ) : (
+                        <Link
+                          href={item.href}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="flex flex-1 items-center gap-2.5 px-3 py-2"
+                        >
+                          <item.icon className="h-4 w-4 shrink-0" />
+                          <span className="flex-1 overflow-hidden whitespace-nowrap">{item.name}</span>
+                        </Link>
+                      )}
+                      <button
+                        onClick={() => toggleSection(item.href)}
+                        className="flex items-center px-2 py-2"
+                        aria-label={isOpen ? "Collapse" : "Expand"}
+                      >
+                        <ChevronRight
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+                            isOpen && "rotate-90"
+                          )}
+                        />
+                      </button>
+                    </div>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link
+                          href={item.href}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className={cn(
+                            "flex min-h-[36px] items-center rounded-md transition-[padding,gap,background-color,color] duration-300 ease-in-out",
+                            isCollapsed ? "justify-center px-2.5 py-2" : "gap-2.5 px-3 py-2",
+                            "text-sm font-medium",
+                            highlighted ? activeCls : inactiveCls
+                          )}
+                        >
+                          <span className="relative inline-flex items-center">
+                            <item.icon className="h-4 w-4 shrink-0" />
+                            {isCollapsed && item.badge != null && item.badge > 0 && (
+                              <span className="ring-background absolute -top-1 -right-1 flex h-2 w-2 rounded-full bg-rose-500 ring-2">
+                                <span className="sr-only">{item.badge} pending</span>
+                              </span>
+                            )}
+                          </span>
+                          <span
+                            className={cn(
+                              "overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-300 ease-in-out",
+                              isCollapsed ? "max-w-0 opacity-0" : "max-w-full opacity-100"
+                            )}
+                          >
+                            {item.name}
+                          </span>
+                          {!isCollapsed && item.badge != null && item.badge > 0 && (
+                            <span
+                              className={cn(
+                                "ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold tracking-tight",
+                                highlighted ? "bg-primary-foreground text-primary" : "bg-rose-500 text-white"
+                              )}
+                            >
+                              {item.badge > 99 ? "99+" : item.badge}
+                            </span>
+                          )}
+                        </Link>
+                      </TooltipTrigger>
+                      {isCollapsed && (
+                        <TooltipContent side="right">
+                          {item.description ? `${item.name} — ${item.description}` : item.name}
+                          {item.badge != null && item.badge > 0 && ` (${item.badge} pending)`}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  )}
+
+                  {hasChildren && isOpen && (
+                    <div className="mt-0.5 ml-3 space-y-0.5 border-l border-[var(--admin-sidebar-border)] pl-2">
+                      {item.children!.map((child) => {
+                        const hasSubChildren = child.children && child.children.length > 0
+                        const isSubOpen = openSubSections.has(child.href)
+                        const isChildActive = isActiveChild(pathname, child.href, item.children!)
+                        const hasActiveGrandchild = child.children?.some(
+                          (gc) => pathname === gc.href || pathname?.startsWith(gc.href + "/")
+                        )
+                        const childHighlighted = isChildActive || Boolean(hasActiveGrandchild)
+
+                        return (
+                          <div key={child.href}>
+                            {hasSubChildren ? (
+                              <div
+                                className={cn(
+                                  "flex min-h-[32px] items-center rounded-md text-sm font-medium transition-colors duration-150",
+                                  childHighlighted ? activeCls : inactiveCls
+                                )}
+                              >
+                                {child.retargeted ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleSubSection(child.href)}
+                                    className="flex flex-1 items-center px-2 py-1.5 text-left"
+                                    aria-expanded={isSubOpen}
+                                  >
+                                    {child.name}
+                                  </button>
+                                ) : (
+                                  <Link
+                                    href={child.href}
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                    className="flex flex-1 items-center px-2 py-1.5"
+                                  >
+                                    {child.name}
+                                  </Link>
+                                )}
+                                <button
+                                  onClick={() => toggleSubSection(child.href)}
+                                  className="flex items-center px-1.5 py-1.5"
+                                  aria-label={isSubOpen ? "Collapse" : "Expand"}
+                                >
+                                  <ChevronRight
+                                    className={cn(
+                                      "h-3 w-3 shrink-0 transition-transform duration-200",
+                                      isSubOpen && "rotate-90"
+                                    )}
+                                  />
+                                </button>
+                              </div>
+                            ) : (
+                              <Link
+                                href={child.href}
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className={cn(
+                                  "flex min-h-[32px] items-center rounded-md px-2 py-1.5 text-sm font-medium transition-colors duration-150",
+                                  isChildActive ? activeCls : inactiveCls
+                                )}
+                              >
+                                {child.name}
+                              </Link>
+                            )}
+
+                            {hasSubChildren && isSubOpen && (
+                              <div className="mt-0.5 ml-2 space-y-0.5 border-l border-[var(--admin-sidebar-border)] pl-2">
+                                {child.children!.map((grandchild) => {
+                                  const isGcActive =
+                                    pathname === grandchild.href || pathname?.startsWith(grandchild.href + "/")
+                                  return (
+                                    <Link
+                                      key={grandchild.href}
+                                      href={grandchild.href}
+                                      onClick={() => setIsMobileMenuOpen(false)}
+                                      className={cn(
+                                        "flex min-h-[28px] items-center rounded-md px-2 py-1 text-sm font-medium transition-colors duration-150 max-lg:min-h-10",
+                                        isGcActive ? activeCls : inactiveCls
+                                      )}
+                                    >
+                                      {grandchild.name}
+                                    </Link>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </nav>
+
+      <div className="border-t px-2.5 py-2.5">
+        <DropdownMenu>
+          {isCollapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="text-muted-foreground min-h-[52px] w-full justify-center px-2.5 text-sm transition-[padding,gap,background-color,color] duration-300 ease-in-out hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+                  >
+                    <div className="flex items-center">
+                      <StaffAvatar
+                        name={accountName}
+                        src={accountAvatarUrl}
+                        initials={getInitials(user?.email, profile?.first_name, profile?.last_name)}
+                        className="ring-primary/10 h-7 w-7 ring-2"
+                        fallbackClassName="bg-primary text-primary-foreground text-xs font-semibold"
+                      />
+                    </div>
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="right">Account</TooltipContent>
+            </Tooltip>
+          ) : (
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="text-muted-foreground min-h-[52px] w-full justify-between px-3 text-sm transition-[padding,gap,background-color,color] duration-300 ease-in-out hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+              >
+                <div className="flex items-center gap-2.5">
+                  <StaffAvatar
+                    name={accountName}
+                    src={accountAvatarUrl}
+                    initials={getInitials(user?.email, profile?.first_name, profile?.last_name)}
+                    className="ring-primary/10 h-7 w-7 ring-2"
+                    fallbackClassName="bg-primary text-primary-foreground text-xs font-semibold"
+                  />
+                  <div
+                    className={cn(
+                      "min-w-0 overflow-hidden transition-[max-width,opacity] duration-300 ease-in-out",
+                      "max-w-full opacity-100"
+                    )}
+                  >
+                    <p className="truncate text-left text-sm font-medium">{accountName}</p>
+                    {(accountDepartment || accountRole) && (
+                      <p className="truncate text-left text-xs opacity-75">
+                        {[accountDepartment, accountRole].filter(Boolean).join(" • ")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <ChevronsUpDown className="h-4 w-4 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+          )}
+          <DropdownMenuContent
+            align="end"
+            side="top"
+            className="z-[70] w-[var(--radix-dropdown-menu-trigger-width)] min-w-52 border-[var(--admin-sidebar-border)] bg-[var(--admin-sidebar-bg)]"
+          >
+            <DropdownMenuItem
+              asChild
+              className="cursor-pointer text-[var(--admin-sidebar-foreground)] focus:bg-[var(--admin-accent-soft)] focus:text-[var(--admin-primary)] data-[highlighted]:bg-[var(--admin-accent-soft)] data-[highlighted]:text-[var(--admin-primary)]"
+            >
+              <Link href="/profile" className="flex w-full items-center gap-2">
+                <User className="h-4 w-4" />
+                Dashboard
+              </Link>
+            </DropdownMenuItem>
+            {(!deptId || isAdminLikeUser) && (
+              <DropdownMenuItem
+                asChild
+                className="cursor-pointer text-[var(--admin-sidebar-foreground)] focus:bg-[var(--admin-accent-soft)] focus:text-[var(--admin-primary)] data-[highlighted]:bg-[var(--admin-accent-soft)] data-[highlighted]:text-[var(--admin-primary)]"
+              >
+                <Link href="/admin/settings" className="flex w-full items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+            )}
+            {deptConsoles
+              .filter((console) => console.id !== deptId)
+              .map((console) => (
+                <DropdownMenuItem
+                  key={console.id}
+                  asChild
+                  className="cursor-pointer text-[var(--admin-sidebar-foreground)] focus:bg-[var(--admin-accent-soft)] focus:text-[var(--admin-primary)] data-[highlighted]:bg-[var(--admin-accent-soft)] data-[highlighted]:text-[var(--admin-primary)]"
+                >
+                  <Link href={console.href} className="flex w-full items-center gap-2">
+                    <Building2 className="h-4 w-4" />
+                    {deptConsoles.length > 1 ? console.name : "Go to Dept"}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            {deptId && isAdminLikeUser && (
+              <DropdownMenuItem
+                asChild
+                className="cursor-pointer text-[var(--admin-sidebar-foreground)] focus:bg-[var(--admin-accent-soft)] focus:text-[var(--admin-primary)] data-[highlighted]:bg-[var(--admin-accent-soft)] data-[highlighted]:text-[var(--admin-primary)]"
+              >
+                <Link href="/admin" className="flex w-full items-center gap-2">
+                  <ShieldCheck className="h-4 w-4" />
+                  Go to Admin
+                </Link>
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={() => setShowLogoutConfirm(true)}
+              className="flex cursor-pointer items-center gap-2 text-[var(--admin-sidebar-foreground)] focus:bg-[var(--admin-accent-soft)] focus:text-[var(--admin-primary)] data-[highlighted]:bg-[var(--admin-accent-soft)] data-[highlighted]:text-[var(--admin-primary)]"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </>
+  )
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <motion.aside
+        initial={false}
+        animate={{
+          width: isCollapsed ? 80 : 256,
+        }}
+        transition={shellTransition}
+        className="hidden overflow-hidden border-r border-[var(--admin-sidebar-border)] bg-[var(--admin-sidebar-bg)] lg:fixed lg:top-16 lg:bottom-0 lg:flex lg:flex-col"
+      >
+        {sidebarJSX}
+      </motion.aside>
+
+      {/* Mobile Header - Hidden, using navbar instead */}
+
+      {/* Mobile Sidebar */}
+      <>
+        <div
+          className={cn(
+            "bg-background/80 fixed inset-0 z-[55] backdrop-blur-sm transition-opacity duration-300 lg:hidden",
+            isMobileMenuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          )}
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+        <aside
+          {...drawerProps}
+          className={cn(
+            "fixed inset-y-0 left-0 z-[60] flex w-64 flex-col border-r border-[var(--admin-sidebar-border)] bg-[var(--admin-sidebar-bg)] shadow-xl transition-transform duration-300 ease-out lg:hidden",
+            isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          {sidebarJSX}
+        </aside>
+      </>
+      <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm logout</AlertDialogTitle>
+            <AlertDialogDescription>Are you sure you want to logout?</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleLogout}>Logout</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}

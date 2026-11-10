@@ -1,0 +1,166 @@
+import { Badge } from "@/components/ui/badge"
+import {
+  ATTENDANCE_STATUS_COLORS,
+  ATTENDANCE_STATUS_LABELS,
+  getEarlyDepartureFacts,
+  normalizeStoredAttendanceStatus,
+  type AttendanceLike,
+  type EarlyClosureInfo,
+} from "@/lib/hr/attendance-status"
+import { isLate, toLocalISODate } from "@/lib/hr/attendance-utils"
+
+/**
+ * Attendance status chip. When `record` is provided and the primary status is "Late"
+ * while the employee also left early, a secondary "Left Early" (or "LEWP" if approved)
+ * chip is shown alongside it — so a late + early-departure day surfaces both facts.
+ * When late arrival (> 08:20) occurs with a missing clock-out on a past day, surfaces [ Late ] [ Inc ]
+ * (or [ LWP ] [ IWP ] if excused).
+ */
+export function StatusBadge({
+  status,
+  waived,
+  record,
+  earlyClosure,
+  recordDate,
+}: {
+  status: string
+  waived?: boolean
+  record?: AttendanceLike | null
+  earlyClosure?: EarlyClosureInfo
+  recordDate?: string
+}) {
+  const normalized = normalizeStoredAttendanceStatus(status) || status
+  const s = waived ? "waiver" : normalized
+
+  let primaryStatus = s
+  let secondary: { label: string; className: string } | null = null
+
+  if (record) {
+    const clockInIsLate = isLate(record.clock_in)
+    const effectiveDate = recordDate || record.date
+    const isPastDate = Boolean(effectiveDate && effectiveDate < toLocalISODate())
+
+    if (s === "late" || s === "lateness_with_permission") {
+      const facts = getEarlyDepartureFacts(record, earlyClosure)
+      if (facts.leftEarly) {
+        const key = facts.approved ? "early_departure_with_permission" : "early_departure"
+        secondary = {
+          label: facts.approved ? "LEWP" : "Left Early",
+          className: ATTENDANCE_STATUS_COLORS[key as keyof typeof ATTENDANCE_STATUS_COLORS],
+        }
+      } else if (isPastDate && record.clock_in && !record.clock_out) {
+        const isApprovedIwp = record.status === "incomplete_with_permission"
+        const key = isApprovedIwp ? "incomplete_with_permission" : "incomplete"
+        secondary = {
+          label: isApprovedIwp ? "IWP" : "Inc",
+          className: ATTENDANCE_STATUS_COLORS[key as keyof typeof ATTENDANCE_STATUS_COLORS],
+        }
+      }
+    } else if (s === "incomplete" || s === "incomplete_with_permission") {
+      if (clockInIsLate) {
+        primaryStatus = "late"
+        const isApprovedIwp = s === "incomplete_with_permission"
+        const key = isApprovedIwp ? "incomplete_with_permission" : "incomplete"
+        secondary = {
+          label: isApprovedIwp ? "IWP" : "Inc",
+          className: ATTENDANCE_STATUS_COLORS[key as keyof typeof ATTENDANCE_STATUS_COLORS],
+        }
+      }
+    }
+  }
+
+  const primary = (
+    <Badge
+      className={
+        ATTENDANCE_STATUS_COLORS[primaryStatus as keyof typeof ATTENDANCE_STATUS_COLORS] ?? "bg-muted text-foreground"
+      }
+    >
+      {ATTENDANCE_STATUS_LABELS[primaryStatus as keyof typeof ATTENDANCE_STATUS_LABELS] ?? primaryStatus}
+    </Badge>
+  )
+
+  if (!secondary) return primary
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {primary}
+      <Badge className={secondary.className}>{secondary.label}</Badge>
+    </span>
+  )
+}
+
+export function formatTime(t: string | null | undefined) {
+  if (!t) return "—"
+  return t.substring(0, 5)
+}
+
+type SourceInfo = {
+  source?: string | null
+  clock_in_source?: string | null
+  clock_out_source?: string | null
+  clock_in?: string | null
+  clock_out?: string | null
+  editor_first_name?: string | null
+  status?: string | null
+  waived?: boolean | null
+}
+
+/** Hikvision = device "auto"; everything else (manual, remote_web) = "manual". */
+function punchKind(src: string | null | undefined): "auto" | "manual" | null {
+  if (!src) return null
+  return src.toLowerCase() === "hikvision" ? "auto" : "manual"
+}
+
+/**
+ * Human label for how a record was captured.
+ * - "—": no punches at all (e.g. absent) — source is meaningless, so show nothing
+ * - Automated: every present punch came from the device
+ * - Manual: every present punch was manual/remote
+ * - Mixed: a combination (e.g. device clock-in, manual clock-out)
+ * Accepts a record (preferred) or a plain legacy source string for back-compat.
+ */
+export function labelSource(record: SourceInfo | string | null | undefined): string {
+  const info: SourceInfo = typeof record === "string" || record == null ? { source: record ?? null } : record
+
+  const kinds = new Set<"auto" | "manual">()
+  const inK = punchKind(info.clock_in_source)
+  const outK = punchKind(info.clock_out_source)
+  if (inK) kinds.add(inK)
+  if (outK) kinds.add(outK)
+
+  // Check if the record status is an administrative/manual override status
+  const isManualStatus =
+    info.status === "waiver" ||
+    info.status === "absent_with_permission" ||
+    info.status === "lateness_with_permission" ||
+    info.status === "incomplete_with_permission" ||
+    info.status === "early_departure_with_permission" ||
+    info.status === "out_of_station" ||
+    info.status === "early_closure" ||
+    info.status === "late_resumption" ||
+    info.waived === true
+
+  let baseLabel = "Manual"
+  if (info.source === "manual" || isManualStatus) {
+    baseLabel = "Manual"
+  } else if (kinds.size === 0) {
+    // No per-punch data. A row with actual punches but missing per-punch source
+    // (legacy/un-backfilled) falls back to the single source column; a row with
+    // no punches at all (absent) has no source to show.
+    const hasPunch = Boolean(info.clock_in || info.clock_out)
+
+    if (!hasPunch && !isManualStatus && !info.editor_first_name) return "—"
+    baseLabel = punchKind(info.source) === "auto" ? "Automated" : "Manual"
+  } else if (kinds.size === 2) {
+    baseLabel = "Mixed"
+  } else {
+    baseLabel = kinds.has("auto") ? "Automated" : "Manual"
+  }
+
+  if (baseLabel === "Manual" && info.editor_first_name) {
+    return `Manual (${info.editor_first_name})`
+  }
+  if (baseLabel === "Mixed" && info.editor_first_name) {
+    return `Mixed (${info.editor_first_name})`
+  }
+  return baseLabel
+}

@@ -1,0 +1,637 @@
+import crypto from "crypto"
+import { createClient } from "@supabase/supabase-js"
+import { NextResponse } from "next/server"
+import { z } from "zod"
+import { buildApprovalEmailPreview } from "@/lib/onboarding/approval-email-preview"
+import { createClient as createServerClient } from "@/lib/supabase/server"
+import { rateLimit, getClientId } from "@/lib/rate-limit"
+import { logger } from "@/lib/logger"
+import { sendNotificationEmailWithRetry } from "@/lib/notifications/email-gateway"
+import { syncEmploymentStatusToAuth } from "@/lib/supabase/admin"
+import { writeAuditLog } from "@/lib/audit/write-audit"
+import { normalizeDepartmentName } from "@/shared/departments"
+import { ORG_EMAIL_SENDERS, ORG_MAIL_ROUTING } from "@/lib/org-config"
+import { quotePostgrestValue as q } from "@/lib/supabase/postgrest-filter"
+import { provisionStaffMailbox } from "@/lib/employees/mailbox-provisioning"
+import { WELCOME_PROFILE_COLUMNS, sendMailboxWelcome, type WelcomeProfile } from "@/lib/employees/mailbox-welcome"
+import type { ApprovalMailboxOutcome } from "@/lib/employees/approval-mailbox"
+
+const log = logger("approve-user")
+
+const ApproveUserSchema = z.object({
+  pendingUserId: z.string().trim().min(1, "Missing pendingUserId"),
+  employeeId: z.string().trim().optional(),
+  hireDate: z.string().trim().nullable().optional(),
+  employmentType: z.enum(["full_time", "part_time", "contract"]).optional().default("full_time"),
+  contractCategoryCode: z.string().trim().nullable().optional(),
+  nyscCdsDay: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday"]).nullable().optional(),
+  /** Details the reviewer corrected in the approval dialog, written before approval. */
+  details: z
+    .object({
+      first_name: z.string().trim().min(1),
+      last_name: z.string().trim().min(1),
+      other_names: z.string().trim().nullable(),
+      department: z.string().trim().min(1),
+      designation: z.string().trim().min(1),
+      company_email: z.string().trim().toLowerCase().email(),
+      personal_email: z.string().trim().toLowerCase().email(),
+      phone_number: z.string().trim().nullable(),
+      residential_address: z.string().trim().nullable(),
+      office_location: z.string().trim().nullable(),
+    })
+    .optional(),
+})
+
+export async function POST(req: Request) {
+  const rl = await rateLimit(`approve-user:${getClientId(req)}`, { limit: 20, windowSec: 600 })
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 })
+  }
+
+  // 1. Verify Caller is an Admin
+  const supabase = await createServerClient()
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser()
+
+  if (!caller) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const { data: callerProfile } = await supabase
+    .from("profiles")
+    .select("role, department, designation, full_name, first_name, last_name, is_department_lead, lead_departments")
+    .eq("id", caller.id)
+    .single<{
+      role?: string | null
+      department?: string | null
+      designation?: string | null
+      full_name?: string | null
+      first_name?: string | null
+      last_name?: string | null
+      is_department_lead?: boolean | null
+      lead_departments?: string[] | null
+    }>()
+  const callerRole = String(callerProfile?.role || "").toLowerCase()
+  const callerIsAdminLike = ["developer", "super_admin", "admin"].includes(callerRole)
+  const callerIsLead = callerProfile?.is_department_lead === true
+  if (!callerProfile || (!callerIsAdminLike && !callerIsLead)) {
+    return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 })
+  }
+
+  log.info({ callerId: caller.id }, "Starting approval process")
+  try {
+    const emailWarnings: Array<{
+      audience: "ict" | "management" | "employee"
+      reason: string
+      recipients: string[]
+    }> = []
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      log.error("Missing Supabase environment variables")
+      return NextResponse.json({ error: "System configuration error: Missing database keys" }, { status: 500 })
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+    const authUserExistsById = async (id: string): Promise<boolean> => {
+      if (!id) return false
+      try {
+        const { data, error } = await supabaseAdmin.auth.admin.getUserById(id)
+        if (error) return false
+        return Boolean(data?.user?.id)
+      } catch (_error) {
+        return false
+      }
+    }
+    const findAuthUserIdByEmail = async (email: string): Promise<string | null> => {
+      const normalizedTarget = String(email || "")
+        .trim()
+        .toLowerCase()
+      if (!normalizedTarget) return null
+
+      try {
+        let page = 1
+        const perPage = 200
+        while (true) {
+          const { data: listed, error: listError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage })
+          if (listError) break
+          const users = listed?.users || []
+          const matched = users.find(
+            (candidate) =>
+              String(candidate.email || "")
+                .trim()
+                .toLowerCase() === normalizedTarget
+          )
+          if (matched?.id) return matched.id
+          if (users.length < perPage) break
+          page += 1
+        }
+      } catch (_error) {
+        // Non-fatal; caller handles null.
+      }
+
+      return null
+    }
+
+    const body = await req.json()
+    const parsed = ApproveUserSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request body" }, { status: 400 })
+    }
+
+    const {
+      pendingUserId,
+      employeeId: manualEmployeeId,
+      hireDate,
+      employmentType = "full_time",
+      contractCategoryCode,
+    } = parsed.data
+
+    // 1. Fetch Pending User Details
+    const { data: originalPendingUser, error: fetchError } = await supabaseAdmin
+      .from("pending_users")
+      .select("*")
+      .eq("id", pendingUserId)
+      .single()
+
+    if (fetchError || !originalPendingUser) {
+      return NextResponse.json({ error: "Pending user not found" }, { status: 404 })
+    }
+
+    // A lead may only approve applicants for — and move them between — the
+    // departments they lead.
+    if (!callerIsAdminLike) {
+      const managedDepartments = Array.from(
+        new Set([callerProfile?.department, ...(callerProfile?.lead_departments || [])].filter(Boolean) as string[])
+      ).map((departmentName) => normalizeDepartmentName(departmentName))
+      const departmentsTouched = [originalPendingUser.department, parsed.data.details?.department]
+        .filter(Boolean)
+        .map((name) => normalizeDepartmentName(String(name)))
+      if (managedDepartments.length === 0 || departmentsTouched.some((d) => !managedDepartments.includes(d))) {
+        return NextResponse.json({ error: "Forbidden: Department scope mismatch" }, { status: 403 })
+      }
+    }
+
+    // 1a. Apply the reviewer's corrections (previously written from the browser).
+    let pendingUser = originalPendingUser
+    if (parsed.data.details) {
+      const { data: updated, error: detailsError } = await supabaseAdmin
+        .from("pending_users")
+        .update(parsed.data.details)
+        .eq("id", pendingUserId)
+        .select("*")
+        .single()
+      if (detailsError || !updated) {
+        log.error({ err: detailsError?.message }, "Failed to save corrected applicant details")
+        return NextResponse.json({ error: "Could not save the applicant's details" }, { status: 500 })
+      }
+      pendingUser = updated
+    }
+
+    // 1b. Validate Required Fields
+    const requiredFields = ["company_email", "personal_email", "first_name", "last_name", "department", "designation"]
+    const missingFields = requiredFields.filter((field) => !pendingUser[field])
+
+    if (missingFields.length > 0) {
+      return NextResponse.json({ error: `Missing required user data: ${missingFields.join(", ")}` }, { status: 422 })
+    }
+
+    // 2. Determine Employee ID — use DB sequence for atomic, collision-free generation
+    let employeeId = manualEmployeeId
+
+    if (employeeId) {
+      const empNumPattern = /^ACOB\/([A-Z0-9-]+\/)?[0-9]{4}\/[0-9]{3}$/
+      if (!empNumPattern.test(employeeId)) {
+        return NextResponse.json(
+          { error: "Employee number must be in format: ACOB/YEAR/NUMBER (e.g., ACOB/2026/058)" },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (!employeeId) {
+      // generate_staff_number() updates counters atomically
+      const { data: seqRow, error: seqError } = await supabaseAdmin.rpc("generate_staff_number", {
+        p_type: employmentType,
+        p_category_code: contractCategoryCode || null,
+      })
+      if (seqError || !seqRow) {
+        throw new Error(`Failed to generate employee number: ${seqError?.message ?? "unknown error"}`)
+      }
+      employeeId = seqRow as string
+    }
+
+    // Resolve contract category ID if contract
+    let contractCategoryId = null
+    if (employmentType === "contract" && contractCategoryCode) {
+      const { data: catData } = await supabaseAdmin
+        .from("contract_categories")
+        .select("id")
+        .eq("code", contractCategoryCode.toUpperCase())
+        .eq("is_active", true)
+        .single()
+      contractCategoryId = catData?.id || null
+    }
+
+    // Matrix login password. Never mailed: the employee signs in with a code
+    // sent to their webmail, so this only has to be unguessable.
+    const tempPassword = crypto.randomBytes(12).toString("base64url").slice(0, 16)
+
+    // 3. Create or Update Auth User
+    // First check if profile or auth user already exists
+    const { data: matchingProfiles, error: matchingProfilesError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, company_email, employee_number, employment_status")
+      .ilike("company_email", pendingUser.company_email)
+    if (matchingProfilesError) {
+      throw new Error(`Profile creation failed: ${matchingProfilesError.message}`)
+    }
+
+    const existingProfiles = (matchingProfiles || []) as Array<{
+      id: string
+      company_email?: string | null
+      employee_number?: string | null
+      employment_status?: string | null
+    }>
+    let authUserId: string | null = null
+    const normalizedCompanyEmail = String(pendingUser.company_email || "")
+      .trim()
+      .toLowerCase()
+    log.info(
+      {
+        companyEmail: normalizedCompanyEmail,
+        matchingProfilesCount: existingProfiles.length,
+        matchingProfiles: existingProfiles.map((row) => ({
+          id: row.id,
+          company_email: row.company_email,
+          employee_number: row.employee_number,
+          employment_status: row.employment_status,
+        })),
+      },
+      "Approval profile preflight matches"
+    )
+    for (const profile of existingProfiles) {
+      const authExists = await authUserExistsById(profile.id)
+      if (authExists) {
+        log.info(
+          { profileId: profile.id, companyEmail: normalizedCompanyEmail },
+          "Found existing auth user by profile id"
+        )
+        authUserId = profile.id
+        break
+      }
+      const hasEmployeeNumber = Boolean(String(profile.employee_number || "").trim())
+      const currentStatus = String(profile.employment_status || "")
+        .trim()
+        .toLowerCase()
+      const isDisposableProfile = !hasEmployeeNumber && currentStatus !== "active"
+      if (!isDisposableProfile) {
+        throw new Error(
+          "Profile creation failed: Existing profile is not linked to auth user. Please contact support to repair this account."
+        )
+      }
+      const archivedEmail = `orphan+${Date.now()}+${profile.id.slice(0, 8)}@acoblighting.local`
+      const { error: orphanUpdateError } = await supabaseAdmin
+        .from("profiles")
+        .update({
+          company_email: archivedEmail,
+          personal_email: null,
+          employment_status: "exited",
+          termination_reason: "orphaned_profile_recovery",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", profile.id)
+
+      if (orphanUpdateError) {
+        throw new Error(`Profile creation failed: ${orphanUpdateError.message}`)
+      }
+      log.warn(
+        { profileId: profile.id, oldCompanyEmail: profile.company_email, newCompanyEmail: archivedEmail },
+        "Archived orphan profile row during approval recovery"
+      )
+    }
+
+    if (!authUserId) {
+      authUserId = await findAuthUserIdByEmail(normalizedCompanyEmail)
+    }
+
+    if (!authUserId) {
+      const { data: newAuthUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: pendingUser.company_email,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          first_name: pendingUser.first_name,
+          last_name: pendingUser.last_name,
+          full_name: `${pendingUser.first_name} ${pendingUser.last_name}`,
+        },
+      })
+
+      if (authError) {
+        log.error(
+          {
+            authErrorMessage: authError.message,
+            authErrorCode: "code" in authError ? String(authError.code) : null,
+            authErrorStatus: "status" in authError ? String(authError.status) : null,
+            companyEmail: normalizedCompanyEmail,
+          },
+          "Auth admin createUser failed"
+        )
+        // Probe path for diagnostics: determine if auth creation is globally broken
+        // (e.g., trigger/function misconfiguration) vs this specific email conflict.
+        try {
+          const probeEmail = `probe-${Date.now()}@evcng.com`
+          const { data: probeData, error: probeError } = await supabaseAdmin.auth.admin.createUser({
+            email: probeEmail,
+            password: tempPassword,
+            email_confirm: true,
+            user_metadata: {
+              first_name: "Probe",
+              last_name: "User",
+              full_name: "Probe User",
+            },
+          })
+
+          if (probeError) {
+            log.error(
+              {
+                probeEmail,
+                probeErrorMessage: probeError.message,
+                probeErrorCode: "code" in probeError ? String(probeError.code) : null,
+                probeErrorStatus: "status" in probeError ? String(probeError.status) : null,
+              },
+              "Auth probe createUser failed"
+            )
+          } else if (probeData?.user?.id) {
+            log.info(
+              { probeEmail, probeUserId: probeData.user.id },
+              "Auth probe createUser succeeded; deleting probe user"
+            )
+            await supabaseAdmin.auth.admin
+              .deleteUser(probeData.user.id)
+              .catch((probeDeleteError) =>
+                log.error(
+                  { err: String(probeDeleteError), probeUserId: probeData.user.id },
+                  "Failed to delete probe user"
+                )
+              )
+          }
+        } catch (probeUnhandledError) {
+          log.error({ err: String(probeUnhandledError) }, "Auth probe execution failed unexpectedly")
+        }
+        // Recovery path:
+        // If auth user already exists (often returned as generic DB error), reuse it.
+        const recoveredAuthUserId = await findAuthUserIdByEmail(normalizedCompanyEmail)
+
+        if (recoveredAuthUserId) {
+          const { error: recoveredUpdateError } = await supabaseAdmin.auth.admin.updateUserById(recoveredAuthUserId, {
+            password: tempPassword,
+            email_confirm: true,
+            user_metadata: {
+              first_name: pendingUser.first_name,
+              last_name: pendingUser.last_name,
+              full_name: `${pendingUser.first_name} ${pendingUser.last_name}`,
+            },
+          })
+          if (recoveredUpdateError) {
+            throw new Error(`Auth creation failed: ${authError.message}`)
+          }
+          authUserId = recoveredAuthUserId
+        } else {
+          throw new Error(`Auth creation failed: ${authError.message}`)
+        }
+      }
+      if (!authUserId) {
+        authUserId = newAuthUser?.user?.id ?? null
+      }
+    } else {
+      const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(authUserId, {
+        password: tempPassword,
+        email_confirm: true,
+      })
+      if (updateAuthError) {
+        throw new Error(`Auth update failed: ${updateAuthError.message}`)
+      }
+    }
+
+    // Split the onboarding DOB (YYYY-MM-DD) into the canonical month/day +
+    // optional year. The profiles trigger derives date_of_birth from these.
+    const dobMatch = String(pendingUser.date_of_birth || "").match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    const pendingBirthday = dobMatch ? `${dobMatch[2]}-${dobMatch[3]}` : null
+    const pendingBirthYear = dobMatch ? Number(dobMatch[1]) : null
+
+    // 4 & 5. Atomically upsert profile + delete from pending_users in one DB transaction.
+    // If either step fails, both roll back — no ghost users, no orphaned profiles.
+    const { error: approvalError } = await supabaseAdmin.rpc("atomic_complete_user_approval", {
+      p_auth_user_id: authUserId,
+      p_pending_user_id: pendingUserId,
+      p_employee_number: employeeId,
+      p_first_name: pendingUser.first_name,
+      p_last_name: pendingUser.last_name,
+      p_other_names: pendingUser.other_names ?? null,
+      p_department: pendingUser.department,
+      p_designation: pendingUser.designation,
+      p_company_email: pendingUser.company_email,
+      p_personal_email: pendingUser.personal_email,
+      p_phone_number: pendingUser.phone_number ?? null,
+      p_additional_phone: pendingUser.additional_phone_number ?? null,
+      p_residential_address: pendingUser.residential_address ?? null,
+      p_office_location: pendingUser.office_location ?? null,
+      p_employment_date: hireDate ?? null,
+      p_birthday: pendingBirthday,
+      p_birth_year: pendingBirthYear,
+      p_employment_type: employmentType,
+      p_contract_category_id: contractCategoryId,
+      p_gender: pendingUser.gender ?? null,
+      p_nysc_cds_day:
+        parsed.data.nyscCdsDay || (pendingUser as unknown as { nysc_cds_day?: string }).nysc_cds_day || null,
+    })
+
+    if (approvalError) {
+      // Clean up orphaned auth user if we just created one
+      if (existingProfiles.length === 0 && authUserId) {
+        await supabaseAdmin.auth.admin
+          .deleteUser(authUserId)
+          .catch((e) => log.error({ err: String(e) }, "Failed to clean up orphaned auth user"))
+      }
+      throw new Error(`Profile creation failed: ${approvalError.message}`)
+    }
+
+    // Clean up any remaining duplicate pending submissions from this applicant.
+    // Values are applicant-supplied, so they are quoted for PostgREST; phone is
+    // not used — a shared number would delete another applicant's submission.
+    const duplicateOrFilters: string[] = []
+    if (pendingUser.personal_email) duplicateOrFilters.push(`personal_email.eq.${q(pendingUser.personal_email)}`)
+    if (pendingUser.email) duplicateOrFilters.push(`email.eq.${q(pendingUser.email)}`)
+    if (pendingUser.company_email) duplicateOrFilters.push(`company_email.eq.${q(pendingUser.company_email)}`)
+
+    if (duplicateOrFilters.length > 0) {
+      const { error: cleanupError } = await supabaseAdmin
+        .from("pending_users")
+        .delete()
+        .or(duplicateOrFilters.join(","))
+      if (cleanupError) {
+        log.error({ err: cleanupError.message }, "Failed to clean up duplicate pending_users")
+      }
+    }
+
+    // No leave records to create: entitlement is derived from the leave type's allowance minus
+    // the employee's own requests, so the new employee has their full allowance immediately.
+
+    // 6. Company mailbox. Matrix creates it on cPanel and sends the welcome
+    // letter (to the personal email) plus the HCS / HR / department-lead notice
+    // straight away. If it cannot, approval still stands: the profile is marked
+    // mailbox_status = failed and ICT gets the "create the webmail account"
+    // email, with cPanel's reason, as before.
+    const approvedBy = {
+      name:
+        callerProfile?.full_name ||
+        [callerProfile?.first_name, callerProfile?.last_name].filter(Boolean).join(" ").trim() ||
+        caller.email ||
+        "Admin and HR Lead",
+      designation: callerProfile?.designation || null,
+      department: callerProfile?.department || "Admin and HR",
+    }
+    // Create-only: if the address already has a mailbox it may belong to
+    // someone else (same initial + first name, a shared or hand-made box), so
+    // approval never resets its password — ICT is asked to sort it out instead.
+    const provisioned = await provisionStaffMailbox(supabaseAdmin, {
+      profileId: authUserId!,
+      email: pendingUser.company_email,
+      createOnly: true,
+    })
+    let mailbox: ApprovalMailboxOutcome
+    if (provisioned.ok) {
+      mailbox = { status: "created", email: normalizedCompanyEmail, welcomeSent: false }
+      const { data: welcomeProfile } = await supabaseAdmin
+        .from("profiles")
+        .select(WELCOME_PROFILE_COLUMNS)
+        .eq("id", authUserId!)
+        .single<WelcomeProfile>()
+      const welcome = welcomeProfile
+        ? await sendMailboxWelcome(supabaseAdmin, {
+            profile: welcomeProfile,
+            mailboxPassword: provisioned.password,
+            preparedBy: approvedBy,
+          })
+        : ({ ok: false, status: 404, error: "Profile not found after approval" } as const)
+      if (welcome.ok) {
+        mailbox.welcomeSent = true
+        for (const warning of welcome.warnings) {
+          emailWarnings.push({ audience: "management", reason: warning, recipients: [] })
+        }
+      } else {
+        emailWarnings.push({
+          audience: "employee",
+          reason: `Mailbox created, but the welcome letter was not sent: ${welcome.error}. Use Send Webmail Credentials to resend.`,
+          recipients: pendingUser.personal_email ? [pendingUser.personal_email] : [],
+        })
+      }
+    } else {
+      mailbox = provisioned.manual
+        ? { status: "manual", email: normalizedCompanyEmail, reason: provisioned.reason }
+        : { status: "failed", email: normalizedCompanyEmail, reason: provisioned.reason }
+
+      const ictEmail = await buildApprovalEmailPreview({
+        supabase: supabaseAdmin,
+        pendingUser,
+        employeeNumber: employeeId,
+        approvedBy,
+        automationFailure: provisioned.manual ? null : provisioned.reason,
+      })
+        .then((preview) => preview.ict)
+        .catch((error: unknown) => {
+          log.error({ err: String(error) }, "Failed to build ICT webmail setup email")
+          return null
+        })
+
+      if (ictEmail?.enabled) {
+        try {
+          if (ictEmail.recipients.length === 0) throw new Error("No ICT inbox configured")
+          const result = await sendNotificationEmailWithRetry({
+            from: ORG_EMAIL_SENDERS.company,
+            ...ORG_MAIL_ROUTING.Onboarding,
+            to: ictEmail.recipients,
+            subject: ictEmail.subject,
+            html: ictEmail.html,
+          })
+          if (!result.sent) throw new Error(result.reason)
+        } catch (emailError) {
+          const reason = emailError instanceof Error ? emailError.message : String(emailError)
+          emailWarnings.push({ audience: "ict", reason, recipients: ictEmail.recipients })
+          log.error({ reason, recipients: ictEmail.recipients }, "ICT webmail setup email was not sent")
+        }
+      }
+    }
+
+    // Sync employment_status into JWT metadata so middleware doesn't need a DB query.
+    // This should not fail the approval if metadata sync hits a transient auth error.
+    try {
+      await syncEmploymentStatusToAuth(authUserId!, "active")
+    } catch (syncError) {
+      log.error({ err: String(syncError), authUserId }, "Employment status auth sync failed after approval")
+      emailWarnings.push({
+        audience: "management",
+        reason: "Employment status sync warning (approval completed)",
+        recipients: [],
+      })
+    }
+
+    // Audit: new employee onboarding is a critical action
+    const supabaseForAudit = await createServerClient()
+    await writeAuditLog(
+      supabaseForAudit,
+      {
+        action: "create",
+        entityType: "profile",
+        entityId: authUserId!,
+        context: { actorId: caller.id, source: "api" as const },
+        newValues: {
+          employee_number: employeeId,
+          company_email: pendingUser.company_email,
+          department: pendingUser.department,
+          role: "employee",
+          employment_status: "active",
+          employment_type: employmentType,
+          contract_category_id: contractCategoryId,
+        },
+        metadata: {
+          source: "approve-user",
+          pending_user_id: pendingUserId,
+          email_warnings: emailWarnings,
+          mailbox: mailbox.status,
+        },
+      },
+      { failOpen: true }
+    )
+
+    return NextResponse.json({
+      success: true,
+      employeeId,
+      profileId: authUserId,
+      emailWarnings,
+      mailbox,
+    })
+  } catch (error: unknown) {
+    log.error({ err: String(error) }, "Approval process failed")
+    // Redact internal error details from the client while still surfacing known actionable failures.
+    const knownPrefixes = [
+      "Auth creation failed:",
+      "Auth update failed:",
+      "Profile creation failed:",
+      "Failed to generate employee number:",
+    ]
+    const safeKnownError =
+      error instanceof Error ? knownPrefixes.find((prefix) => error.message.startsWith(prefix)) : null
+    const message =
+      error instanceof Error && safeKnownError
+        ? error.message
+        : "An unexpected error occurred during the approval process. Please check system logs."
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

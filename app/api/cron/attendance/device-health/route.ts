@@ -1,0 +1,171 @@
+import { NextRequest, NextResponse } from "next/server"
+import { isCronRequest } from "@/lib/security/bearer-auth"
+import { createClient } from "@supabase/supabase-js"
+import { logger } from "@/lib/logger"
+import { sendNotificationEmailWithRetry } from "@/lib/notifications/email-gateway"
+import { escapeHtml } from "@/lib/email-templates/utils"
+import { ORG_EMAIL_SENDERS, ORG_ICT_EMAIL, ORG_MAIL_ROUTING } from "@/lib/org-config"
+import { formatWATDateTime, toLocalISODate } from "@/lib/utils/date"
+import { getDeviceAlertRecipientIds, getDeviceHealth } from "@/lib/hr/device-health"
+
+const log = logger("cron-attendance-device-health")
+
+/**
+ * Clock-in device watchdog.
+ *
+ * The Hikvision unit has twice stopped delivering punches for most of a day
+ * and then sent the backlog at once (Fri 18 Sep ~18:00 to Mon 21 Sep 08:17;
+ * Mon 28 Sep ~16:00 to Tue 29 Sep 10:08, 2026). Nobody noticed: the overnight
+ * job marked everyone incomplete, staff appealed days that were fine, and the
+ * appeals sat in the queue. The ingest route cannot detect its own silence, so
+ * this checks for it.
+ *
+ * The offline rules live in getDeviceHealth (lib/hr/device-health), shared
+ * with the banner staff see on /hr/attendance. Each alert fires at most once
+ * per day. Recipients are set from the admin attendance page (Device alerts).
+ */
+/** system_settings key holding { "<yyyy-mm-dd>:<kind>": "<alerted at>" } so each alert fires once. */
+const STATE_SETTING_KEY = "attendance_device_health"
+
+function serviceClient(url: string, key: string) {
+  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
+}
+
+type Supabase = ReturnType<typeof serviceClient>
+
+async function resolveRecipients(supabase: Supabase): Promise<{ userIds: string[]; emails: string[] }> {
+  const userIds = await getDeviceAlertRecipientIds(supabase)
+
+  const emails: string[] = []
+  for (const userId of userIds) {
+    const { data } = await supabase.auth.admin.getUserById(userId)
+    if (data?.user?.email) emails.push(data.user.email)
+  }
+  // The device being down is ICT's to fix, so the ICT mailbox always hears about it.
+  emails.push(ORG_ICT_EMAIL)
+  return { userIds, emails: Array.from(new Set(emails.map((email) => email.toLowerCase()))) }
+}
+
+function renderAlertHtml(title: string, lines: string[]): string {
+  const darkLock =
+    "background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;"
+  const bar = (content: string, padding: string) =>
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${darkLock}border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;"><tr><td align="center" style="padding:${padding};${darkLock}font-size:11px;color:#d1d5db;">${content}</td></tr></table>`
+  return (
+    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"></head>' +
+    '<body style="margin:0;padding:0;background:#fff;font-family:Segoe UI, Tahoma, Geneva, Verdana, sans-serif;">' +
+    '<div style="max-width:600px;margin:0 auto;">' +
+    bar(
+      '<img src="https://evcng.com/images/evc-logo-dark.png" height="60" alt="EVC">',
+      "20px 0"
+    ) +
+    '<div style="padding:32px 28px;">' +
+    `<div style="font-size:20px;font-weight:700;color:#991b1b;margin:0 0 12px;">${escapeHtml(title)}</div>` +
+    `<ul style="font-size:14px;color:#374151;line-height:1.6;padding-left:18px;">${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` +
+    '<p style="font-size:14px;color:#374151;line-height:1.6;">Check the Hikvision terminal is powered, on the network, and can reach the app. When it reconnects it sends its backlog and attendance corrects itself; appeals raised meanwhile close automatically once the day is fine.</p>' +
+    "</div>" +
+    bar(
+      '<strong style="color:#fff;">EVC</strong><br><span style="color:#16a34a;font-weight:600;">IT &amp; Communications</span><br><br><i style="color:#9ca3af;">This is an automated notification.</i>',
+      "20px"
+    ) +
+    "</div></body></html>"
+  )
+}
+
+export async function GET(request: NextRequest) {
+  if (!isCronRequest(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return NextResponse.json({ error: "Missing configuration" }, { status: 500 })
+  }
+  const supabase = serviceClient(supabaseUrl, supabaseServiceKey)
+
+  try {
+    const now = new Date()
+    // Same verdict the /hr/attendance banner shows staff, so the alert and the page agree.
+    const health = await getDeviceHealth(supabase, now)
+    const { date: today, clockIns, clockOuts } = health
+    const kind = health.offline
+    if (!kind) return NextResponse.json({ data: { healthy: true, clockIns, clockOuts } })
+
+    const lastSeen = health.lastPunchAt ? formatWATDateTime(health.lastPunchAt) : "over a week ago"
+    const detail =
+      kind === "carried_over"
+        ? `The device stopped sending before the end of an earlier working day and nothing has arrived since ${lastSeen}.`
+        : kind === "morning"
+          ? `It is a working day and no clock-ins have been received from the device today. Last punch received: ${lastSeen}.`
+          : `The device has sent ${clockIns} clock-ins but only ${clockOuts} clock-outs today, and nothing since ${lastSeen}.`
+
+    const { data: stateRow } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", STATE_SETTING_KEY)
+      .maybeSingle()
+    const state = ((stateRow?.value as Record<string, string> | null) ?? {}) as Record<string, string>
+    const stateKey = `${today}:${kind}`
+    if (state[stateKey]) return NextResponse.json({ data: { alreadyAlerted: stateKey } })
+
+    const title = "Clock-in device has stopped sending punches"
+    const lines = [
+      detail,
+      "Until it reconnects, staff will look absent or incomplete, and the overnight job will mark missing clock-outs as incomplete.",
+    ]
+    const { userIds, emails } = await resolveRecipients(supabase)
+
+    let notified = 0
+    for (const userId of userIds) {
+      const { error } = await supabase.rpc("create_notification", {
+        p_user_id: userId,
+        p_type: "system",
+        p_category: "system",
+        p_title: title,
+        p_message: lines.join(" "),
+        p_priority: "urgent",
+        p_link_url: "/admin/hr/attendance",
+        p_actor_id: null,
+        p_entity_type: "attendance_device_health",
+        p_entity_id: null,
+        p_rich_content: null,
+      })
+      if (error) log.error({ err: error.message, userId }, "Device alert notification failed")
+      else notified++
+    }
+
+    // Ungated, like the reminder watchdog: an infrastructure alarm for the
+    // people who fix it, not a staff notification stream.
+    const html = renderAlertHtml(title, lines)
+    let emailed = 0
+    for (const email of emails) {
+      const result = await sendNotificationEmailWithRetry({
+        from: ORG_EMAIL_SENDERS.system,
+        ...ORG_MAIL_ROUTING["System Health"],
+        to: [email],
+        subject: `Clock-in Device Offline — ${today}`,
+        html,
+      })
+      if (result.sent) emailed++
+      else log.error({ reason: result.reason }, "Device alert email failed")
+    }
+
+    // Recorded only when someone was told, so a total delivery failure retries next run.
+    if (emailed > 0 || notified > 0) {
+      // Keep a week of history; older keys are dropped as the map is rewritten.
+      const cutoff = toLocalISODate(new Date(now.getTime() - 7 * 86_400_000))
+      const kept = Object.fromEntries(Object.entries(state).filter(([key]) => key.slice(0, 10) >= cutoff))
+      const { error: saveError } = await supabase
+        .from("system_settings")
+        .upsert({ key: STATE_SETTING_KEY, value: { ...kept, [stateKey]: now.toISOString() } }, { onConflict: "key" })
+      if (saveError) log.error({ err: saveError.message }, "Failed to record device alert")
+    }
+
+    log.warn({ kind, clockIns, clockOuts, emailed, notified }, "Clock-in device alert raised")
+    return NextResponse.json({ data: { alert: kind, clockIns, clockOuts, emailed, notified } })
+  } catch (error) {
+    log.error({ err: String(error) }, "Device health check failed")
+    return NextResponse.json({ error: "Device health check failed" }, { status: 500 })
+  }
+}

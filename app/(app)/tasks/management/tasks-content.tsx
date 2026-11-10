@@ -1,0 +1,815 @@
+"use client"
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { isTaskOverdue as isTaskPastDeadline, isTaskEscalated } from "@/lib/tasks/overdue"
+import { toLocalISODate } from "@/lib/utils/date"
+import { createClient } from "@/lib/supabase/client"
+import { toast } from "sonner"
+import { logger } from "@/lib/logger"
+import {
+  ClipboardList,
+  Repeat,
+  Clock,
+  CheckCircle2,
+  MessageSquare,
+  Send,
+  AlertTriangle,
+  CalendarDays,
+  Target,
+  Scale,
+  Eye,
+  FolderKanban,
+  Layers,
+} from "lucide-react"
+
+import { UserTaskDetailsDialog } from "@/components/tasks/UserTaskDetailsDialog"
+import { loadUserTasks } from "@/components/tasks/user-tasks-data"
+import { Button } from "@/components/ui/button"
+import { StaffAvatar } from "@/components/ui/staff-avatar"
+import { useStaffAvatars } from "@/hooks/use-staff-avatars"
+import { TaskStatusControl } from "@/components/tasks/TaskStatusControl"
+import { TASK_STATUS_CONFIG, type TaskStatus } from "@/lib/tasks/constants"
+import { TASK_WEIGHT_DEFAULT, getTaskWeightBadgeClass } from "@/lib/tasks/scoring"
+import type { Task, TaskUserProfile } from "@/types/task"
+import { SELF_RATING_BLOCKED_REASON, isSelfRatingBlocked } from "@/lib/tasks/rating-authority"
+import { DataTable, DataTablePage, type DataTableTab } from "@/components/ui/data-table"
+import type { DataTableColumn, DataTableFilter } from "@/components/ui/data-table"
+import { StatCard } from "@/components/ui/stat-card"
+import { StatGrid } from "@/components/ui/stat-grid"
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn, formatName, formatFullName } from "@/lib/utils"
+import { formatWATDate } from "@/lib/utils/date"
+import { apiFetch } from "@/lib/api-client"
+import { TaskSeriesSheet } from "@/components/tasks/task-series-sheet"
+import { RecurringSeriesTable } from "@/components/tasks/recurring-series-table"
+import { ScheduledTaskBadge, useScheduledSeriesRows } from "@/components/tasks/scheduled-task-rows"
+import { isScheduledTask } from "@/lib/tasks/scheduled-rows"
+import { RecurringTaskBadge } from "@/components/tasks/recurring-task-badge"
+
+export type { Task, TaskUserProfile } from "@/types/task"
+
+const log = logger("tasks-management-tasks-content")
+
+export interface TaskUpdate {
+  id: string
+  content?: string
+  update_type: string
+  created_at: string
+  old_value?: string | null
+  new_value?: string | null
+  user?: {
+    first_name: string
+    last_name: string
+  }
+}
+
+type TaskUpdateRow = Omit<TaskUpdate, "user"> & {
+  user_id?: string | null
+  user?: Array<{ first_name: string; last_name: string }> | { first_name: string; last_name: string } | null
+}
+
+interface TasksContentProps {
+  initialTasks: Task[]
+  userId: string
+  userProfile: TaskUserProfile | null
+}
+
+/** Read-only status pill for the row list and cards, where the whole row is
+ * already the tap target and an inline control inside it would fight for taps.
+ * The editable `TaskStatusControl` lives in the table cell and the detail sheet. */
+function TaskStatusPill({ task }: { task: Task }) {
+  if (isScheduledTask(task)) return <ScheduledTaskBadge task={task} compact />
+  const status = task.status || "pending"
+  const cfg = TASK_STATUS_CONFIG[status as TaskStatus] || TASK_STATUS_CONFIG.pending
+  const today = toLocalISODate()
+  const isEscalated = isTaskEscalated(task, today)
+  const isOverdue = isTaskPastDeadline(task, today)
+
+  if (isEscalated) {
+    return (
+      <Badge variant="destructive" className="text-danger border-danger/30 bg-danger/15 text-xs whitespace-nowrap">
+        {cfg.label} · Escalated
+      </Badge>
+    )
+  }
+
+  if (isOverdue) {
+    return (
+      <Badge variant="outline" className="text-warning border-warning/30 bg-warning/15 text-xs whitespace-nowrap">
+        {cfg.label} · Grace
+      </Badge>
+    )
+  }
+
+  return (
+    <Badge variant={cfg.badgeVariant} className={cn("text-xs whitespace-nowrap capitalize", cfg.color)}>
+      {cfg.label}
+    </Badge>
+  )
+}
+
+/** Past its deadline and still actionable - a closed-out task is not overdue. */
+// Recurring lists the series you hold, including ones whose first task is not created yet.
+const STAFF_TASK_TABS: DataTableTab[] = [
+  { key: "tasks", label: "My Tasks", icon: ClipboardList },
+  { key: "recurring", label: "Recurring", icon: Repeat },
+]
+
+function isTaskOverdue(task: Task): boolean {
+  return isTaskPastDeadline(task, toLocalISODate())
+}
+
+export function TasksContent({ initialTasks, userId, userProfile }: TasksContentProps) {
+  const [tasks, setTasks] = useState<Task[]>(initialTasks)
+  const staffAvatars = useStaffAvatars()
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [openSeriesId, setOpenSeriesId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<"tasks" | "recurring">("tasks")
+  // Series you hold whose next task is not created yet; table rows only, never the stats.
+  const scheduledRows = useScheduledSeriesRows(tasks, { mine: true })
+  const tableRows = useMemo(() => [...tasks, ...scheduledRows], [tasks, scheduledRows])
+  const [taskUpdates, setTaskUpdates] = useState<TaskUpdate[]>([])
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  const [isPostingComment, setIsPostingComment] = useState(false)
+  const supabase = createClient()
+
+  const isLeadOrAdminUser = useMemo(() => {
+    const role = String(userProfile?.role || "").toLowerCase()
+    if (["admin", "super_admin", "developer"].includes(role)) return true
+    return Boolean(userProfile?.is_department_lead)
+  }, [userProfile])
+
+  // Whether this user may approve, rate, reject or reassign a given task.
+  // In the personal "My Tasks" board, an assignee acts strictly as an employee,
+  // not as an administrative reviewer. Reviewer actions (completed, failed, reassigned, cancelled)
+  // are performed via the department / admin console or review dialog.
+  const canReviewTask = (task: Task) => {
+    if (
+      task.assigned_to === userId ||
+      (Array.isArray(task.assigned_users) &&
+        task.assigned_users.some((u) => (typeof u === "string" ? u === userId : u.id === userId)))
+    ) {
+      return false
+    }
+    const role = String(userProfile?.role || "").toLowerCase()
+    if (["admin", "super_admin", "developer"].includes(role)) return true
+    if (!userProfile?.is_department_lead) return false
+    const leadDepartments = Array.isArray(userProfile.lead_departments) ? userProfile.lead_departments : []
+    const scope = [userProfile.department, ...leadDepartments].filter(Boolean) as string[]
+    return Boolean(task.department && scope.includes(task.department))
+  }
+
+  const ratingBlockedReasonFor = (task: Task) =>
+    isSelfRatingBlocked({
+      userId,
+      assigneeIds: [task.assigned_to],
+      isLeadOrAdmin: isLeadOrAdminUser,
+    })
+      ? SELF_RATING_BLOCKED_REASON
+      : null
+
+  const stats = useMemo(
+    () => ({
+      total: tasks.length,
+      pending: tasks.filter((t) => t.status === "pending").length,
+      inProgress: tasks.filter((t) => t.status === "in_progress").length,
+      submitted: tasks.filter((t) => t.status === "submitted_for_review").length,
+      completed: tasks.filter((t) => t.status === "completed").length,
+      overdue: tasks.filter(isTaskOverdue).length,
+      escalated: tasks.filter((t) => isTaskEscalated(t, toLocalISODate())).length,
+    }),
+    [tasks]
+  )
+
+  const loadTasks = async () => {
+    try {
+      const loaded = await loadUserTasks(supabase, userId, userProfile)
+      setTasks(loaded)
+      return loaded
+    } catch (error: unknown) {
+      log.error("Error loading tasks:", error)
+      toast.error("Failed to load tasks")
+      return null
+    }
+  }
+
+  const loadTaskUpdates = useCallback(
+    async (taskId: string) => {
+      try {
+        const { data, error } = await supabase
+          .from("task_updates")
+          .select("id, content, update_type, created_at, old_value, new_value, user_id")
+          .eq("task_id", taskId)
+          .order("created_at", { ascending: false })
+
+        if (error) throw error
+
+        const rows = (data as TaskUpdateRow[] | null) || []
+        const userIds = Array.from(new Set(rows.map((entry) => entry.user_id).filter(Boolean))) as string[]
+        const { data: profiles } =
+          userIds.length > 0
+            ? await supabase.from("profiles").select("id, first_name, last_name").in("id", userIds)
+            : { data: [] }
+        const profileMap = new Map(
+          ((profiles as Array<{ id: string; first_name: string; last_name: string }> | null) || []).map((profile) => [
+            profile.id,
+            { first_name: profile.first_name, last_name: profile.last_name },
+          ])
+        )
+
+        const normalizedUpdates = rows.map((entry) => ({
+          id: entry.id,
+          content: entry.content,
+          update_type: entry.update_type,
+          created_at: entry.created_at,
+          old_value: entry.old_value,
+          new_value: entry.new_value,
+          user: entry.user_id ? profileMap.get(entry.user_id) : undefined,
+        }))
+        setTaskUpdates(normalizedUpdates)
+      } catch (error) {
+        log.error("Error loading task updates:", error)
+        setTaskUpdates([])
+      }
+    },
+    [supabase]
+  )
+
+  const openTaskDetails = useCallback(
+    async (task: Task) => {
+      // A scheduled row is a series whose task is not created yet: open the series instead.
+      if (isScheduledTask(task)) return setOpenSeriesId(task.series_id ?? null)
+      setSelectedTask(task)
+      await loadTaskUpdates(task.id)
+      setIsDetailsOpen(true)
+    },
+    [loadTaskUpdates]
+  )
+
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const taskIdParam = searchParams.get("task") || searchParams.get("taskId")
+    if (taskIdParam && tasks.length > 0) {
+      const match = tasks.find((t) => t.id === taskIdParam)
+      if (match) {
+        void openTaskDetails(match)
+      }
+    }
+  }, [searchParams, tasks, openTaskDetails])
+
+  // Status changes go through TaskStatusControl directly against the API now
+  // — this used to be a second path (updateTaskStatus/handleUpdateStatus) that
+  // existed only to serve the old "My Actions" tab, which no longer exists.
+
+  const postComment = async (content: string) => {
+    if (!selectedTask || !content.trim()) return
+    setIsPostingComment(true)
+    try {
+      const res = await apiFetch(`/api/tasks/${selectedTask.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: content.trim() }),
+      })
+      if (!res.ok) throw new Error("Failed to add comment")
+      toast.success("Comment added")
+      await loadTaskUpdates(selectedTask.id)
+      await loadTasks()
+    } catch {
+      toast.error("Failed to add comment")
+    } finally {
+      setIsPostingComment(false)
+    }
+  }
+
+  const columns: DataTableColumn<Task>[] = [
+    {
+      key: "work_item_number",
+      label: "Task ID",
+      sortable: true,
+      accessor: (t) => t.work_item_number,
+      render: (t) => <span className="font-mono text-xs font-bold">{t.work_item_number || "---"}</span>,
+      hideOnMobile: true,
+    },
+    {
+      key: "title",
+      label: "Task Title",
+      sortable: true,
+      resizable: true,
+      initialWidth: 500,
+      accessor: (t) => t.title,
+      render: (t) => (
+        <div className="flex flex-col gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => void openTaskDetails(t)}
+                className="line-clamp-2 text-left font-medium hover:underline focus-visible:outline-none"
+              >
+                {t.title}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-md">
+              {t.title}
+            </TooltipContent>
+          </Tooltip>
+          <RecurringTaskBadge task={t} onOpen={setOpenSeriesId} />
+          {t.project_name && (
+            <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+              <FolderKanban className="h-3 w-3 shrink-0" />
+              <span className="line-clamp-1">{t.project_name}</span>
+            </span>
+          )}
+          {t.portfolio_name && (
+            <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+              <Layers className="h-3 w-3 shrink-0" />
+              <span className="line-clamp-1">{t.portfolio_name}</span>
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "weight",
+      label: "Weight",
+      sortable: true,
+      accessor: (t) => t.weight ?? TASK_WEIGHT_DEFAULT,
+      render: (t) => (
+        <Badge variant="outline" className={cn("font-mono text-xs font-medium", getTaskWeightBadgeClass(t.weight))}>
+          {t.weight ?? TASK_WEIGHT_DEFAULT}
+        </Badge>
+      ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      sortable: true,
+      accessor: (t) => t.status,
+      // Changed straight from the row: opening a modal to move a task through
+      // three states was the slowest part of the whole workflow.
+      render: (t) =>
+        isScheduledTask(t) ? (
+          <ScheduledTaskBadge task={t} />
+        ) : (
+          <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+            <TaskStatusControl
+              task={t}
+              canReview={canReviewTask(t)}
+              ratingBlockedReason={ratingBlockedReasonFor(t)}
+              onChanged={() => void loadTasks()}
+              size="sm"
+            />
+          </div>
+        ),
+    },
+    {
+      key: "due_date",
+      label: "Due Date",
+      sortable: true,
+      accessor: (t) => t.due_date || "",
+      render: (t) => {
+        const isOverdue = isTaskOverdue(t)
+        return (
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className={isOverdue ? "text-destructive font-semibold" : "text-muted-foreground"}>
+              {t.due_date ? formatWATDate(t.due_date) : "No deadline"}
+            </span>
+            {isOverdue && <AlertTriangle className="text-destructive h-3 w-3" />}
+          </div>
+        )
+      },
+    },
+    {
+      key: "assigned_by",
+      label: "Assigned By",
+      accessor: (t) => t.assigned_by_user?.first_name || "",
+      render: (t) => (
+        <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          {t.assigned_by_user && (
+            <StaffAvatar
+              name={formatFullName(t.assigned_by_user.first_name, t.assigned_by_user.last_name)}
+              src={t.assigned_by ? staffAvatars[t.assigned_by] : null}
+              profileId={t.assigned_by}
+              size="xs"
+            />
+          )}
+          {t.assigned_by_user ? formatFullName(t.assigned_by_user.first_name, t.assigned_by_user.last_name) : "System"}
+        </span>
+      ),
+      hideOnMobile: true,
+    },
+    {
+      key: "comments",
+      label: "Comments",
+      sortable: true,
+      accessor: (t) => t.comment_count || 0,
+      // Comments live in Details → Activity now, not a second dialog reached
+      // from a different button. This is one click through to that tab.
+      render: (t) =>
+        (t.comment_count || 0) > 0 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void openTaskDetails(t)
+                }}
+              >
+                <Badge variant="outline" className="hover:bg-muted/80 cursor-pointer gap-1 text-xs">
+                  <MessageSquare className="h-3 w-3" />
+                  {t.comment_count}
+                </Badge>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              View {t.comment_count} comment{t.comment_count === 1 ? "" : "s"} & details
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="text-muted-foreground text-xs">-</span>
+        ),
+      hideOnMobile: true,
+    },
+  ]
+
+  const filters: DataTableFilter<Task>[] = [
+    {
+      key: "status",
+      label: "Status",
+      options: [
+        { value: "pending", label: "Pending" },
+        { value: "in_progress", label: "In Progress" },
+        { value: "submitted_for_review", label: "Submitted for Review" },
+        { value: "completed", label: "Completed" },
+        { value: "unable_to_complete", label: "Unable to Complete" },
+        { value: "reassigned", label: "Reassigned" },
+        { value: "failed", label: "Failed" },
+        { value: "cancelled", label: "Cancelled" },
+        { value: "scheduled", label: "Scheduled (recurring, not created yet)" },
+      ],
+    },
+    {
+      key: "urgency",
+      label: "Urgency",
+      options: [
+        { value: "on_track", label: "On Track" },
+        { value: "overdue_grace", label: "In Grace Period" },
+        { value: "escalated", label: "Escalated Overdue" },
+      ],
+      mode: "custom",
+      filterFn: (row, vals) => {
+        if (vals.length === 0) return true
+        const today = toLocalISODate()
+        const isEscalated = isTaskEscalated(row, today)
+        const isOverdue = isTaskPastDeadline(row, today)
+        return vals.some((val) => {
+          if (val === "escalated") return isEscalated
+          if (val === "overdue_grace") return isOverdue && !isEscalated
+          if (val === "on_track") return !isOverdue
+          return false
+        })
+      },
+    },
+  ]
+
+  return (
+    <DataTablePage
+      title="Tasks"
+      description="Manage your operational tasks, track deadlines, and submit completed work for review."
+      icon={ClipboardList}
+      spacing="tight"
+      tabs={STAFF_TASK_TABS}
+      activeTab={activeTab}
+      onTabChange={(t) => setActiveTab(t as "tasks" | "recurring")}
+      stats={
+        activeTab === "recurring" ? undefined : (
+          <StatGrid>
+            <StatCard
+              variant="compact"
+              title="Total Tasks"
+              value={stats.total}
+              icon={ClipboardList}
+              iconBgColor="bg-blue-500/10"
+              iconColor="text-blue-500"
+              tooltip="All active tasks assigned to you across all statuses"
+            />
+            <StatCard
+              variant="compact"
+              title="Pending"
+              value={stats.pending}
+              icon={Clock}
+              iconBgColor="bg-amber-500/10"
+              iconColor="text-amber-500"
+              tooltip="Tasks waiting to be started"
+            />
+            <StatCard
+              variant="compact"
+              title="In Progress"
+              value={stats.inProgress}
+              icon={Clock}
+              iconBgColor="bg-sky-500/10"
+              iconColor="text-sky-500"
+              tooltip="Tasks currently underway"
+            />
+            <StatCard
+              variant="compact"
+              title="Submitted"
+              value={stats.submitted}
+              icon={Send}
+              iconBgColor="bg-purple-500/10"
+              iconColor="text-purple-500"
+              tooltip="Tasks submitted and awaiting review"
+            />
+            <StatCard
+              variant="compact"
+              title="Completed"
+              value={stats.completed}
+              icon={CheckCircle2}
+              iconBgColor="bg-emerald-500/10"
+              iconColor="text-emerald-500"
+              tooltip="Tasks successfully completed"
+            />
+            {stats.overdue > 0 && (
+              <StatCard
+                variant="compact"
+                title="Overdue"
+                value={stats.overdue}
+                icon={AlertTriangle}
+                iconBgColor="bg-rose-500/10"
+                iconColor="text-rose-500"
+                tooltip="Tasks that have passed their deadline"
+              />
+            )}
+          </StatGrid>
+        )
+      }
+    >
+      {activeTab === "recurring" ? (
+        <RecurringSeriesTable mine onOpenSeries={setOpenSeriesId} />
+      ) : (
+        <DataTable<Task>
+          data={tableRows}
+          columns={columns}
+          getRowId={(t) => t.id}
+          searchPlaceholder="Search task title, description, ID..."
+          // `q` is already trimmed and lowercased by DataTable.
+          searchFn={(task, q) =>
+            `${task.title} ${task.description || ""} ${task.work_item_number || ""} ${task.goal_title || ""}`
+              .toLowerCase()
+              .includes(q)
+          }
+          filters={filters}
+          rowActions={[
+            {
+              label: "View",
+              icon: Eye,
+              onClick: (t) => void openTaskDetails(t),
+            },
+          ]}
+          pagination={{ pageSize: 25 }}
+          stickyToolbar
+          viewToggle
+          contactsView
+          // Eight columns are worth a table where they fit and unreadable where they
+          // do not, so the opening view follows the width.
+          defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+          mobileRow={{
+            // Overdue outranks priority: a late task needs answering whatever its
+            // priority was when it was set.
+            title: (t) => t.title,
+            subtitle: (t) =>
+              [
+                t.work_item_number || null,
+                `Weight ${t.weight ?? TASK_WEIGHT_DEFAULT}`,
+                t.due_date ? `Due ${formatWATDate(t.due_date)}` : "No deadline",
+                t.kpi_measure || t.goal_title || null,
+                (t.comment_count || 0) > 0 ? `${t.comment_count} comment${t.comment_count === 1 ? "" : "s"}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · "),
+            trailing: (t) => <TaskStatusPill task={t} />,
+            detail: {
+              title: (t) => t.title,
+              subtitle: (t) => t.work_item_number || undefined,
+              badges: (t) => (
+                <>
+                  <TaskStatusPill task={t} />
+                  <Badge
+                    variant="outline"
+                    className={cn("font-mono text-xs font-medium", getTaskWeightBadgeClass(t.weight))}
+                  >
+                    Weight {t.weight ?? TASK_WEIGHT_DEFAULT}
+                  </Badge>
+                </>
+              ),
+              fields: (t) => [
+                { label: "Item #", value: t.work_item_number || "-", copyable: true },
+                { label: "Status", value: t.status.replace(/_/g, " ") },
+                { label: "Task Weight", value: `${t.weight ?? TASK_WEIGHT_DEFAULT} (compulsory)` },
+                {
+                  label: "Corporate KPI",
+                  value: t.kpi_measure ? `${t.kpi_measure}${t.kpi_pillar ? ` (🎯 ${t.kpi_pillar})` : ""}` : "—",
+                },
+                { label: "Strategic Goal", value: t.goal_title || "—" },
+                { label: "Start Date", value: t.task_start_date ? formatWATDate(t.task_start_date) : "—" },
+                { label: "Due Date", value: t.due_date ? formatWATDate(t.due_date) : "No deadline" },
+                {
+                  label: "Assignee",
+                  value: t.assigned_to_user ? `${t.assigned_to_user.first_name} ${t.assigned_to_user.last_name}` : "-",
+                },
+                { label: "Department", value: t.department || t.assigned_to_user?.department || "-" },
+                { label: "Description", value: t.description || null, fullWidth: true },
+              ],
+              actions: (t) => [
+                {
+                  label: "View Full Details",
+                  onClick: () => void openTaskDetails(t),
+                },
+              ],
+            },
+            onSelect: (t) => void openTaskDetails(t),
+          }}
+          cardRenderer={(t) => (
+            <div className="group bg-card text-card-foreground border-border/60 hover:border-primary/40 h-full space-y-3 rounded-xl border p-4 shadow-sm transition-all">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-foreground line-clamp-2 text-sm font-semibold">{t.title}</span>
+                  <span className="text-muted-foreground block font-mono text-xs">{t.work_item_number || "---"}</span>
+                </div>
+                <TaskStatusPill task={t} />
+              </div>
+              <div className="text-muted-foreground grid gap-1 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                  <span className={isTaskOverdue(t) ? "text-destructive font-semibold" : undefined}>
+                    {t.due_date ? formatWATDate(t.due_date) : "No deadline"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Target className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{t.kpi_measure || t.goal_title || "—"}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Scale className="h-3.5 w-3.5 shrink-0" />
+                  <span>Weight {t.weight ?? TASK_WEIGHT_DEFAULT}</span>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center justify-end border-t pt-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs font-medium"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void openTaskDetails(t)
+                  }}
+                >
+                  <Eye className="h-3 w-3" />
+                  <span>View</span>
+                </Button>
+              </div>
+            </div>
+          )}
+          expandable={{
+            render: (t) => (
+              <div className="space-y-4 text-xs">
+                <div className="flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs font-medium">Task Title</span>
+                    <h3 className="text-foreground text-sm leading-snug font-semibold">{t.title}</h3>
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 gap-1.5 self-start text-xs"
+                        onClick={() => void openTaskDetails(t)}
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        View Details & Comments {(t.comment_count || 0) > 0 ? `(${t.comment_count})` : ""}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      Open task modal to view full history, attachments & comments
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div className="space-y-3">
+                    <h4 className="text-foreground text-xs font-semibold">Description & Scope</h4>
+
+                    {isTaskEscalated(t, toLocalISODate()) && (
+                      <div className="border-destructive/40 bg-destructive/10 text-destructive rounded border p-2.5 dark:text-rose-400">
+                        <span className="mb-0.5 flex items-center gap-1.5 font-semibold">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          Overdue Escalation:
+                        </span>
+                        Deadline and grace period have expired without submission. Action required by Lead: extend
+                        deadline, reassign, or mark as failed.
+                      </div>
+                    )}
+
+                    <div className="bg-muted/40 rounded-lg border p-3 leading-relaxed whitespace-pre-wrap">
+                      {t.description || "No description provided."}
+                    </div>
+
+                    {t.unable_to_complete_reason && (
+                      <div className="text-warning border-warning/30 bg-warning/10 rounded border p-2.5">
+                        <span className="mb-0.5 block font-semibold">Reported Blocker / Issue:</span>
+                        {t.unable_to_complete_reason}
+                      </div>
+                    )}
+
+                    {t.failure_reason && (
+                      <div className="text-danger border-danger/30 bg-danger/10 rounded border p-2.5">
+                        <span className="mb-0.5 block font-semibold">Failure Note:</span>
+                        {t.failure_reason}
+                      </div>
+                    )}
+
+                    {t.extension_reason && (
+                      <div className="text-info border-info/30 bg-info/10 rounded border p-2.5">
+                        <span className="mb-0.5 block font-semibold">Extension Reason:</span>
+                        {t.extension_reason}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="text-foreground text-xs font-semibold">Context & Details</h4>
+                    <div className="bg-muted/20 grid grid-cols-2 gap-2 rounded-lg border p-3">
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground block text-xs">Strategic Goal:</span>
+                        <span className="font-medium">{t.goal_title || "—"}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground block text-xs">Corporate KPI:</span>
+                        <span className="font-medium">
+                          {t.kpi_measure || "—"}
+                          {t.kpi_pillar ? ` · Pillar: ${t.kpi_pillar}` : ""}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs">Assigned By:</span>
+                        <span className="font-medium">
+                          {t.assigned_by_user
+                            ? formatFullName(t.assigned_by_user.first_name, t.assigned_by_user.last_name)
+                            : "System"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs">Department:</span>
+                        <span className="font-medium">{t.department || t.assigned_to_user?.department || "—"}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs">Start Date:</span>
+                        <span>{t.task_start_date ? formatWATDate(t.task_start_date) : "—"}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs">Due Date:</span>
+                        <span className={isTaskOverdue(t) ? "text-destructive font-semibold" : "font-medium"}>
+                          {t.due_date ? formatWATDate(t.due_date) : "No deadline"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ),
+          }}
+          emptyTitle="No tasks"
+          emptyDescription="Tasks assigned to you will appear here."
+          emptyIcon={ClipboardList}
+          skeletonRows={6}
+          urlSync
+        />
+      )}
+
+      <TaskSeriesSheet readOnly seriesId={openSeriesId} onOpenChange={(open) => !open && setOpenSeriesId(null)} />
+
+      <UserTaskDetailsDialog
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        selectedTask={selectedTask}
+        taskUpdates={taskUpdates}
+        canReview={selectedTask ? canReviewTask(selectedTask) : false}
+        ratingBlockedReason={selectedTask ? ratingBlockedReasonFor(selectedTask) : null}
+        onChanged={async () => {
+          const loaded = await loadTasks()
+          if (loaded && selectedTask) {
+            setSelectedTask(loaded.find((entry) => entry.id === selectedTask.id) ?? null)
+          }
+        }}
+        onAddComment={postComment}
+        isPostingComment={isPostingComment}
+      />
+    </DataTablePage>
+  )
+}

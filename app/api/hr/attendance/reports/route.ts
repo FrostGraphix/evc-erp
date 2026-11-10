@@ -1,0 +1,543 @@
+import { NextRequest, NextResponse } from "next/server"
+import { loadAttendanceStartDates } from "@/lib/hr/attendance-start"
+import { createClient } from "@/lib/supabase/server"
+import { getServiceRoleClientOrFallback } from "@/lib/supabase/admin"
+import { enforceRouteAccessV2, requireAccessContextV2 } from "@/lib/admin/api-guard-v2"
+import { normalizeDepartmentName } from "@/shared/departments"
+import {
+  toLocalISODate,
+  toLocalYearMonth,
+  monthBounds,
+  getWorkdaysInRange,
+  timeToMinutes,
+} from "@/lib/hr/attendance-utils"
+import {
+  computeAttendanceDay,
+  attendanceRateFrom,
+  overtimeHoursFor,
+  netDayHoursFor,
+  getEffectiveAttendanceStartDate,
+} from "@/lib/hr/attendance-ssot"
+import { deriveUnifiedAttendanceStatus, isLateWithPolicy } from "@/lib/hr/attendance-status"
+import { AttendancePolicy, DEFAULT_ATTENDANCE_POLICY } from "@/lib/org-config"
+import { loadDayContext } from "@/lib/hr/attendance-day-context"
+import { formatEmployeeName } from "@/lib/hr/employee-name"
+import { logger } from "@/lib/logger"
+import { serverError } from "@/lib/api/errors"
+
+const log = logger("hr-attendance-reports-api")
+
+function timeSpanInHours(startStr?: string | null, endStr?: string | null): number {
+  if (!startStr || !endStr) return 0
+  const startParts = startStr.split(":").map(Number)
+  const endParts = endStr.split(":").map(Number)
+  if (
+    !Number.isFinite(startParts[0]) ||
+    !Number.isFinite(startParts[1]) ||
+    !Number.isFinite(endParts[0]) ||
+    !Number.isFinite(endParts[1])
+  ) {
+    return 0
+  }
+  const startSeconds = startParts[0] * 3600 + startParts[1] * 60 + (startParts[2] || 0)
+  const endSeconds = endParts[0] * 3600 + endParts[1] * 60 + (endParts[2] || 0)
+  if (endSeconds <= startSeconds) return 0
+  return (endSeconds - startSeconds) / 3600
+}
+
+type AttendanceRow = {
+  user_id: string | null
+  date?: string | null
+  status?: string | null
+  total_hours?: number | null
+  clock_in?: string | null
+  clock_out?: string | null
+  waived?: boolean | null
+}
+
+type ProfileRow = {
+  id: string
+  first_name?: string | null
+  last_name?: string | null
+  employee_number?: string | null
+  department?: string | null
+  attendance_exempt?: boolean | null
+  attendance_exempt_until?: string | null
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const contextResult = await requireAccessContextV2()
+    if (!contextResult.ok) return contextResult.response
+    const routeAccess = enforceRouteAccessV2(contextResult.context, "hr.attendance")
+    if (!routeAccess.ok) return routeAccess.response
+    if (routeAccess.dataScope === "none") {
+      return NextResponse.json({ data: [], departments: [] })
+    }
+
+    const params = request.nextUrl.searchParams
+    const startDate = params.get("start_date")
+    const endDate = params.get("end_date")
+    const requestedDepartment = normalizeDepartmentName(String(params.get("department") || "all"))
+    const requestedUserId = String(params.get("user_id") || "").trim()
+
+    const dataClient = getServiceRoleClientOrFallback(supabase)
+
+    // Load attendance policy configuration
+    const { data: settingRow } = await dataClient
+      .from("system_settings")
+      .select("value")
+      .eq("key", "attendance_policy")
+      .maybeSingle()
+    const policy = { ...DEFAULT_ATTENDANCE_POLICY, ...((settingRow?.value as Partial<AttendancePolicy>) ?? {}) }
+    // Net expected hours for one full day under the active policy — the cap on
+    // what any single day can cost, and the denominator for the rate.
+    const netDay = netDayHoursFor(policy)
+
+    const scopedDepartmentSet =
+      routeAccess.dataScope === "all"
+        ? null
+        : new Set(routeAccess.dataScope.map((department) => normalizeDepartmentName(department)))
+
+    // Fetch all non-exempt profiles in scope first (not just those with records)
+    let allProfiles: ProfileRow[] = []
+    {
+      const profileQuery = dataClient
+        .from("profiles")
+        .select("id, first_name, last_name, employee_number, department, attendance_exempt, attendance_exempt_until")
+        .eq("employment_status", "active")
+      const { data, error } = await profileQuery.returns<ProfileRow[]>()
+      if (!error && data) {
+        allProfiles = data
+      } else {
+        // Backward compatibility: if new columns are missing, fall back progressively.
+        const { data: fallbackData, error: fallbackError } = await dataClient
+          .from("profiles")
+          .select("id, first_name, last_name, employee_number, department, attendance_exempt")
+          .eq("employment_status", "active")
+          .returns<ProfileRow[]>()
+        if (!fallbackError) {
+          allProfiles = fallbackData || []
+        } else {
+          const { data: legacyData, error: legacyError } = await dataClient
+            .from("profiles")
+            .select("id, first_name, last_name, department, attendance_exempt")
+            .eq("employment_status", "active")
+            .returns<ProfileRow[]>()
+          if (legacyError) {
+            return serverError(log, legacyError)
+          }
+          allProfiles = legacyData || []
+        }
+      }
+    }
+
+    const allowedProfiles = (allProfiles || []).filter((profile) => {
+      if (requestedUserId && profile.id !== requestedUserId) return false
+      const department = normalizeDepartmentName(String(profile.department || ""))
+      if (scopedDepartmentSet && !scopedDepartmentSet.has(department)) return false
+      if (requestedDepartment !== "all" && department !== requestedDepartment) return false
+      return true
+    })
+
+    if (allowedProfiles.length === 0) {
+      return NextResponse.json({ data: [], departments: [] })
+    }
+
+    const allowedProfileIds = allowedProfiles.map((p) => p.id)
+
+    // Workdays in the selected period (month or quarter range) up to today
+    const todayIso = toLocalISODate()
+    const defaultBounds = monthBounds(toLocalYearMonth())
+    const rangeStart = startDate ?? defaultBounds.start
+    const rangeEnd = endDate ?? defaultBounds.end
+    const periodWorkdays = getWorkdaysInRange(rangeStart, rangeEnd).filter((d) => d <= todayIso)
+
+    if (periodWorkdays.length === 0) {
+      return NextResponse.json({ data: [], departments: [] })
+    }
+
+    // Fetch attendance records for allowed employees in date range
+    let attendanceQuery = dataClient
+      .from("attendance_records")
+      .select("user_id, date, status, total_hours, clock_in, clock_out, waived")
+      .in("user_id", allowedProfileIds)
+    if (startDate) attendanceQuery = attendanceQuery.gte("date", startDate)
+    if (endDate) attendanceQuery = attendanceQuery.lte("date", endDate)
+
+    const { data: attendanceRows, error: attendanceError } = await attendanceQuery.returns<AttendanceRow[]>()
+    if (attendanceError) {
+      return serverError(log, attendanceError)
+    }
+
+    // Each employee's first clock-in or manual edit establishes their scorable start date.
+    // Loading every record to find it hit the 1,000-row API cap, so anyone whose
+    // first record came after mid-July 2026 had no start and no absences counted.
+    const earliestLogByEmployee = await loadAttendanceStartDates(dataClient, allowedProfileIds)
+
+    // Appeals filed for days within the selected range, per employee
+    const { data: appealRows } = await dataClient
+      .from("attendance_appeals")
+      .select("user_id")
+      .in("user_id", allowedProfileIds)
+      .gte("appeal_date", rangeStart)
+      .lte("appeal_date", rangeEnd)
+      .returns<{ user_id: string }[]>()
+
+    const appealCountByEmployee = new Map<string, number>()
+    for (const row of appealRows ?? []) {
+      appealCountByEmployee.set(row.user_id, (appealCountByEmployee.get(row.user_id) ?? 0) + 1)
+    }
+
+    // Org holidays, approved leave, and exemption periods covering the range —
+    // gathered through the shared helper so all read endpoints stay consistent.
+    const ctx = await loadDayContext(dataClient, {
+      userIds: allowedProfileIds,
+      start: startDate ?? periodWorkdays[0],
+      end: endDate ?? periodWorkdays[periodWorkdays.length - 1],
+    })
+
+    // Build per-employee record map keyed by date
+    const recordsByEmployee = new Map<string, Map<string, AttendanceRow>>()
+    for (const row of attendanceRows ?? []) {
+      if (!row.user_id || !row.date) continue
+      if (!recordsByEmployee.has(row.user_id)) recordsByEmployee.set(row.user_id, new Map())
+      recordsByEmployee.get(row.user_id)!.set(row.date, row)
+    }
+
+    // Calculate workday-based summaries — missing days count as absent only after attendance start date
+    const summaries = allowedProfiles.map((profile) => {
+      const empRecords = recordsByEmployee.get(profile.id) ?? new Map<string, AttendanceRow>()
+      const effectiveStartDate = getEffectiveAttendanceStartDate({
+        earliestLogDate: earliestLogByEmployee.get(profile.id) ?? null,
+        isExempt: Boolean(profile.attendance_exempt),
+      })
+
+      let early_days = 0,
+        present_days = 0,
+        late_days = 0,
+        incomplete_days = 0,
+        absent_days = 0,
+        exempted_days = 0,
+        out_of_station_days = 0,
+        absent_with_permission_days = 0,
+        lateness_with_permission_days = 0,
+        incomplete_with_permission_days = 0,
+        total_hours = 0,
+        physical_hours = 0,
+        total_missed_hours = 0,
+        waived_days = 0,
+        cds_days = 0,
+        leave_days = 0,
+        holiday_days = 0,
+        attendance_credits = 0,
+        overtime_hours = 0,
+        clock_in_minutes_sum = 0,
+        clock_in_days = 0,
+        clock_out_minutes_sum = 0,
+        clock_out_days = 0
+      let available_days = 0
+
+      for (const workday of periodWorkdays) {
+        if (!effectiveStartDate || workday < effectiveStartDate) continue
+
+        if (ctx.isHoliday(workday)) {
+          holiday_days++
+          continue
+        }
+        // Unpaid leave (LWOP) is checked before paid leave: it is unearned time away, so it
+        // scores against the employee like an absence instead of being covered. Payroll is
+        // unaffected — the day is charged there as unpaidLeaveDeduction, not as an absence.
+        if (ctx.isOnUnpaidLeave(profile.id, workday)) {
+          available_days++
+          absent_days++
+          total_missed_hours += netDay
+          continue
+        }
+        if (ctx.isOnLeave(profile.id, workday)) {
+          leave_days++
+          continue
+        }
+        const rec = empRecords.get(workday)
+        // Skip today if still in progress (clocked in, not yet out) — don't score an unfinished day
+        if (workday === todayIso && rec?.clock_in && !rec?.clock_out) continue
+
+        const isExempted = Boolean(profile.attendance_exempt) || ctx.isExempt(profile.id, workday)
+        if (isExempted) {
+          exempted_days++
+          continue
+        }
+
+        const earlyClose = ctx.earlyCloseTime(workday)
+        const lateRes = ctx.lateResumptionTime(workday)
+        const effectiveLateCutoff = lateRes ?? policy.lateCutoff
+        const derived = deriveUnifiedAttendanceStatus(
+          {
+            record: rec,
+            recordDate: workday,
+            earlyClosure: earlyClose ? { closeTime: earlyClose } : null,
+            lateResumption: lateRes ? { resumptionTime: lateRes } : null,
+            isCdsDay: ctx.isCdsDay(profile.id, workday),
+          },
+          policy
+        )
+
+        if (derived === "waiver") {
+          waived_days++
+          continue
+        }
+        if (derived === "absent_with_permission") {
+          absent_with_permission_days++
+          continue
+        }
+        if (derived === "cds") {
+          cds_days++
+          continue
+        }
+
+        // Now we are at scorable/available days!
+        available_days++
+
+        if (!rec) {
+          absent_days++
+          total_missed_hours += netDay
+          continue
+        }
+
+        // Covered days earn the full net day, so Hours + Hrs Missed always reconciles
+        // to 8.5 × available days across the whole summary.
+        if (derived === "out_of_station") {
+          out_of_station_days++
+          attendance_credits += 1.0
+          total_hours += netDay
+        } else if (derived === "lateness_with_permission") {
+          lateness_with_permission_days++
+          present_days++
+          attendance_credits += 1.0
+          total_hours += netDay
+        } else if (derived === "incomplete_with_permission") {
+          incomplete_with_permission_days++
+          present_days++
+          attendance_credits += 1.0
+          total_hours += netDay
+        } else if (
+          derived === "early" ||
+          derived === "late" ||
+          derived === "incomplete" ||
+          derived === "early_departure" ||
+          derived === "early_departure_with_permission" ||
+          derived === "early_closure" ||
+          derived === "late_resumption"
+        ) {
+          present_days++
+          // Bucket for the summary counters: Early Closure / Late Resumption counts as a full present
+          // day; Left Early (± permission) is a docked present day, grouped with late.
+          if (derived === "early" || derived === "early_closure" || derived === "late_resumption") {
+            early_days++
+          } else if (derived === "incomplete") {
+            incomplete_days++
+            if (rec.clock_in && isLateWithPolicy(rec.clock_in, effectiveLateCutoff)) {
+              late_days++
+            }
+          } else {
+            late_days++
+          }
+
+          const day = computeAttendanceDay({
+            status: derived,
+            clockIn: rec.clock_in,
+            clockOut: rec.clock_out,
+            policy,
+            earlyCloseTime: earlyClose ?? null,
+            earlyOutApproved: rec.status === "early_departure_with_permission",
+            lateResumptionTime: lateRes ?? null,
+          })
+          // Credits stay a 0–1 fraction of the day, now derived from the hours
+          // figure payroll charges from rather than a parallel scale.
+          attendance_credits += day.hoursWorked / netDay
+          total_hours += day.hoursWorked
+          total_missed_hours += day.hoursLost
+        } else {
+          absent_days++
+          total_missed_hours += netDay
+        }
+
+        const clockInMin = timeToMinutes(rec.clock_in)
+        if (clockInMin !== null) {
+          clock_in_minutes_sum += clockInMin
+          clock_in_days++
+        }
+        const clockOutMin = timeToMinutes(rec.clock_out)
+        if (clockOutMin !== null) {
+          clock_out_minutes_sum += clockOutMin
+          clock_out_days++
+        }
+        overtime_hours += overtimeHoursFor(rec.clock_out, policy)
+        if (derived !== "out_of_station") {
+          physical_hours += timeSpanInHours(rec.clock_in, rec.clock_out)
+        }
+      }
+
+      const total_working_days = available_days
+      // Derived from the same hours figure payroll charges from, so the displayed
+      // percentage can never drift from the money.
+      const attendance_rate =
+        total_working_days > 0 ? attendanceRateFrom(total_missed_hours, total_working_days, policy) : 0
+
+      const name = formatEmployeeName(profile)
+      return {
+        user_id: profile.id,
+        employee_no: String(profile.employee_number || "").trim(),
+        user_name: name,
+        department: String(profile.department || "N/A"),
+        total_days: total_working_days,
+        early_days,
+        present_days,
+        late_days,
+        incomplete_days,
+        exempted_days,
+        out_of_station_days,
+        absent_with_permission_days,
+        lateness_with_permission_days,
+        incomplete_with_permission_days,
+        absent_days,
+        waived_days,
+        cds_days,
+        leave_days,
+        holiday_days,
+        attendance_credits: Math.round(attendance_credits * 100) / 100,
+        total_hours: Math.round(total_hours * 10) / 10,
+        physical_hours: Math.round(physical_hours * 10) / 10,
+        total_missed_hours: Math.round(total_missed_hours * 10) / 10,
+        attendance_rate,
+        attendance_exempt: Boolean(profile.attendance_exempt),
+        overtime_hours: Math.round(overtime_hours * 10) / 10,
+        avg_clock_in_minutes: clock_in_days > 0 ? Math.round(clock_in_minutes_sum / clock_in_days) : null,
+        avg_clock_out_minutes: clock_out_days > 0 ? Math.round(clock_out_minutes_sum / clock_out_days) : null,
+        appeal_count: appealCountByEmployee.get(profile.id) ?? 0,
+        clock_in_minutes_sum,
+        clock_in_days,
+        clock_out_minutes_sum,
+        clock_out_days,
+      }
+    })
+
+    type DeptAccumulator = {
+      department: string
+      employee_count: number
+      scorable_employee_count: number
+      attendance_rate_sum: number
+      clock_in_minutes_sum: number
+      clock_in_days: number
+      clock_out_minutes_sum: number
+      clock_out_days: number
+      total_hours: number
+      physical_hours: number
+      overtime_hours: number
+      absent_days: number
+      incomplete_days: number
+      appeal_count: number
+    }
+
+    const deptMap = new Map<string, DeptAccumulator>()
+    for (const summary of summaries) {
+      const deptName = summary.department
+      if (!deptMap.has(deptName)) {
+        deptMap.set(deptName, {
+          department: deptName,
+          employee_count: 0,
+          scorable_employee_count: 0,
+          attendance_rate_sum: 0,
+          clock_in_minutes_sum: 0,
+          clock_in_days: 0,
+          clock_out_minutes_sum: 0,
+          clock_out_days: 0,
+          total_hours: 0,
+          physical_hours: 0,
+          overtime_hours: 0,
+          absent_days: 0,
+          incomplete_days: 0,
+          appeal_count: 0,
+        })
+      }
+      const dept = deptMap.get(deptName)!
+      dept.employee_count += 1
+      if (summary.total_days > 0) {
+        dept.scorable_employee_count += 1
+        dept.attendance_rate_sum += summary.attendance_rate
+      }
+      dept.clock_in_minutes_sum += summary.clock_in_minutes_sum
+      dept.clock_in_days += summary.clock_in_days
+      dept.clock_out_minutes_sum += summary.clock_out_minutes_sum
+      dept.clock_out_days += summary.clock_out_days
+      dept.total_hours += summary.total_hours
+      dept.physical_hours += summary.physical_hours
+      dept.overtime_hours += summary.overtime_hours
+      dept.absent_days += summary.absent_days
+      dept.incomplete_days += summary.incomplete_days ?? 0
+      dept.appeal_count += summary.appeal_count ?? 0
+    }
+
+    const departmentStats = Array.from(deptMap.values())
+      .map((dept) => ({
+        department: dept.department,
+        employee_count: dept.employee_count,
+        avg_attendance_rate:
+          dept.scorable_employee_count > 0
+            ? Math.round((dept.attendance_rate_sum / dept.scorable_employee_count) * 100) / 100
+            : 0,
+        avg_clock_in_minutes:
+          dept.clock_in_days > 0 ? Math.round(dept.clock_in_minutes_sum / dept.clock_in_days) : null,
+        avg_clock_out_minutes:
+          dept.clock_out_days > 0 ? Math.round(dept.clock_out_minutes_sum / dept.clock_out_days) : null,
+        total_hours: Math.round(dept.total_hours * 10) / 10,
+        avg_total_hours: dept.employee_count > 0 ? Math.round((dept.total_hours / dept.employee_count) * 10) / 10 : 0,
+        physical_hours: Math.round(dept.physical_hours * 10) / 10,
+        avg_physical_hours:
+          dept.employee_count > 0 ? Math.round((dept.physical_hours / dept.employee_count) * 10) / 10 : 0,
+        overtime_hours: Math.round(dept.overtime_hours * 10) / 10,
+        avg_overtime_hours:
+          dept.employee_count > 0 ? Math.round((dept.overtime_hours / dept.employee_count) * 10) / 10 : 0,
+        absent_days: dept.absent_days,
+        avg_absent_days: dept.employee_count > 0 ? Math.round((dept.absent_days / dept.employee_count) * 10) / 10 : 0,
+        incomplete_days: dept.incomplete_days,
+        avg_incomplete_days:
+          dept.employee_count > 0 ? Math.round((dept.incomplete_days / dept.employee_count) * 10) / 10 : 0,
+        appeal_count: dept.appeal_count,
+        avg_appeal_count: dept.employee_count > 0 ? Math.round((dept.appeal_count / dept.employee_count) * 10) / 10 : 0,
+      }))
+      .sort((a, b) => a.department.localeCompare(b.department))
+
+    // Remove internal tracking fields before returning employee summaries.
+    // Sorted by name so the table, the S/N column and the export are stable and
+    // identical run to run — profiles come back in Postgres heap order otherwise,
+    // which shifts as rows are updated.
+    const cleanSummaries = summaries
+      .map(({ clock_in_minutes_sum, clock_in_days, clock_out_minutes_sum, clock_out_days, ...rest }) => rest)
+      .sort((a, b) => a.user_name.localeCompare(b.user_name))
+
+    const visibleDepartments = Array.from(
+      new Set(allowedProfiles.map((profile) => String(profile.department || "").trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b))
+
+    return NextResponse.json({
+      data: cleanSummaries,
+      departments: visibleDepartments,
+      department_stats: departmentStats,
+      // The active policy travels with the payload so client-side day breakdowns
+      // charge the same hours this route did, instead of falling back to defaults.
+      policy,
+    })
+  } catch (error) {
+    log.error({ err: String(error) }, "Failed to load attendance reports")
+    return NextResponse.json({ error: "An error occurred" }, { status: 500 })
+  }
+}

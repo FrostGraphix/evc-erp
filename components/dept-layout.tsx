@@ -1,0 +1,64 @@
+/**
+ * Dept Console layout.
+ *
+ * Intentionally mirrors AdminLayout 1:1 — uses the same AdminSidebar,
+ * AdminContextRibbon, AdminScopeProvider, and SidebarContent components.
+ * Any future UI changes to those components automatically apply here too.
+ *
+ * The only difference vs AdminLayout is that the scope is synthesised from
+ * DeptScope (always scopeMode "lead", always scoped to a single dept) instead
+ * of being resolved from the database via resolveAdminScope.
+ */
+import { AdminSidebar } from "@/components/admin-sidebar"
+import { AdminScopeProvider } from "@/components/admin-scope-context"
+import { SidebarContent } from "@/components/sidebar-content"
+import { SkipToContent } from "@/components/skip-to-content"
+import type { ClientAdminScope } from "@/components/admin-scope-context"
+import type { UserRole } from "@/types/database"
+
+interface DeptLayoutProps {
+  /** Serialisable admin-compatible scope (synthesised from DeptScope). */
+  scope: ClientAdminScope
+  user?: {
+    email?: string
+    user_metadata?: { first_name?: string; last_name?: string }
+  }
+  profile?: {
+    id?: string
+    first_name?: string
+    last_name?: string
+    department?: string
+    role?: UserRole
+    is_department_lead?: boolean
+    admin_routes?: string[] | null
+    lead_departments?: string[]
+  }
+  /** The dept name — shown in the context ribbon. */
+  deptName: string
+  /** Delegate only: the page keys they were given; the sidebar lists just these. */
+  delegatedPages?: string[]
+  /** Shown above the page: who a delegate is acting for, or the lead's "Delegate access" control. */
+  banner?: React.ReactNode
+  children: React.ReactNode
+}
+
+export function DeptLayout({ scope, user, profile, deptName, delegatedPages, banner, children }: DeptLayoutProps) {
+  return (
+    <div className="admin-shell flex min-h-screen" data-scope="lead">
+      <SkipToContent />
+      <AdminSidebar
+        user={user}
+        profile={profile}
+        adminScopeMode="lead"
+        deptId={scope.managedDepartmentIds[0]}
+        delegatedPages={delegatedPages}
+      />
+      <SidebarContent>
+        <div className="min-h-screen bg-[var(--admin-content-bg)] pb-[max(var(--fab-safe-area),env(safe-area-inset-bottom))]">
+          {banner}
+          <AdminScopeProvider scope={scope}>{children}</AdminScopeProvider>
+        </div>
+      </SidebarContent>
+    </div>
+  )
+}

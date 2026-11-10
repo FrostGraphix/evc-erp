@@ -1,0 +1,53 @@
+import { redirect } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
+import type { Metadata } from "next"
+import { TicketDetailContent } from "./ticket-detail-content"
+
+export const metadata: Metadata = { title: "Help Desk details" }
+
+export default async function HelpDeskTicketPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) redirect("/auth/login")
+
+  const [ticketResult, commentsResult] = await Promise.all([
+    supabase.from("help_desk_tickets").select("*").eq("id", params.id).maybeSingle(),
+    supabase.from("help_desk_comments").select("*").eq("ticket_id", params.id).order("created_at", { ascending: true }),
+  ])
+
+  const eventsResult = ticketResult.data
+    ? await supabase
+        .from("help_desk_events")
+        .select("*")
+        .eq("ticket_id", params.id)
+        .order("created_at", { ascending: true })
+    : { data: [] }
+
+  const ticket = ticketResult.data
+
+  if (!ticket) {
+    redirect("/help-desk")
+  }
+
+  // User portal: only personal access (requester or assignee).
+  // Admins/leads use /admin/help-desk to see tickets outside their personal scope.
+  const canView = ticket.requester_id === user.id || ticket.assigned_to === user.id
+
+  if (!canView) {
+    redirect("/help-desk")
+  }
+
+  return (
+    <TicketDetailContent
+      ticket={ticket}
+      viewerId={user.id}
+      canRate={ticket.requester_id === user.id && ticket.status === "resolved"}
+      events={eventsResult.data || []}
+      comments={commentsResult.data || []}
+    />
+  )
+}

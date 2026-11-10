@@ -1,0 +1,1312 @@
+# Repository Agent Standards
+
+This file defines the minimum engineering standards that AI agents must follow when working in this repository. These rules are intended to prevent lint debt, weak typing, build regressions, and workflow bypasses.
+
+## Delivery Standard
+
+Do not treat a task as complete until all required checks pass. Run them on the files you changed — they are fast:
+
+- `npx eslint <changed files>`
+- `npx tsc --noEmit -p tsconfig.json`
+- The relevant unit suite (`npm run test:<area>`), or `npm test` when shared code changed
+
+**Never run `npm run build`.** It takes ~3 minutes and fights the running dev server for `.next/`. Nothing builds locally or in CI — Vercel is the only place `next build` runs. The only exception is debugging a failure that reproduces *only* in a production build; say why before running it.
+
+- **Commit only when the user says a piece is done.** Leave changes uncommitted while the user is reviewing or asking for tweaks. When they say a feature or request is done, make one commit for it (its code, its migration and its version-history line), following the [Commit Grouping Strategy](#commit-grouping-strategy--mandatory-before-any-commit). Do **not** commit each tweak as it lands, half-done work, exploratory edits, or "WIP".
+- **Database Migration Execution**: If any new `.sql` migrations were created or modified under `supabase/migrations/`:
+  - **Always run `npx supabase migration list` to determine actual deployment status.** This is the sole source of truth — not `git status`.
+  - A migration file that is untracked or unstaged in git is **not** automatically pending. Check the output of `migration list`: if the `remote` column is populated for that version, it has already been applied. Only flag a migration as pending if its `remote` field is empty.
+  - Do **not** infer migration status from `git status` alone. Untracked files may already be live.
+  - If any migration has an empty `remote` field, **show the user which migration(s) will be applied and what they change, and wait for an explicit yes** before pushing — there is no staging database, so every push hits production. Then push: `npx supabase db push --include-all --yes` (add `--db-url` with `connect_timeout` if the pooler times out). Never apply migrations through the MCP `apply_migration` tool.
+  - If a migration cannot be pushed automatically or is intentionally held back, **always explicitly state and remind the user that the SQL migration is pending and has not been pushed to the live database**.
+
+If a change cannot satisfy all checks or if migrations remain unapplied without explicit user consent, report the blocker/pending status clearly instead of claiming completion.
+
+## Technical Honesty — Do Not Default to Agreement
+
+Agreeing with a proposal you believe is wrong is a failure, not politeness. When the
+user suggests an approach — in a question, a "right?", or a direct instruction — judge
+it on the merits and say what you actually think **before** acting.
+
+- If the suggestion is not the right call, or departs from industry standard or an
+  established convention in this repo, **say so plainly and give the reason**. Cite the
+  concrete cost: the bug it invites, the a11y or contrast rule it breaks, the standard
+  in `AGENTS.md` it contradicts, the maintenance burden it adds.
+- A question phrased as "should we…?" or "…right?" is a request for your judgement, not
+  for confirmation. Answer it, don't echo it.
+- Never validate a decision you would not have made yourself. Do not soften a real
+  objection into "that could work too."
+- Be equally direct about your own work: if you overstated a claim, got a fact wrong, or
+  a check failed, correct it and report the failure rather than glossing it.
+- Concede specifically when the user is right — including when they are right about part
+  of a point you disagree with overall. Partial agreement stated precisely is more useful
+  than blanket agreement or blanket resistance.
+- Offer the better alternative, not just the objection. "No, because X — do Y instead" is
+  the useful shape.
+
+**After the objection has been made and the user reaffirms their choice, it is their
+call.** State the trade-off once, then implement what they asked, fully and well. Do not
+re-litigate it, do not quietly implement a different thing, and do not sandbag the work.
+
+### This file can be wrong too
+
+The same honesty applies to `AGENTS.md`. It is written by people and agents, and parts
+of it go stale as the code moves on. Following a rule you believe is wrong is the same
+failure as agreeing with a user you believe is wrong.
+
+- When a rule here contradicts the code (it describes behaviour the code no longer has),
+  produces a worse result for the user, or departs from industry standard without a
+  stated reason, **say so plainly**. Name the rule, what is wrong with it, and what it
+  should say instead.
+- Do not silently ignore the rule, and do not silently follow it. Raise it in your
+  response before or alongside the work, and propose the exact edit to this file.
+- Check first. Search the history (`git log -S`) and any rationale next to the rule; a
+  rule that looks odd often exists because of a past incident. If you still think it
+  is wrong after that, raise it.
+- Once the user decides, update this file in the same change so the next agent does
+  not hit the same contradiction.
+
+## Engineering Practices — Mandatory
+
+Distilled from the 2026-10 full-repo audit (`docs/audit/2026-10-01-full-repo-critique.md`).
+Every rule here exists because breaking it already cost us something.
+
+### Reuse before you write
+- **Search first.** Before writing a helper, component, or route, grep for an existing one:
+  `components/ui/` and `components/ui/patterns/` (EmptyState, ErrorState, StatusBadge,
+  ResponsiveModal, PaginationControls, ListToolbar, FormFieldGroup), `components/skeletons/`,
+  `lib/utils/date.ts`, `lib/admin/rbac.ts`, `lib/admin/api-scope.ts`, `lib/api/errors.ts`,
+  `lib/query-keys.ts`, `shared/departments.ts`.
+- **One screen, one component.** The same screen for staff (`app/(app)`), admin
+  (`app/admin`) and dept (`app/dept/[dept_id]`) is **one** feature component under
+  `components/<feature>/`. Route files are thin wrappers inside their scope provider;
+  the API route decides what that scope may see. **Never copy a page to make the admin
+  or dept version** — the audit found 14 such pairs at 65–93% similarity, and a fix in
+  one copy never reaches the others.
+- **No local copies of shared helpers.** Do not define `formatDate`, `formatCurrency`,
+  `getInitials`, `formatName`, `getStatusColor`, `escapeHtml`, `normalizeDepartment`,
+  `safeCompare` or `ensureAdmin` in a feature file — import the shared one, or create it
+  once in `lib/` and import it everywhere. Business rules (e.g. `pickCanonicalReview`)
+  live in exactly one `lib/<domain>/` module.
+- **Extend the shared component instead of forking it.** If `DataTable`, `StatusBadge` or a
+  skeleton is missing a capability, add a prop there. A parallel wrapper
+  (`AdminTablePage`, a second `EmptyState`, a second skeleton barrel) is a duplicate.
+
+### Fix the cause, not the symptom
+- A wrong colour is fixed in the **token** (`app/globals.css`), not with `/50`, `!`, or
+  `dark:` on one component.
+- A lint rule is fixed, not disabled. `eslint-disable` needs an inline reason, and never
+  for `no-explicit-any` when the real problem is missing types.
+- A missing table/column is a bug to fix, not an error code to swallow — do not add new
+  `if (error.code === "42P01") return []` or `42703` fallbacks.
+- `as unknown as X` is not a typing strategy. Type the query result.
+- Legacy URLs go in `redirects()` in `next.config.mjs`, not as redirect-only `page.tsx` files.
+- Anything temporary (a campaign tool, a sandbox page, an allowlist) gets an owner and a
+  removal date in a comment, or it does not ship.
+
+### Backend / API routes
+- **All writes happen server-side.** Browser code never calls `.insert/.update/.delete/.upsert`
+  or a mutating RPC on Supabase — it calls an `/api/` route that authorises, validates and
+  audits, then writes with the service-role client.
+- **Validate every request body with zod** (`safeParse` → 400 with field errors). Share the
+  schema with the client form where possible.
+- **Never return `error.message` to the client.** Log it with the logger; return a generic
+  message plus a code (`lib/api/errors.ts`).
+- **Authorisation uses the shared guards** (`requireApiAdminScope`, `getRequestScope`,
+  `lib/admin/rbac.ts`). Do not write a local `ensureAdmin()` or a new permission module.
+- **Cron and webhook auth**: secret in the `Authorization` header only (never a query
+  string), compared with a constant-time compare from one shared helper.
+- **Queries select explicit columns and are bounded** (`.limit()` / `.range()`); no
+  `select("*")` in new list routes. Large lists (>500 possible rows) paginate server-side.
+- **Randomness:** `crypto.getRandomValues` / `crypto.randomUUID()` for passwords, tokens,
+  ids and shuffles (Fisher–Yates). Never `Math.random()` for anything security- or
+  fairness-relevant, and never `sort(() => 0.5 - Math.random())`.
+- **Dates/times**: business dates are Africa/Lagos. Use `@/lib/utils/date` helpers; do not
+  add new bare `toLocaleString()` / `toLocaleDateString()` calls without an explicit
+  `en-NG` locale and `timeZone: "Africa/Lagos"`.
+
+### Frontend
+- **Data fetching is TanStack Query** with keys from `lib/query-keys.ts`. No `fetch` inside
+  `useEffect`.
+- **Forms use react-hook-form + zod** (shadcn `Form`). Do not hand-roll new `useState` forms.
+- **Server components by default.** Put `"use client"` on the smallest interactive leaf,
+  not the whole page.
+- **Keep files reviewable.** A new component over ~400 lines is split into `_components/`,
+  a `use-…` hook, and pure logic in `lib/`. Do not grow the 1,000+ line files further —
+  extract when you touch them.
+- **Images** use `next/image`. Raw `<img>` only in email/PDF renderers.
+- **Toasts** use `sonner` only. **Confirmations** use `AlertDialog` — never
+  `window.confirm()` / `alert()`.
+- **Stable keys** — never `key={index}` on lists that can reorder or filter.
+
+### UI and accessibility
+- **Minimum text size is `text-xs` (12px).** No `text-[10px]` / `text-[11px]`.
+- **Every icon-only button has an accessible name** (`aria-label`) and a `Tooltip`.
+- **Prefer scale values over arbitrary ones** (`w-[…]`, `h-[…]`). Repeated arbitrary values
+  become a `@theme` token.
+- **Tailwind classes are static strings.** Never build a class name at runtime
+  (`` `min-w-[${x}]` `` never generates); use `style` for dynamic values.
+- **Dialogs on phones**: use `ResponsiveModal` (Dialog on desktop, bottom sheet on mobile)
+  for forms, not a bare centred `Dialog`.
+- **Sheets and modals — pick by what the user is doing.** *Viewing or reviewing a record* (a profile,
+  a request and its approval trail, a document, a history) opens a **side sheet** built on
+  `DetailSheet` from `@/components/ui/detail-sheet`, with `DetailList` and `SectionHeading` from
+  `@/components/ui/detail-list` for the content. *Creating, editing or confirming* opens a modal
+  (`ResponsiveModal`, or `AlertDialog` to confirm). A long multi-section edit form is a page. Never
+  build a read-only record view as a centred modal, and never hand-roll a sheet shell: the shared one
+  keeps the width, header, divided sections and sticky footer the same everywhere, and keeps the header
+  badges clear of the close button.
+- **Views shared by `/admin` and `/dept/<id>` never hard-code `/admin/…`.** A pure department lead cannot
+  open `/admin`. In a client component call `useShellBase()` (`@/hooks/use-shell-base`): `shell.href("/admin/x")`
+  gives the console's own link, or `null` when the console has no such page (leave the link out), and
+  `shell.backHref(...)` falls back to the nearest page the console has. A server component takes a `basePath`
+  prop. `lib/dept/shell-links.ts` lists the console's pages and a test fails if it drifts from `app/dept`.
+- **Name a component for what it renders.** A side sheet is `*-sheet.tsx`, a modal `*-dialog.tsx`.
+- **Every empty state** says what happened and offers one primary next action.
+
+### Loading states and skeletons
+- **Every non-redirect route has a `loading.tsx`** using a skeleton from
+  `@/components/skeletons` (see "Route `loading.tsx` skeletons" below). Import from the
+  folder barrel `@/components/skeletons`; do not add skeleton exports anywhere else.
+- **Skeletons, not spinners, for content.** `Loader2` spinners are only for a button that
+  is submitting. Never a full-page spinner.
+- **The skeleton mirrors the real page.** Drive both from the same config (stats count,
+  tabs, filters, view mode) where possible, so the page does not jump on load.
+- Slow sections stream behind `<Suspense>` with a section skeleton instead of blocking
+  the whole page.
+
+### Data tables
+- Follow the **Table Page Standard** below. Additionally:
+- Tables that can exceed ~500 rows use **server-side pagination** (`serverSide: true`,
+  API accepts `page/pageSize/sort/q`, returns `{ data, total }`). Do not download whole
+  tables to the browser.
+- Do not render a raw `<table>` or shadcn `<Table>` for a *list of records* — that is a
+  `DataTable`. Raw tables are only for fixed-shape breakdowns (payslip lines, heat-maps,
+  PDF/email templates).
+- New table capabilities are added to `components/ui/data-table/` (split into a new file
+  there), never by wrapping or forking `DataTable`.
+
+### Repository hygiene
+- No business files at the repo root or in `docs/` (vouchers, memos, inventories, PDFs).
+- `docs/` holds runbooks, architecture, module docs and ADRs — not agent prompts or
+  "completion summaries".
+- One-off scripts go in `scripts/archive/` or are deleted after use.
+- Dependencies: do not add a package without removing what it replaces; remove packages
+  that end up unused.
+
+## Git and Hook Policy
+
+- Commit only when the user says a feature or request is done, one commit per feature. Never commit half-done work or each tweak separately.
+- Do not squash or rewrite commits that have been pushed. Squash local, unpushed commits only when the user asks.
+- Never use `git commit --no-verify`.
+- Never use `git push --no-verify`.
+- Do not bypass failing hooks. Fix the underlying issue.
+- Pre-commit must pass `lint-staged` including ESLint and Prettier.
+- Pre-push runs `npm run lint:strict` and `npm run type-check` only. It does **not** run `npm run build`.
+- Do not run `npm run build` locally to verify work — it is slow and competes with the dev server for `.next/`. Vercel is the only place the production build runs.
+- One feature per branch. Do not pile unrelated features onto a branch named for something else; if you find unrelated uncommitted work, leave it alone and commit only your own paths.
+- Never add a `Co-Authored-By` trailer to commits.
+- Never commit business documents, exports or one-off artefacts (`.pdf`, `.docx`, `.xlsx`, vouchers, screenshots, `~$*` lock files, `*.tsbuildinfo`, `test-results/`) — they belong in SharePoint, not git. Never commit DB dumps or backups containing personal data.
+
+## Commit Grouping Strategy — Mandatory Before Any Commit
+
+**Never commit all uncommitted changes in a single `git add -A && git commit`.** Commit when the user says the feature or request is done, as one commit per feature. Always follow this workflow before committing:
+
+### Step 1 — Analyse before staging
+Run `git diff --stat HEAD` and `git status --short` to get the full list of modified and untracked files. Do **not** stage anything yet.
+
+### Step 2 — Group by feature domain
+Cluster files into logical groups based on their relationships. Use the following rules to determine groupings:
+
+- Files that share a feature domain belong together (e.g. all lunch-related app pages, API routes, components, lib helpers, and migrations go in one commit).
+- A migration file belongs in the **same commit** as the feature code that required it — never commit a migration separately unless it is a hotfix with no associated application code.
+- Shared infrastructure changes (`layout.tsx`, `navbar.tsx`, `constants.ts`, `lib/utils/*`, email templates, etc.) that do not belong to a single feature should be batched into a single `chore:` or `refactor:` commit.
+- Small, isolated fixes (1–3 files, unrelated to a feature) should each be their own commit.
+- Never mix unrelated features into a single commit — a commit must be coherent and independently revertable.
+
+### Step 3 — Stage and commit in order
+Stage and commit each group one at a time using `git add <specific files>` — never `git add -A` or `git add .` for the whole working tree at once.
+
+### Hard prohibitions
+- ❌ `git add -A` or `git add .` covering unrelated files
+- ❌ Committing all changes in one shot without grouping analysis
+- ❌ Splitting a feature's migration into a separate commit from its app code
+
+## Version History — Add a Line per Feature, Not per Tweak
+
+`/admin/version-history` is Matrix's release notes, read by admins. Its single
+source is `RELEASES` in `lib/version-history.ts`.
+
+- **When to add a line:** when a feature ships that staff or admins would notice
+  as something new or changed, such as a new capability, a changed workflow or a
+  visible behaviour change. Add it in the commit for that feature.
+- **One line per feature.** Several tweaks to the same feature are one line, not
+  one line each. Do not add a line for each commit.
+- **Skip:** refactors, lint, types, tests, tooling, migrations with no visible
+  effect, small visual tweaks (colour, contrast, spacing, copy), and fixes to
+  something that never reached users.
+- **Quick test:** would someone say "that's new" or "that changed" when they look
+  at the screen? If not, no line.
+- **One release per month, versioned `YYYY.MM`.** Add your line to the current
+  month's release under the right `area`. When the month turns, add a new
+  release at the **top** with a `title` and one-sentence `summary`. Do not invent
+  semver numbers.
+- **Condense long months.** When a month grows past about 12 lines, merge related
+  lines into fewer staff-facing ones. Keep every real capability; drop wording
+  about how it was built. Old months may be condensed the same way.
+- **Write for the reader, not the reviewer.** Say what people now see or can
+  do ("Staff can hide their name on lunch votes"), not how it was built.
+- **Bigger changes for staff also get a `lib/whats-new.ts` entry**, which shows
+  a one-time popup. That popup is not the history: an entry there still needs
+  its line in `RELEASES`.
+- Keep the month's `title` and `summary` up to date as its largest changes
+  land, so the release still describes the month at a glance.
+
+## Commit Message Standard
+
+- Format commits as `type: description`.
+- Use a single-line, lowercase subject.
+- Keep the **subject line** to 72 characters or fewer.
+- Do not end the subject with a period.
+- A body is optional: leave a blank line after the subject, and keep **every body line to 100 characters or
+  fewer** (commitlint `body-max-line-length`).
+- Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`, `build`, `revert`.
+- The commit-msg hook prints one generic "invalid format" message whatever the cause. To see the real reason,
+  run the message through `npx --no -- commitlint`. For a multi-line message, write it to a file and use
+  `git commit -F <file>`; backslashes in `-m` strings are eaten by Git Bash.
+
+Examples:
+
+- Good: `fix: resolve build error`
+- Bad: `fix: Resolve Build Error`
+- Bad: `security: do xyz`
+
+## TypeScript and Linting Policy
+
+- Do not add `@ts-nocheck`.
+- Do not add `@ts-ignore` unless there is no practical alternative and the reason is documented inline.
+- Do not disable lint rules to avoid fixing the real problem.
+- Do not introduce `any` unless there is no practical alternative.
+- Prefer `unknown`, narrow interfaces, discriminated unions, typed helper results, or explicit DTOs.
+- If `any` is used temporarily during a refactor, remove it before finishing the task.
+
+## Supabase Typing Standard
+
+- Do not assume every real table or column exists in `@/types/database`.
+- If generated Supabase types are incomplete or stale, define a narrow local type for the selected row shape.
+- Do not force broken references like `Database["public"]["Tables"][...]` when the table is not represented correctly.
+- When working with joins, type the selected result shape explicitly instead of relying on deep inference.
+- Prefer local row types over broad casts.
+
+## Database Security Standard — RLS, Grants & Functions (Mandatory)
+
+**Core principle:** the Supabase `anon` key is public and ships in the browser. PostgREST exposes every table and RPC directly to the internet at `/rest/v1/*` and `/rest/v1/rpc/*`, **bypassing Next.js, middleware, `lib/admin/rbac.ts`, and `lib/admin/policy-v2.ts` entirely.** App-layer authorization does **not** protect this path. The **only** server-side boundary on the anon path is database Row-Level Security (RLS) and function `EXECUTE` grants. Treat every table and `SECURITY DEFINER` function as internet-facing.
+
+Non-negotiable rules:
+
+1. **Every new table enables RLS in the same migration that creates it**, with at least one explicit policy. A `CREATE TABLE` without `ENABLE ROW LEVEL SECURITY` is world-readable *and* world-writable via the anon key (the `anon`/`authenticated` roles hold blanket table grants in this project).
+2. **Never write a permissive policy for untrusted roles.** No `USING (true)` and no policy with role `public` or `anon` on any table holding non-public data. Scope every policy `TO authenticated` and gate it with `has_role(...)`, `auth.uid() = <owner_col>`, or an equivalent predicate.
+3. **Never disable RLS on a production table to "fix" a query.** Empty results or `permission denied` mean the policy is wrong or the wrong client is used — fix the policy, or read via the service-role client in a server route. Disabling RLS turns the table wide open and is the exact cause of past incidents.
+4. **Browser code never relies on loose RLS.** Sensitive reads/writes go through server API routes using the service-role client (`getServiceRoleClientOrFallback` / `getServiceClient`), which bypasses RLS. The RLS policy is the backstop, not the app's data path.
+5. **`SECURITY DEFINER` functions:**
+   - Never trust a caller-supplied identity. Derive it from `auth.uid()`; if a `p_user_id`-style parameter is unavoidable, guard with `IF auth.uid() IS NOT NULL AND p_user_id <> auth.uid() THEN RAISE EXCEPTION ...` (this allows the service role, whose `auth.uid()` is null, while blocking authenticated impersonation).
+   - **Always `REVOKE EXECUTE ON FUNCTION ... FROM anon, PUBLIC` in the creating migration.** Postgres grants `EXECUTE` to `PUBLIC` by default and `anon` inherits it — revoking from `anon` alone is not enough. Then `GRANT EXECUTE` explicitly only to the roles that need it (`authenticated` and/or `service_role`).
+   - Functions that return or mutate sensitive data must check role internally (do not rely on the app layer to gate a directly-callable RPC).
+6. **Sequence / counter RPCs** (employee numbers, correspondence references, etc.) require an authenticated privileged role plus rate limiting — never anon/`PUBLIC`.
+7. **Migrations are the only way to change schema, policies, or grants in production.** No hand edits in the Supabase dashboard or SQL editor — they drift from the repo (which cannot see them) and leave no audit trail.
+8. **Review/CI gate — reject a migration if it:** creates a table without `ENABLE ROW LEVEL SECURITY` + a policy; adds a policy with role `public`/`anon` on non-public data; or defines a `SECURITY DEFINER` function without a matching `REVOKE EXECUTE ... FROM PUBLIC`.
+9. **Verify after every RLS/grant/function change** by impersonating the anon role: `BEGIN; SET LOCAL ROLE anon; <attempt the access>; ROLLBACK;` — confirm intended access is denied. Do not assume the repo reflects production; check live state.
+10. **Governance:** MFA must be enabled on all Supabase org members; direct production DDL access must be restricted; keep public sign-up (`disable_signup`) off unless a self-service flow explicitly requires it (an open `auth.users` signup lets anyone mint a valid UUID regardless of the in-app approval workflow).
+11. **Mandatory Remote Push & Live Sync Verification**: Writing a migration file in `supabase/migrations/` is only step one. Always run `npx supabase migration list` to confirm live sync status. A migration is only considered applied if its `remote` column is populated in that output. Do **not** use `git status` or the presence/absence of a local file as a proxy for deployment status — an untracked file may already be live.
+12. **Enforce Pending Migration Reminders**: Never claim or imply a task is complete if a migration's `remote` field is empty in `npx supabase migration list`. If a migration is not yet applied to the remote database for any reason, **always explicitly remind the user and clearly state that the SQL migration is pending and has not been pushed to the live database**. Conversely, do **not** flag a migration as pending purely because it is untracked or unstaged in git — verify against the live output first.
+13. **PostgreSQL View Mutation Rule**: Never use standalone `CREATE OR REPLACE VIEW` when modifying existing views if columns, column order, or data types change (PostgreSQL will reject this with `cannot drop columns from view (SQLSTATE 42P16)`). Always prefix with `DROP VIEW IF EXISTS <view_name> CASCADE;` followed by `CREATE VIEW <view_name> AS ...` and explicit grants (`GRANT SELECT ON <view_name> TO authenticated, service_role;`).
+14. **Column-level UPDATE grants on tables with privileged columns.** Never leave table-wide `UPDATE` granted to `authenticated` on a table where a user can edit their own row but must not edit some columns (`profiles.role`, `is_admin`, `admin_routes`, `admin_domains`, `is_department_lead`, `employment_status`, bank fields; any `status`/`approved_by` on a request table). `REVOKE UPDATE` and `GRANT UPDATE (<safe columns>)`, plus a `BEFORE UPDATE` guard trigger that raises when a non-service caller changes a privileged column. An own-row `USING (id = auth.uid())` policy alone lets a user promote themselves — this exact hole was found live on `profiles` in the 2026-10 audit.
+15. **Every `UPDATE` policy needs a `WITH CHECK`**, and `USING (true)` is never acceptable on `UPDATE`/`DELETE` for `authenticated` (found live on `requisitions`).
+16. **Mutating `SECURITY DEFINER` functions are `service_role`-only** unless they check the caller's role/ownership internally. A function that approves, rejects, assigns, dispatches, or notifies must not be callable from the browser with arbitrary ids. `COALESCE(p_actor, auth.uid())` is not a permission check.
+17. **Secrets never live in SQL.** No keys or webhook secrets in function bodies or migration files — read them from Vault (`vault.decrypted_secrets`). Generate secrets with `gen_random_bytes(32)`, never a readable string.
+18. **Storage buckets** holding staff, finance, or customer documents are private (serve with `createSignedUrl`), and every bucket sets `file_size_limit` and `allowed_mime_types`.
+
+## Query Construction Rules
+
+Be cautious with helper wrappers around Supabase queries in build-sensitive code.
+
+- Helper chains such as `applyAssignableStatusFilter(...)` can trigger `Type instantiation is excessively deep and possibly infinite` during `next build`.
+- In server components, route handlers, diagnostics, and admin pages, prefer:
+- direct `supabase.from(...).select(...)` queries
+- explicit local row types
+- manual filtering with `isAssignableEmploymentStatus(...)` when needed
+- If a helper begins causing deep generic inference failures, replace it with a direct query and explicit post-filtering.
+
+## `services/` vs `lib/` Placement Rule
+
+- Put reusable data-access helpers (Supabase queries, fetch wrappers, DB CRUD utilities) under `lib/`.
+- Use `services/` only for true orchestration/business-flow layers that coordinate multiple `lib/` modules.
+- Do not create new top-level `services/` files for single-table CRUD wrappers; place them in `lib/services/` or the relevant `lib/<domain>/` folder.
+
+## Nullability Discipline
+
+- Do not pass `string | null | undefined` to code that requires `string`.
+- Normalize nullable values before use.
+- Guard required values early.
+- When writing type predicates, make sure the narrowed type is assignable to the source type.
+
+Preferred patterns:
+
+- `const role = profile.role || ""`
+- `const stageCode = item.current_stage_code || item.approval_stage || ""`
+- `if (!value) return NextResponse.json(...)`
+
+## React Compatibility
+
+- Do not use `useEffectEvent` unless the installed React version in this repository supports it.
+- Do not resolve hook dependency warnings mechanically if doing so changes runtime behavior.
+- Prefer stable helpers, refactors, or clearer state flow over unsafe dependency-array edits.
+
+## Logging and Audit Expectations
+
+- Use `logger("module-name")` from `@/lib/logger` instead of `console.log`.
+- Use `writeAuditLog()` from `@/lib/audit/write-audit` with `failOpen: true` for non-blocking audit logging where applicable.
+
+## API Versioning
+
+- Canonical API routes belong under `/api/`.
+- Do not add new features to `/api/v1/` unless the task is explicitly about backward compatibility or legacy maintenance.
+
+---
+
+## Department Console Scoping Standard — Mandatory for Every `app/dept/[dept_id]/*` Route
+
+Department console pages are not mini-admin shortcuts. They are single-department
+surfaces. Every page under `app/dept/[dept_id]/*` must stay locked to the
+requested department across server queries, client fetches, filters, exports,
+stats, expandable rows, dialogs, and child tabs.
+
+### Required pattern
+
+- Call `requireDeptScope(dept_id)` at the top of every dept page.
+- Use `scope.deptName` and `scope.deptId` as the only allowed department scope.
+- If reusing an admin component, pass explicit locking props such as
+  `lockedDepartment`, `lockedDepartmentId`, `scopedDepartments`, or equivalent.
+- Any child component that fetches data must receive and forward the same locked
+  department value to its API call.
+- Empty result sets must stay empty. They must not fall back to all departments.
+
+### Hard prohibitions
+
+- ❌ Reusing an admin client component in `/dept/[dept_id]` without a lock prop
+- ❌ Fetching `/api/admin/*`, `/api/hr/*`, or `/api/payments` from a dept page without a department constraint
+- ❌ Defaulting dept tabs or subviews to `"all"` after the wrapper already scoped the page
+- ❌ Showing filter options for departments outside `scope.deptName`
+- ❌ Letting exports include rows outside the active dept console
+
+---
+
+## Admin Route Scoping Standard — Mandatory for Every `app/admin/*` Page and API Route
+
+All admin pages and their backing API routes must enforce department-level scoping via the
+centralized helpers in `lib/admin/api-scope.ts`. This is **non-negotiable** — it is the
+single source of truth for what data a user is allowed to see.
+
+### How it works
+
+The middleware resolves the current user's scope once and stamps it on every server request
+as an internal `x-admin-scope` header. Individual pages and routes read that header — they
+never re-derive scope themselves.
+
+```ts
+import { getRequestScope, getScopedDepartments } from "@/lib/admin/api-scope"
+
+// In a server component or API route handler:
+const scope = await getRequestScope()
+const depts = getScopedDepartments(scope)
+// depts === null  → global admin, no filter needed
+// depts === []    → lead with empty scope, return nothing
+// depts === [...] → lead/admin in lead mode, filter by these dept names
+```
+
+### Rules for server components (`"use server"` / no `"use client"`)
+
+```ts
+// ✅ Correct — server-side, scoped
+const scope = await getRequestScope()
+const depts = getScopedDepartments(scope)
+let query = supabase.from("employees").select("*")
+if (depts !== null) query = query.in("department", depts)
+const { data } = await query
+```
+
+### Rules for client components (`"use client"`)
+
+**Client components MUST NOT query Supabase directly.** The browser-side Supabase
+client bypasses all middleware — no scope header is set, and filtering is ignored.
+
+```ts
+// ❌ FORBIDDEN in a "use client" component
+const { data } = await supabase.from("profiles").select("*")
+
+// ✅ Required — call a scoped API route instead
+const res = await fetch("/api/hr/performance/employees")
+const { data } = await res.json()
+```
+
+Every data-fetching client component must call an `/api/` route that applies
+`getRequestScope()` server-side. Never add ad-hoc role checks like
+`is_department_lead && !isAdminLike` — these are wrong and have caused leaks.
+
+### Rules for `/api/` route handlers
+
+Every GET handler that returns a list of records scoped to an organisation must call
+`getRequestScope()` and filter accordingly:
+
+```ts
+// ✅ Every list route handler
+export async function GET(request: NextRequest) {
+  const scope = await getRequestScope()
+  if (!scope) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const depts = getScopedDepartments(scope)
+
+  let query = supabase.from("my_table").select("*")
+  if (depts !== null) {
+    if (depts.length === 0) return NextResponse.json({ data: [] })
+    query = query.in("department", depts)
+  }
+  // ...
+}
+```
+
+### Pages that are intentionally org-wide (no dept filter needed)
+
+Some pages are inherently org-wide and correct not to dept-filter:
+
+- `app/admin/dev/*` — developer-only diagnostics
+- `app/admin/settings/*` — role/user management (super_admin only)
+- `app/admin/accounts/*` — org-wide finance (API under `/api/admin/finance/*`)
+- `app/admin/inventory/*` — org-wide stock
+- `app/admin/purchasing/*` — org-wide purchasing
+- `app/admin/hr/office-location` — org-wide location list
+- `app/admin/hr/departments` — org-wide department list
+
+Even these must still call `getRequestScope()` and gate on `scope.isAdminLike` to
+prevent lead-mode access to sections that should be admin-only.
+
+### Hard prohibitions
+
+- ❌ `supabase.from(...)` inside a `"use client"` admin component
+- ❌ `if (profile.is_department_lead && !isAdminLike)` — always broken
+- ❌ Returning all rows from a list route without calling `getRequestScope()`
+- ❌ Passing employee/department data to a dialog without going via a scoped `/api/` route
+- ❌ Creating a new admin page or API route without applying this pattern
+
+---
+
+## Edit Access on HR and IT Routes — View Is Not Edit (Mandatory)
+
+On the HR routes (`hr.*`, `jobdescriptions.main`) and the IT routes (`it.main`,
+`security.networkActivity`, `security.bypassOverride`), holding the route in `admin_routes`
+means VIEW only. EDIT belongs to the lead of the owning department (HR: Admin and HR and
+Corporate Services; IT: IT and Communications, read from `lead_departments`, never a name),
+or to someone with an active row in `admin_edit_grants` (a developer / super admin grant, or a
+delegation from a holder). Developers and super admins view everything and get no automatic edit.
+
+- `canEditRouteV2` / `scopeCanEditRoute` in `lib/admin/policy-v2.ts` and `lib/admin/rbac.ts` are the only
+  check. Do not test `isAdminLike` or a role to decide who may change HR or IT data.
+- Mutating `/api/admin/**` calls on these sections are checked centrally in
+  `lib/supabase/middleware.ts` via `resolveApiEditRouteKeyV2`. A new mutating admin API for HR or IT
+  must map to a route key there; one that is not a page edit (an approval decided by stage, like
+  attendance appeals) is deliberately left out and enforces its own rule.
+- A new HR or IT page needs its route key in `resolveAdminRouteKeyV2`, and its layout should render
+  `ViewOnlyNotice`. A new route key also extends the `admin_routes` CHECK constraint.
+- Grants are written only through `/api/admin/access/grants` (`lib/admin/edit-grants.ts` holds the rules:
+  never to yourself, only to someone with the admin role who can already view the area, a delegation
+  needs an end date and cannot be delegated on).
+- Attendance appeals: the second stage belongs to the Admin & HR Lead and her delegates, not the admin
+  role (`appealReviewBlock`); override is for a stuck approval only (`overrideBlock`).
+
+## Table Page Standard — Mandatory for All List/Data Pages
+
+Every page that shows a list of records **must** use `DataTablePage` + `DataTable`
+from `@/components/ui/data-table`. Never build a one-off table with raw
+`<Table>` / `<PageWrapper>` markup. The only acceptable exception is an
+embedded sub-table inside a component that is already rendered inside a
+`DataTablePage` (e.g. a calibration view).
+
+### Required file structure
+
+```
+app/admin/<section>/<page>/
+  page.tsx                    ← root: uses DataTablePage + DataTable
+  _components/                ← page-specific sub-components only
+    <name>-dialog.tsx
+    <name>-card.tsx
+```
+
+### Mandatory layout order — never rearrange
+
+```
+1. Page header     title · icon · back link · action buttons (Add, Export…)
+2. Tabs            only when the page has 2–5 named views of the same data
+3. Stats cards     3–4 StatCard items — total, a key status, a period, a %
+4. DataTable       renders internally in this fixed order:
+     a. Search bar (debounced 300ms) + Columns toggle + View toggle
+     b. Filter dropdowns  (minimum 2, maximum 4 per table)
+     c. Active filter pills + "Clear all" button
+     d. Row count  — always visible: "X results" / "Showing X–Y of Z"
+     e. Skeleton rows while loading  (never a spinner)
+     f. Table (sticky header, coloured header row, S/N column)
+        OR card grid when in card view / on mobile
+     g. Pagination controls
+```
+
+### DataTablePage usage
+
+```tsx
+import { DataTablePage } from "@/components/ui/data-table"
+
+<DataTablePage
+  title="Page Title"
+  description="Short description."
+  icon={SomeLucideIcon}
+  backLink={{ href: "/admin/section", label: "Back to Section" }}
+  tabs={TABS}               // optional — DataTableTab[]
+  activeTab={tab}           // required when tabs provided
+  onTabChange={setTab}      // required when tabs provided
+  stats={<StatsRow />}      // strongly recommended
+  actions={
+    <div className="flex gap-2">
+      <Button variant="outline" size="sm"><Download /> Export</Button>
+      <Button size="sm"><Plus /> Add Item</Button>
+    </div>
+  }
+>
+  <DataTable ... />
+</DataTablePage>
+```
+
+### DataTable usage
+
+```tsx
+import { DataTable } from "@/components/ui/data-table"
+import type { DataTableColumn, DataTableFilter } from "@/components/ui/data-table"
+
+const columns: DataTableColumn<MyRow>[] = [
+  {
+    key: "name",
+    label: "Name",
+    sortable: true,
+    accessor: (r) => r.name,
+    render: (r) => <span className="font-medium">{r.name}</span>,
+    resizable: true,   // optional — enables drag-to-resize handle
+    initialWidth: 200, // optional — starting width in px when resizable
+  },
+  {
+    key: "status",
+    label: "Status",
+    render: (r) => <StatusBadge status={r.status} />,
+    hideOnMobile: true,
+  },
+]
+
+const filters: DataTableFilter<MyRow>[] = [
+  // minimum 2 filters per table page
+  {
+    key: "department",
+    label: "Department",
+    options: departments.map((d) => ({ value: d, label: d })),
+    // mode: "column" (default) matches against the accessor of the column
+    // with the same key. Use mode: "custom" + filterFn for complex logic.
+  },
+  {
+    key: "status",
+    label: "Status",
+    options: STATUS_OPTIONS,
+  },
+]
+
+<DataTable<MyRow>
+  data={rows}
+  columns={columns}
+  getRowId={(r) => r.id}
+  searchPlaceholder="Search name, department…"
+  searchFn={(row, q) => row.name.toLowerCase().includes(q)}
+  filters={filters}
+  isLoading={isLoading}
+  error={error}
+  onRetry={reload}
+  pagination={{ pageSize: 50 }}                  // optional
+  rowActions={[{ label: "Edit", onClick: open }]} // optional
+  expandable={{ render: (r) => <Detail row={r} /> }} // optional
+  bulkActions={[{ label: "Delete", onClick: bulkDelete, variant: "destructive" }]}
+  selectable   // enable row checkboxes
+  viewToggle   // show list/card toggle
+  cardRenderer={(r) => <MyCard row={r} />}        // required with viewToggle
+  urlSync      // persist search + filters in URL query params
+/>
+```
+
+### Feature checklist — built-in, never re-implement manually
+
+| Feature | Auto | Notes |
+|---------|------|-------|
+| Muted header row | ✅ | `bg-muted/80` — do not change |
+| Sticky header on scroll | ✅ | Always on |
+| Search with 300ms debounce | ✅ | Pass `searchFn` |
+| Clear search × button | ✅ | Inline in the search field |
+| Active filter pills + clear all | ✅ | Appears whenever any filter is active |
+| Multi-select filter dropdowns | ✅ | Pass `filters` |
+| Column visibility toggle | ✅ | Sliders button, top-right of filter bar |
+| Column drag-to-resize | ✅ | Set `resizable: true` on column + `initialWidth` |
+| Column drag-to-reorder | ✅ | Hover any column header to reveal grip handle, drag left/right |
+| Sortable columns with arrows | ✅ | Set `sortable: true` on column |
+| S/N row numbers | ✅ | Disable with `showRowNumbers={false}` |
+| Row count always visible | ✅ | "X results" without pagination; "Showing X–Y of Z" with it |
+| Skeleton loading (shimmer rows) | ✅ | Pass `isLoading` — matches column count |
+| Error state + retry button | ✅ | Pass `error` + `onRetry` |
+| Empty state with clear-filters CTA | ✅ | Different message: no data vs no filter match |
+| Client-side pagination | ✅ | Pass `pagination: { pageSize: N }` |
+| Server-side pagination | ✅ | Add `serverSide: true` + `totalRows` + `onPageChange` |
+| Expandable rows | ✅ | Pass `expandable` |
+| Row actions | ✅ | Pass `rowActions` |
+| Bulk select + actions toolbar | ✅ | Pass `selectable` + `bulkActions` |
+| Keyboard navigation ↑↓ / Enter | ✅ | Always on |
+| List / table view toggle | ✅ | Pass `viewToggle` + `mobileRow` (+ `contactsView`). The `mobileRow` list stands in for the table below `md` |
+| Card view | opt-in | Pass `cards` **and** `cardRenderer`. Off by default: on most tables a card repeats the list row. Use it only where a card shows what a row cannot (a summary, a chart, a progress bar), or where a page has no `mobileRow` and cards are its phone view |
+| URL-synced filters | ✅ | Pass `urlSync` — search + filters write to query params |
+
+### Stats cards — required on every table page
+
+Always wrap `StatCard`s in `StatGrid`. Never hand-write the grid `<div>`.
+
+**Card size: always the `compact` variant.** It is the house style for the stats
+band and is `StatCard`'s default, so omitting `variant` gives the right card. Never
+pass `variant="default"` or `variant="large"` on a table page — those are the older,
+taller cards and make a new page look out of place next to the rest of the app.
+
+```tsx
+import { StatCard } from "@/components/ui/stat-card"
+import { StatGrid } from "@/components/ui/stat-grid"
+
+<StatGrid>
+  <StatCard variant="compact" title="Total"   value={total}   icon={Users} iconBgColor="bg-blue-500/10"    iconColor="text-blue-500" />
+  <StatCard variant="compact" title="Active"  value={active}  icon={Check} iconBgColor="bg-emerald-500/10" iconColor="text-emerald-500" />
+  <StatCard variant="compact" title="Pending" value={pending} icon={Clock} iconBgColor="bg-amber-500/10"   iconColor="text-amber-500" />
+</StatGrid>
+```
+
+**The mobile rule `StatGrid` enforces: a single line, not cards.** Below `sm` the cards become one
+scrolling line of metrics (`12 Staff  3 Pending  1 Overdue`) derived from the cards' own `title` and
+`value`, so a page writes each metric once and the two renderings cannot disagree. From `sm` up the cards
+return as a grid. A stats band must never cost a phone more than one line before the data starts. (A grid
+whose children are not plain `StatCard`s cannot be reduced to a line and keeps the old rule: one row of
+three cards.)
+
+**Priority is source order.** The first metrics are the ones a phone shows first, and the line scrolls
+sideways for the rest. There is deliberately no `priority` prop — a page that wants a different metric
+first **reorders its JSX**, so the code reads in the same order the reader sees.
+
+This matters more than it looks. Pages naturally list metrics in workflow order
+(`Total → In Progress → Submitted → Overdue`), which puts the exception state
+last — exactly the card someone opened the page to check. If a later card is the
+actionable one (`Overdue`, `SLA Breached`, `Low Stock`, `Absent`), move it into
+the first three.
+
+A page with more than six stat cards is a design problem, not a layout one —
+cut it down rather than reaching for a wider grid.
+
+### Tabs — when to use
+
+Use tabs when a page has 2–5 different views of **the same data source**
+(e.g. Individual / Department / Cycle). Do **not** create separate pages for
+views that share the same shell and data fetch.
+
+```tsx
+const TABS: DataTableTab[] = [
+  { key: "all",      label: "All" },
+  { key: "active",   label: "Active" },
+  { key: "archived", label: "Archived" },
+]
+```
+
+### Export — placement rule
+
+Export button always lives in the page header `actions`. Never inside the
+table or filter bar. Use `ExportOptionsDialog` from
+`@/components/admin/export-options-dialog`. Export logic lives in
+`@/lib/<section>/export.ts`.
+
+**Shells.** Every app shell renders `SkipToContent` first and the content area is `#main-content`. A
+hand-built slide-in drawer uses `useDrawerA11y` (Escape, focus trap, focus return, `inert` while closed);
+prefer `Sheet`, which does all of this already.
+
+**Header buttons.** A header shows one main button, Export when the page has one, and
+`HeaderMoreMenu` (`@/components/ui/patterns/header-more-menu`) for anything else. Do not add a
+Refresh button to a page whose data is a TanStack query: it refetches on window focus.
+
+`DataTable` has no built-in `export` prop (removed): two exports on one page, one in the toolbar and one in
+the header, confused users. A page that also needs a column picker opens `ExportColumnsDialog` from
+the `ExportOptionsDialog` choice; it is a second step, not a second export system.
+
+### Back link convention
+
+**A page the sidebar opens directly has no back link.** The sidebar is the way back; a second control
+for the same job costs a header line and drifts into eight different wordings. A **nested** page (a record
+detail, a cycle, a worksheet) links to its parent, labelled "Back to <the parent's sidebar name>", for
+example "Back to Leave" or "Back to Payroll".
+
+### Colour / design token standards
+
+| Element | Class |
+|---------|-------|
+| Table header row | `bg-muted/80` |
+| Filter card border | `border-2` |
+| Blue stat icon | `bg-blue-500/10` + `text-blue-500` |
+| Green stat icon | `bg-emerald-500/10` + `text-emerald-500` |
+| Amber stat icon | `bg-amber-500/10` + `text-amber-500` |
+| Red stat icon | `bg-red-500/10` + `text-red-500` |
+| Purple stat icon | `bg-violet-500/10` + `text-violet-500` |
+
+These five icon tints are the **only** sanctioned raw palette classes. Status colour
+(badges, pills, row tints) goes through `StatusBadge` from
+`@/components/ui/patterns/status-badge` — never a local `getStatusColor()` map or
+hand-picked `bg-green-100 text-green-700`. Never add `dark:` overrides to fix a colour;
+if a token is wrong in one theme, fix the token in `app/globals.css`.
+
+**Status tones.** For a colour that means something (done, late, warning, info), use the tone
+tokens in `app/globals.css`: `text-success`, `text-warning`, `text-danger`, `text-info`,
+`text-purple`, with `bg-success/15` and `border-success/30` for the tint. Each token carries
+its own light and dark value, so a call site never writes `dark:`. A status shown as a badge
+uses `<StatusBadge status=... tone=... />`, whose `TONE_CLASSES` is the single map of these.
+
+### Hard prohibitions
+
+- ❌ Raw `<Table>` / `<TableHeader>` inside a page component
+- ❌ `<DialogContent>` inside a page component; move dialogs to `_components/`
+- ❌ Inline search or filter state in a page — all handled by `DataTable`
+- ❌ `<Loader2>` spinner for table loading — skeletons are automatic
+- ❌ Fewer than 2 filter options on any table page
+- ❌ More than 4 filters on one table — pick the four people actually use; merge a
+  start/end pair into one range filter rather than two dropdowns
+- ❌ A table page with no metrics at all — supply `stats` (StatCards), `statBadges`,
+  or both. Prefer `statBadges` with `statBadgeStyle="line"` on lookup and record
+  pages: even a `StatGrid` row of three costs a phone height it could spend on
+  data. Pass both only when the cards genuinely earn a desktop band; they then
+  render `md`-and-up while the line covers mobile.
+- ❌ `StatCard` with `variant="default"` or `variant="large"` on a table page — use `compact`
+- ❌ A hand-written grid `<div>` wrapping `StatCard`s — use `StatGrid`, which owns
+  the one-row / three-card mobile rule. A bare `grid-cols-2` or `grid-cols-3`
+  wrapper is what put a second row of metrics on 82 phone screens.
+- ❌ A table page without `DataTablePage` as the root wrapper
+
+### The one exception to inline filter state — controlled filters
+
+`DataTable` owns search and filter state. The single sanctioned way for a page to
+hold filter values is `DataTable`'s controlled mode:
+
+```tsx
+const [filterValues, setFilterValues] = useState<Record<string, string[]>>({
+  staff_type: ["permanent"], // seed here; `defaultValues` is ignored when controlled
+})
+
+<DataTable filterValues={filterValues} onFilterValuesChange={setFilterValues} … />
+```
+
+Use it **only** when UI outside the toolbar has to drive a filter — an interactive
+stat badge that toggles its own metric, a summary tile that filters to its row. It is
+not a licence to hand-roll filtering: the toolbar still renders every control and
+still owns the interaction; the page only holds the values.
+
+Rules when controlled:
+
+- Pass **both** props. `filterValues` without `onFilterValuesChange` freezes the
+  toolbar — the user's clicks are reported nowhere and nothing changes.
+- Seed defaults in the parent's initial state. `defaultValues` on a filter definition
+  is ignored in controlled mode, and leaving it in place misstates where the default
+  comes from.
+- Never filter the `data` you pass in. `DataTable` applies the filters; pre-filtering
+  as well double-applies them and desynchronises the result count.
+- Make a stat interactive only where the metric maps to a filter one-to-one. A count
+  of *distinct* values ("12 offices") has no single value to filter to, and a badge
+  that looks pressable but is inert is worse than a plain one.
+
+If nothing outside the toolbar drives the filter, leave it uncontrolled. That is
+still the default and still what most pages should do.
+
+One caveat: `urlSync` *writes* controlled values to the URL but does not read them
+back into the parent on mount — only `DataTable`'s internal state is seeded from
+the URL. A page that must open pre-filtered from a link has to read the params
+itself when it seeds its state.
+
+### Contacts view
+
+`contactsView` + `defaultViewMode="contacts"` renders the `mobileRow` list at every
+breakpoint. Two rules follow from `groupBy`:
+
+- **With `groupBy`** the list renders whole and drops its pager — an A–Z book cut
+  across numbered pages stops being a book. Only opt in when the data is
+  lookup-sized. Sections are ordered by heading, so the book still reads A–Z after
+  the user sorts a column; headings starting with a symbol file last.
+- **Without `groupBy`** the list still paginates. There is no structure to
+  preserve, and an unbounded record set is not a page shape.
+
+Do not hand-roll `mobileRow.leading` to show a serial number — `DataTable` already
+renders a muted S/N bubble there when `showRowNumbers` is on (it is by default).
+Colour in that slot means *identity*: an avatar, or initials in `bg-primary/10` as
+its fallback. A row number is a property of the current sort, not of the record,
+and putting the brand accent on it spends the loudest thing on the row on the one
+value that carries no information — while the status badge beside it whispers.
+
+The view toggle reads **List · Cards · Table**, and all three stay distinct at
+every width: Table renders the real table on a phone too, scrolling horizontally,
+rather than quietly swapping itself for the row list. `hideOnMobile` is ignored in
+that mode — it exists to squeeze a table that is a page's *only* mobile rendering,
+and picking Table when a List mode is sitting next to it is an explicit request to
+see the columns.
+
+Pages that supply `mobileRow` **without** `contactsView` are unchanged: there is no
+separate List mode there, so the row list still stands in for the table below `md`.
+
+### A row tap opens the sheet — never a modal
+
+Tapping a row on mobile opens the detail sheet. It must never open a dialog
+directly: a desktop-sized modal on a phone skips the one surface built for that
+width. Put the modal behind a **button in the sheet** instead — pass `onSelect`
+and it becomes the sheet's primary action.
+
+`mobileRow.detail` is optional. Omit it and `DataTable` synthesizes the sheet from
+`columns`: every column with an `accessor` becomes a field (`hideOnMobile` ones
+included; the sheet is exactly where data too wide for the mobile table belongs),
+and a column with only a `render` (a status badge, an amount) shows its rendered cell.
+Mechanical columns (`actions`, `select`, `expand`, S/N) are skipped, and a column can
+opt out with `sheet: false`. Supply `detail` explicitly only to curate which fields
+show.
+
+The sheet carries **everything the table can do**. Its footer is built from `rowActions`:
+hidden actions drop out per row, destructive ones go last, and `onSelect` becomes a
+leading "Open". Up to three show as buttons; with more, the rest sit behind **More**.
+An explicit `detail.actions` wins over the derived ones. So a page does not repeat its
+row actions inside `detail`, and a phone can approve, edit or delete what the desktop
+menu can. If the table is `expandable`, that panel renders inside the sheet under the
+fields; the row stays closed unless `mobileRow.expandInline` is set.
+
+- ❌ `onSelect` that opens a dialog and no `detail` — that *was* the bug on 42
+  tables: the tap flew past the sheet straight into the modal.
+
+`defaultViewMode` takes either a mode or `{ mobile, desktop }`. Records pages with
+many columns want `{ mobile: "contacts", desktop: "list" }` — the row list where
+the columns will not fit, the table where they will. A lookup page passes a plain
+`"contacts"` and keeps its list at both. It is only the opening view: once the
+reader picks from the toggle, their choice holds across resizes. Mirror the choice
+in `loading.tsx` with `list="responsive"` (or `list="contacts"`).
+
+`{ mobile: "contacts", desktop: "list" }` is resolved in **CSS**, not JS: both
+shapes are rendered and media queries pick, so the right one is in the first paint
+(`useIsMobile` only reports after the first effect, which would flash the desktop
+table on a phone). The toggle's pressed state is resolved the same way. This
+applies only while the reader has made no choice; after that a single mode
+renders. Any other pair falls back to the JS breakpoint.
+
+`contactsView` removes the desktop table from view. The `expandable` panel is not
+lost: a tap on a list row opens the sheet and the panel renders inside it, under the
+fields, so an attachment link, a timeline or a "returned for correction" instruction
+still reaches a phone. Keep that panel free of its own outer padding and border, as it
+now sits in two containers. Fields that open something take `href`, not `copyable`.
+
+### Stats parity
+
+`statBadges` and `stats` are one metric set rendered twice, not two sets. A metric
+that is conditional in one must be conditional in the other, or a viewer sees a
+different page on either side of `md` — typically a "0" card for a role they do not
+hold. Same rule for icons: pick one per metric and use it in both.
+
+### Route `loading.tsx` skeletons
+
+Loading routes must mirror the real page shape — including the new one.
+`TablePageSkeleton` takes `statBadges`, `spacing="tight"`, `inlineActions` and
+`list="contacts"` (with `groups`) so a page using those props does not visibly
+reflow on mount. Use the canonical skeletons from
+`@/components/skeletons`:
+
+- `TablePageSkeleton` for `DataTablePage` routes
+- `DashboardSkeleton` for dashboard and overview routes
+- `CardGridPageSkeleton` for module landing pages and card-grid pages
+- `DetailPageSkeleton` for detail/view pages
+- `FormPageSkeleton` for create/edit form pages
+
+Do not hand-roll a single bar or generic card placeholder for a table page. Match
+the expected stats count, tabs, filter count, action count, and table density.
+
+### UI guard — audit and ratchet
+
+The pre-push hook runs the UI guard against the pushed commit (exporting its tree to a temp dir
+so uncommitted working-tree work does not block a push); in CI and locally `npm run ui:guard` checks
+the tree. It is two checks:
+
+- **`ui:audit`** (`scripts/ui/audit-reusables.mjs`): every page has a `loading.tsx` (a page that only
+  redirects is exempt), uses the shared page header, and tables, stat cards and dialogs use the shared
+  components. Intentional exceptions (standalone public pages) live in `scripts/ui/ui-audit-allowlist.json`.
+- **`ui:ratchet`** (`scripts/ui/ratchet.mjs`): for each rule below, a file's count of the pattern may not
+  rise above `scripts/ui/ratchet-baseline.json`. The baseline is **per file**, so fixing one file cannot
+  pay for a new violation in another, and a new file starts at zero.
+
+| Rule | Counts | Do this instead |
+|------|--------|-----------------|
+| `tiny-text` | `text-[9px]` to `text-[11px]` | `text-xs` is the minimum |
+| `locale-without-en-ng` | a date or time `toLocale*String()` with neither `en-NG` nor a `timeZone` | `@/lib/utils/date` helpers, or `en-NG` and `timeZone: "Africa/Lagos"` |
+| `raw-img` | `<img>` outside email/PDF/OG renderers | `next/image` |
+| `key-index` | `key={i}`, `key={idx}`, `key={index}` | a stable id |
+| `dialog-in-page` | `<DialogContent>` in a page/view/`*-content` file | move to `_components/` |
+| `explicit-any` | `: any`, `as any`, `any[]` | a real type or `unknown` |
+| `eslint-disable` | disable comments | fix the cause |
+| `select-star` | `.select("*")` | list the columns |
+| `inline-query-key` | `queryKey: ["literal"...]` | `QUERY_KEYS` in `lib/query-keys.ts` |
+| `dark-color-override` | `dark:bg-*`, `dark:text-*`, `dark:border-*` | a theme token or `StatusBadge` |
+| `local-status-colour` | `bg-*-100 text-*` status pairs | `StatusBadge` |
+| `fixed-px-width` | `w-[400px]` or wider | `w-full` with `max-w-*` |
+| `click-div` | `<div onClick>` | `<button>` or `<Link>` |
+| `client-page` | `page.tsx` that starts with `"use client"` | server page, client child |
+| `page-missing-metadata` | server `page.tsx` without `metadata` | export a title |
+| `title-brand-suffix` | a page title that already ends in `| Matrix` or `| ACOB…` | the root layout adds the brand; write only the page name |
+| `file-lines` | a file over 1,000 lines, by its length | extract; never grow it |
+| `api-error-message` | `NextResponse.json({ error: <ident>.message` | log with logger, return generic message |
+| `route-without-zod` | API route calling `request.json()` with no zod validation | validate the body with zod |
+| `local-number-format` | `new Intl.NumberFormat` in app/components/hooks | use `@/lib/utils` shared formatters |
+| `hand-h1` | `<h1\b` outside allowlisted standalone pages | `PageHeader` |
+
+Working with it:
+
+- **The check fails:** fix the new occurrence. Do not edit the baseline to make it pass.
+- **You removed violations:** run `npm run ui:ratchet:update` and commit the lowered baseline in the same
+  change. It refuses to write a baseline in which any count is higher.
+- **Adding a rule:** add it (with a test) in `scripts/ui/ratchet-rules.mjs`, generate the baseline once with
+  `node scripts/ui/ratchet.mjs --update --allow-increase`, and review the totals in the PR. That flag is
+  for this case only.
+- `npm run ui:ratchet -- --summary` prints today's totals per rule.
+- Run `npm run ui:ensure-loading` only when intentionally adding missing route loading files, and review
+  what it generates before committing.
+- UI audit scripts must normalize Windows paths with `toPosix()` before route matching.
+
+The baseline is today's debt, not a target. `docs/audit/2026-10-27-tables-sheets-ui-review.md` lists
+every file behind it and the fix for each.
+
+---
+
+## Page Types Standard — Mandatory for every `page.tsx`
+
+Every page is exactly one of these types. The type decides its frame, its width and its loading skeleton,
+so pages of the same type look and load the same way.
+
+| Type | For | Frame | `PageWrapper` width | `loading.tsx` |
+|------|-----|-------|---------------------|---------------|
+| Table | a list of records | `DataTablePage` | `full` | `TablePageSkeleton` |
+| Dashboard | KPIs, queues, activity | `PageWrapper` + `PageHeader` + `Section` | `full` | `DashboardSkeleton` |
+| Hub | links into sub-modules | `PageWrapper` + `PageHeader` + `ModuleHubGrid` | `full` | `CardGridPageSkeleton` |
+| Detail | one record | `PageWrapper` + `PageHeader` with a back link | `content` or `full` | `DetailPageSkeleton` |
+| Form | create, edit, settings | `PageWrapper` + `PageHeader` | `form` | `FormPageSkeleton` |
+| Auth | sign-in and recovery | `AuthShell` | its own | `AuthPageSkeleton` |
+| Standalone | public, print or share pages with their own layout | its own | its own | none; list it in `ui-audit-allowlist.json` |
+
+Rules for every type:
+
+- **The skeleton mirrors the page.** Pass the same stat count, tabs, filter count and action count the page
+  renders, and `list="responsive"` when the page opens as a phone list. A skeleton that differs from the page
+  makes the layout jump when the data arrives.
+- **One loading shape.** If a client page shows a full-page loader while its query runs, `PageLoader` uses the
+  same variant and props as the route's `loading.tsx`, never a second, different skeleton.
+- **The title comes from `PageHeader`.** Do not hand-write an `<h1>`.
+- **The browser tab names the page.** A server `page.tsx` exports
+  `metadata = { title: "<Page title>" }`: the root layout adds " | Matrix", so never write the brand
+  yourself. Keep `page.tsx` a server
+  component and put interaction in a `"use client"` child; both are in the ratchet.
+- **Name the page like its sidebar entry.** Someone who clicks "Leave" should land on "Leave".
+
+---
+
+## Notification System
+
+Every feature that produces events the user should see must write to the `notifications` table via the `create_notification` RPC. Omitting this causes silent failures — always wire it up alongside the feature.
+
+### How to call
+
+Call it **server-side only** (API route, cron, server lib) and prefer the service-role client. Never call it from browser code: it is `SECURITY DEFINER` and takes an arbitrary `p_user_id` and `p_link_url`, so a browser-callable version is an in-app phishing channel. The 2026-10 audit plans to revoke `EXECUTE` from `authenticated`; any route still calling it with the user's session client will then fail, so new code must use the service client now:
+
+```ts
+try {
+  await supabase.rpc("create_notification", {
+    p_user_id: targetUserId,      // who sees this notification
+    p_type: "approval_granted",   // must be in the allowed list below
+    p_category: "approvals",      // must match a UI tab key — see table below
+    p_title: "...",
+    p_message: "...",
+    p_priority: "normal",         // low | normal | high | urgent
+    p_link_url: "/your-feature",  // page the user navigates to
+    p_actor_id: actorId,          // who triggered it (optional)
+    p_entity_type: "my_record",   // for grouping/dedup (optional)
+    p_entity_id: record.id,       // (optional)
+  })
+} catch (err) {
+  log.error({ err: String(err) }, "notification failed")
+}
+```
+
+Always wrap in `try/catch`. Notification failure must never crash the parent operation.
+
+### Allowed `p_type` values
+
+`task_assigned` | `task_updated` | `task_completed` | `mention` | `feedback` |
+`asset_assigned` | `asset_transfer_outgoing` | `asset_transfer_incoming` | `asset_returned` |
+`asset_status_alert` | `asset_status_fixed` | `system_restored` |
+`approval_request` | `approval_granted` | `approval_rejected` | `announcement` | `system`
+
+### Allowed `p_category` values and their UI tabs
+
+| `p_category` | Tab shown in `/notifications` |
+|---|---|
+| `approvals` | Approvals |
+| `tasks` | Tasks |
+| `assets` | Assets |
+| `feedback` | Feedback |
+| `mentions` | Mentions |
+| `meetings` | Meetings |
+| `communications` | Communications |
+| `reports` | Reports |
+| `system` | All only (no dedicated tab) |
+
+### Adding a new category
+
+If your feature needs a category not in the table above, you **must** also:
+
+1. Add a tab entry to `app/(app)/notifications/notification-content.tsx` — both the `tabs` array and the `counts` object.
+2. Add a row to `notification_delivery_policies` in a new migration (update the `CHECK` constraint first if it restricts `notification_key`).
+
+### `admin/notifications` is a separate system
+
+`app/admin/notifications/page.tsx` is a real-time aggregation dashboard that queries operational tables dynamically. It does **not** read from the `notifications` table. Do not conflate the two.
+
+---
+
+## Email and In-App Notification Parity — Mandatory
+
+Every API route or lib function that dispatches an outgoing email to a named user **must also** create an in-app notification for that same user. Sending email without a matching in-app notification is a silent failure — recipients miss events they should see inside the ERP.
+
+### The rule
+
+Whenever you call any of the following email helpers, also call `create_notification` (or `notifyUsers` for the leave system) for every named recipient:
+
+| Email helper | Location |
+|---|---|
+| `sendLeaveWorkflowEmail` | `lib/leave-mailer.ts` — use `notifyUsers` from `lib/hr/leave-workflow.ts` instead; it handles both channels |
+| `sendHelpDeskMail` | `lib/help-desk/mailer.ts` |
+| `sendCorrespondenceDecisionEmail` | `lib/correspondence/mailer.ts` |
+| `sendExitNotificationEmail` | `lib/hr/exit-mailer.ts` |
+| `sendNotificationEmail` / `sendNotificationEmailWithRetry` | `lib/notifications/email-gateway.ts` |
+
+### Event → notification type mapping
+
+| Event | `p_type` | `p_category` |
+|---|---|---|
+| Approval needed (next approver) | `approval_request` | `approvals` |
+| Approved (requester notified) | `approval_granted` | `approvals` |
+| Rejected (requester notified) | `approval_rejected` | `approvals` |
+| Task assigned | `task_assigned` | `tasks` |
+| Task completed / resolved | `task_completed` | `tasks` |
+| Asset assigned | `asset_assigned` | `assets` |
+| SLA reminder / breach / lapsed | `system` | `system` |
+| Broadcast / onboarding / announcement | `announcement` | `system` |
+
+### Required pattern
+
+```ts
+// 1. Send email (in try/catch so it never crashes the operation)
+try {
+  await sendSomeEmail({ to: [recipientEmail], ... })
+} catch (err) {
+  log.error({ err: String(err) }, "email failed")
+}
+
+// 2. Create matching in-app notification (also in try/catch)
+try {
+  await supabase.rpc("create_notification", {
+    p_user_id: recipientUserId,
+    p_type: "approval_granted",   // use the correct type from the table above
+    p_category: "approvals",
+    p_title: "...",
+    p_message: "...",
+    p_priority: "normal",
+    p_link_url: "/your-feature",
+    p_actor_id: actorId,
+    p_entity_type: "...",
+    p_entity_id: record.id,
+  })
+} catch (err) {
+  log.error({ err: String(err) }, "notification failed")
+}
+```
+
+Always wrap both calls in separate `try/catch` blocks. Notification failure must never crash the parent operation, and email failure must not prevent the notification.
+
+### Supabase Edge Functions — same parity rule applies
+
+Edge functions under `supabase/functions/` run outside the Next.js process, but they are created with a **service-role** Supabase client, so they can and **must** insert the matching in-app notification directly into the `notifications` table after sending an email. The rule is identical: no user-facing email without an in-app notification.
+
+Insert directly (the `create_notification` RPC is also callable, but a plain insert is simplest from Deno):
+
+```ts
+const { error: notifyError } = await supabase.from("notifications").insert({
+  user_id: profile.id,          // the ERP user the email went to
+  type: "announcement",          // type from the mapping table above
+  category: "system",
+  priority: "normal",
+  title: "...",
+  message: "...",
+  link_url: null,
+})
+if (notifyError) console.error(`[fn] in-app notification failed: ${notifyError.message}`)
+```
+
+Wrap it so a notification failure never aborts the email loop. Reference implementations: `send-birthday-emails` (per-recipient inside the send loop) and the exit flow in `app/api/v1/hr/employees/[employeeId]/exit-notification/route.ts`.
+
+When the email targets an external address that maps to a person, resolve their ERP `user_id` (e.g. via `profiles`) and notify that id.
+
+**Never hardcode a person's name as the signatory in any email body or footer.** Choose by send type:
+- **Automated/system mail** (cron, triggers — e.g. birthday, meeting-reminder fallback, IT notifications): use a generic **department** signature with no individual ("Admin & HR Department", "IT & Communications"). No person means nothing goes stale when someone exits. See `send-birthday-emails`.
+- **Admin-composed mail** (broadcasts, meeting reminders, weekly summaries, communications): let the admin **select** the "Prepared by" person per send (see `BroadcastForm`/`MeetingReminderForm`), or resolve it live from the DB so an exited employee is never credited (see `lib/hr/exit-mailer.ts`).
+
+Remaining edge functions still email-only and pending parity work: `send-weekly-report`, `send-meeting-reminder`, `send-communications-mail` (these already insert some notifications — verify per-recipient coverage).
+
+### Leave system — use `notifyUsers`, not raw RPC
+
+For any leave workflow event, always use `notifyUsers` from `lib/hr/leave-workflow.ts`. It handles delivery policy resolution, channel eligibility, and both email and in-app in one call. Pass `emailEvent` so the correct `p_type` is set per the mapping above.
+
+## Email Identity, Routing, and Subjects — Single Source of Truth
+
+**One default sender for automated mail.** Routine automated notifications send as
+**`ACOB Matrix <notifications@acoblighting.com>`**. There are
+no per-subsystem display names — they all sent from the same address anyway, which
+is what mail clients thread, filter, and score, so the names bought nothing and
+forced a naming argument for every new subsystem.
+
+The display name answers exactly one question — **who is speaking?** — and there are
+only three valid answers:
+
+| Speaker | Display name | Used by |
+|---|---|---|
+| The platform | `ACOB Matrix` | routine automated notifications (the default) |
+| A department | `ACOB <Department>` | task mail, Communications broadcasts |
+| The company | `ACOB Lighting Technology Limited` | birthday wishes, staff exit notices, onboarding notices |
+
+The platform default is deliberate: every recipient already works here, so the
+registered company name carried no signal on routine mail — it just repeated on every
+payroll, attendance and task email, and at 31 characters it was truncated in the
+mobile sender column. It still appears in the footer of every email.
+
+What this standard forbids is a name per **subsystem** ("ACOB Leave", "ACOB Assets",
+"ACOB Payroll"). Those bought nothing — all sent from the same address, which is what
+mail clients thread, filter and score, so they were routing metadata wearing a display
+name, and they forced a naming argument for every new subsystem. The three names above
+are not subsystems; they are distinct speakers. Do not add a fourth without one.
+
+**Never hardcode a "From", Reply-To, or List-Id as a string literal.** Each runtime
+has exactly one place for them:
+
+- **Next app** (`lib/`, `app/api/`): `ORG_EMAIL_SENDERS.system` and `ORG_MAIL_ROUTING`
+  in `lib/org-config.ts`.
+- **Edge functions** (`supabase/functions/`, Deno — cannot import `lib/`):
+  `EDGE_SENDERS.system` and `EDGE_MAIL_ROUTING` in `supabase/functions/_shared/senders.ts`.
+
+Call sites spread one routing entry so the pair can never disagree:
+
+```ts
+await sendNotificationEmailsIndividuallyWithRetry({
+  from: ORG_EMAIL_SENDERS.system,
+  ...ORG_MAIL_ROUTING["Leave"],   // supplies replyTo + listId together
+  to: recipients,
+  subject,
+  html,
+})
+```
+
+**Reply-To must be a monitored mailbox** — `ict@`, `hradmin@`, `accounts@`. A Reply-To
+nobody opens is worse than none, because senders assume they were heard. Never point
+it at a named individual unless the role genuinely has no shared mailbox (only
+Correspondence does today).
+
+**List-Id** (RFC 2919, e.g. `<leave.acoblighting.com>`) is invisible to readers and
+exists so recipients can filter a stream (`list:leave.acoblighting.com` in Gmail)
+without the subject carrying a `[Leave]`-style prefix. Add one for every new module.
+
+**The only sender that varies is `send-communications-mail`** — real correspondence
+written by a person, sent as `ACOB {department}` via `edgeDepartmentSenderBare()`,
+replying to that department's lead resolved per send.
+
+### Subject Line Standard (Mandatory)
+
+> **`{Module noun} {what happened} — {reference}`**
+
+1. **Lead with the module noun** — `Asset`, `Leave Request`, `Help Desk Ticket`,
+   `Payment`, `Meeting`, `Attendance`, `Staff Exit`. The sender is generic, so the
+   subject is the only thing identifying the stream. Non-negotiable.
+2. **Then the event in plain words** — past tense for what happened (`Assigned`,
+   `Approved`, `Returned`), forward-looking for what is needed (`Awaiting Your
+   Approval`, `Due Today`).
+3. **Then the reference after ` — ` (em dash), always last.** One separator. Never a
+   colon, never a hyphen, never both.
+4. **No prefixes, no brackets, no company name.** Not `System:`, not `[Assets]`, not
+   `— ACOB Lighting Technology Limited` — the From line already says it.
+5. **Meaning within ~45 characters** before the reference; that is roughly what a
+   phone shows.
+6. **Nothing dynamic in the opening words**, so a sorted inbox groups naturally.
+
+Conforming examples: `Asset Assigned — ACOB/HQ/DSKST/2023/005`,
+`Leave Request Approved — LR-0042`, `Payment Overdue — Generator Servicing`,
+`Help Desk Ticket Created — HD-0117`, `Staff Exit Notification — Jane Doe`.
+
+Birthday mail is the single deliberate exception (`Happy Birthday from ACOB
+Lighting!`) — it is meant to read as human, not as a system record.
+
+`withSubjectPrefix()` in both runtimes is intentionally a pass-through. Bracket
+prefixes were considered and rejected: they cost ~9 characters of mobile preview on
+every mail to duplicate what rule 1 already guarantees. Filtering is `List-Id`'s job.
+
+Edge functions are excluded from `tsc`/`eslint`; validate with
+`deno check --node-modules-dir=auto supabase/functions/*/index.ts` and **smoke-test any
+sender or subject change on deploy**.
+
+## Email Template Standard — Header, Footer, and Dark-Mode Lock (Mandatory)
+
+**Every email sent from this ERP must use the branded ACOB shell**: black header bar with the ACOB logo, green (`#16a34a`) top/bottom borders, a white 600–680px content wrapper, and a matching black footer with the company name + subsystem line + automated-notice text. Do not invent a one-off lighter/plainer template — copy the shell from an existing sender (`supabase/functions/_shared/artifact-email.ts` or `supabase/functions/send-meeting-reminder/index.ts` are the reference implementations) and only swap the body content.
+
+**The header/footer black bars must be dark-mode-locked**, or Gmail/Outlook dark mode will invert them to a white bar with unreadable text. Every black header/footer `<table>` cell must carry all of the following together — no partial subset:
+
+```html
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000"
+  style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #16a34a;border-bottom:3px solid #16a34a;mso-line-height-rule:exactly;">
+  <tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">
+    <!-- logo or footer text -->
+  </td></tr>
+</table>
+```
+
+The `background-image:linear-gradient(color,color) !important` is the load-bearing part — Gmail's dark-mode algorithm inverts flat `background-color` values but leaves elements with a `background-image` alone. `background:` alone (as used in `_shared/artifact-email.ts` before this was fixed) is **not sufficient** and will still get inverted in Gmail dark mode.
+
+Before adding a new email template (Next.js `lib/email-templates/`, `lib/*-mailer.ts`, or a Supabase edge function), verify the header/footer table matches this exact pattern. If you copy an existing template as a starting point, grep it for `linear-gradient` first — `send-birthday-emails`, `send-communications-mail`, `send-email-notification`, `send-weekly-report`, and `send-meeting-reminder` already have it correctly.
+
+## Email Delivery Standard — Loop Over Recipients Individually (Mandatory)
+
+**Never send a system/automated email to multiple recipients in a single `to` array/list.** Doing this puts all recipients in the email header's `to` field, exposing everyone's email address to all other recipients (acting like an unintentional public "CC").
+
+- **Standard Policy**: If an email needs to go to multiple people, always loop over the recipient list and call the email dispatch helper (`sendEmail` or equivalent) individually for each recipient, so that each person receives a separate email where they are the sole recipient.
+- **Reference Implementations**:
+  - `send-meeting-reminder` (loops through `recipients` individually).
+  - `send-attendance-daily-report` (loops through `recipientEmails` individually).
+  - `send-weekly-report` (uses `processRecipientBatch` to send to each recipient individually).
+  - `send-communications-mail` (uses `processRecipientBatch` to send to each recipient individually).
+
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

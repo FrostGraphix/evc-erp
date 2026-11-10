@@ -1,0 +1,93 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# testing
+/coverage
+/test-results
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# PDF engines copied from node_modules (scripts/copy-pdf-engines.mjs)
+/public/vendor/pdf-engines/
+
+# misc
+.DS_Store
+*.pem
+
+# local caches
+.npm-cache/
+
+# project documents/images at repository root only
+/*.docx
+/*.xlsx
+/*.jpg
+/*.jpeg
+/*.png
+
+# claude
+.claude
+.claude-code
+
+# cursor
+.cursor
+
+# local test scripts (may contain sensitive data)
+/scripts/test-*.mjs
+/scripts/test-*.ts
+/scripts/test-*.js
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local build/debug output dumps (never intended to be committed)
+/build.log
+/build_output.log
+/type-check.log
+/logs.txt
+/output.txt
+/start_output.txt
+/filelist.txt
+/debug_output*.txt
+/pr_body*.md
+/tmp-*.pdf
+/tmp-*.zip
+/tmp-*.patch
+/email-preview*.html
+/public/email-preview*.html
+
+# local env files
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# supabase
+supabase/.temp/
+supabase/.branches/
+.env.local
+
+.mcp.json
+
+# Launch video media (kept local, not deployed via git)
+launch-video/
+
+# python cache
+__pycache__/
+*.pyc
+

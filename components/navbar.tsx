@@ -1,0 +1,429 @@
+"use client"
+
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { useState, useEffect } from "react"
+import {
+  LogOut,
+  Menu,
+  X,
+  User,
+  ClipboardList,
+  Calendar,
+  Clock,
+  Settings,
+  ShieldCheck,
+  PanelLeftClose,
+  PanelLeftOpen,
+  CircleHelp,
+} from "lucide-react"
+import { NotificationBell } from "@/components/notification-bell"
+import { UniversalSearch } from "@/components/universal-search"
+import { useSidebarSafe } from "@/components/sidebar-context"
+import { ThemeToggle } from "@/components/ui/theme-toggle"
+import { cn, getInitials } from "@/lib/utils"
+import { MatrixLogo } from "@/components/matrix-logo"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+
+import { useLogout } from "@/hooks/use-logout"
+interface NavbarProps {
+  user?: {
+    email?: string
+    user_metadata?: {
+      first_name?: string
+      last_name?: string
+      avatar_url?: string
+      picture?: string
+    }
+  }
+  avatarUrl?: string | null
+  canAccessAdmin?: boolean
+  isAdminMode?: boolean
+}
+
+export function Navbar({ user, avatarUrl, canAccessAdmin = false, isAdminMode = false }: NavbarProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(
+    avatarUrl || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null
+  )
+  const pathname = usePathname()
+  const isMaintenancePage = pathname.startsWith("/maintenance")
+  const dashboardHref = isAdminMode ? "/admin" : "/profile"
+  // Admin (gold) and dept (navy) both render inside .admin-shell; the colour
+  // itself comes from the tokens globals.css resolves on <html>.
+  const isScopedSurface = isAdminMode || pathname.startsWith("/dept")
+  const logoClassName = "h-8 md:h-10"
+
+  // Get sidebar context safely (returns null if not available)
+  const sidebarContext = useSidebarSafe()
+  const { isCollapsed, setIsCollapsed } = sidebarContext || { isCollapsed: false, setIsCollapsed: () => {} }
+
+  useEffect(() => {
+    if (avatarUrl !== undefined) {
+      setCurrentAvatarUrl(avatarUrl)
+    } else if (user?.user_metadata?.avatar_url || user?.user_metadata?.picture) {
+      setCurrentAvatarUrl(user.user_metadata.avatar_url || user.user_metadata.picture || null)
+    }
+  }, [avatarUrl, user?.user_metadata?.avatar_url, user?.user_metadata?.picture])
+
+  // Listen for real-time avatar updates from profile photo upload/delete
+  useEffect(() => {
+    const handleAvatarChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ avatarUrl?: string | null }>
+      setCurrentAvatarUrl(customEvent.detail?.avatarUrl ?? null)
+    }
+    window.addEventListener("profile-avatar-changed", handleAvatarChange)
+    return () => {
+      window.removeEventListener("profile-avatar-changed", handleAvatarChange)
+    }
+  }, [])
+
+  // Listen for sidebar state changes
+  useEffect(() => {
+    const handleSidebarStateChange = (e: Event) => {
+      const customEvent = e as CustomEvent
+      setIsSidebarOpen(customEvent.detail?.isOpen ?? false)
+    }
+    window.addEventListener("sidebar-state-change", handleSidebarStateChange)
+    return () => {
+      window.removeEventListener("sidebar-state-change", handleSidebarStateChange)
+    }
+  }, [])
+
+  const handleLogout = useLogout()
+
+  const guideButton = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" asChild>
+          <Link href="/guide" aria-label="Matrix guide">
+            <CircleHelp className="h-[1.2rem] w-[1.2rem]" />
+          </Link>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Matrix guide</TooltipContent>
+    </Tooltip>
+  )
+
+  const accountMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0 lg:h-11 lg:w-11">
+          <Avatar className="h-8 w-8 lg:h-9 lg:w-9">
+            {currentAvatarUrl && (
+              <AvatarImage
+                src={currentAvatarUrl}
+                alt={user?.user_metadata?.first_name || user?.email || "User avatar"}
+                className="object-cover"
+              />
+            )}
+            <AvatarFallback
+              className={cn(
+                "text-xs font-semibold lg:text-sm",
+                isScopedSurface
+                  ? "bg-[var(--admin-primary)] text-[var(--admin-primary-foreground)]"
+                  : "bg-primary text-primary-foreground"
+              )}
+            >
+              {getInitials(user?.email, user?.user_metadata?.first_name, user?.user_metadata?.last_name)}
+            </AvatarFallback>
+          </Avatar>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-56" align="end" forceMount>
+        <DropdownMenuLabel className="font-normal">
+          <div className="flex flex-col space-y-1">
+            <p className="text-sm leading-none font-medium">Account</p>
+            <p className="text-muted-foreground text-xs leading-none">{user?.email}</p>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {!isMaintenancePage && (
+          <>
+            <DropdownMenuItem asChild>
+              <Link href="/profile" className="cursor-pointer">
+                <User className="mr-2 h-4 w-4" />
+                Profile
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/tasks" className="cursor-pointer">
+                <ClipboardList className="mr-2 h-4 w-4" />
+                Task
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/help-desk" className="cursor-pointer">
+                <ClipboardList className="mr-2 h-4 w-4" />
+                Help Desk
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/hr/leave" className="cursor-pointer">
+                <Calendar className="mr-2 h-4 w-4" />
+                Leave
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/hr/attendance" className="cursor-pointer">
+                <Clock className="mr-2 h-4 w-4" />
+                Attendance
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/settings" className="cursor-pointer">
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/guide" className="cursor-pointer">
+                <CircleHelp className="mr-2 h-4 w-4" />
+                Matrix guide
+              </Link>
+            </DropdownMenuItem>
+            {canAccessAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/admin" className="flex cursor-pointer items-center">
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Admin
+                  </Link>
+                </DropdownMenuItem>
+              </>
+            )}
+          </>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+          <LogOut className="mr-2 h-4 w-4" />
+          Logout
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
+  return (
+    <nav
+      className={cn(
+        "fixed top-0 right-0 left-0 z-50 w-full overflow-visible border-b",
+        isScopedSurface
+          ? "border-[var(--admin-sidebar-border)] bg-[var(--admin-sidebar-bg)] backdrop-blur-md"
+          : "border-border bg-card"
+      )}
+    >
+      <div className="flex h-16 w-full max-w-full items-center overflow-visible">
+        {/* Left side - Collapse Button and Logo (aligned with sidebar edge) */}
+        {sidebarContext && (
+          <div className="hidden h-full items-center lg:flex">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "h-full w-10 rounded-none",
+                    isScopedSurface && "hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+                  )}
+                  onClick={() => setIsCollapsed(!isCollapsed)}
+                  aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                  {isCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>{isCollapsed ? "Expand sidebar" : "Collapse sidebar"}</p>
+              </TooltipContent>
+            </Tooltip>
+            <Link href={dashboardHref} className="flex h-full items-center px-4">
+              <MatrixLogo className={logoClassName} />
+            </Link>
+          </div>
+        )}
+
+        {/* Mobile - Logo only */}
+        <div className="flex items-center gap-2 px-4 lg:hidden">
+          <Link href={dashboardHref} className="flex items-center">
+            <MatrixLogo className={logoClassName} />
+          </Link>
+        </div>
+
+        {/* Right side - search, notifications and user menu */}
+        <div className="flex flex-1 items-center justify-end gap-2 overflow-visible px-2 sm:gap-4 sm:px-4 lg:px-8">
+          <div className="hidden max-w-md flex-1 items-center gap-4 md:flex">
+            {!isMaintenancePage && <UniversalSearch isAdminMode={isAdminMode} />}
+          </div>
+          <div className="hidden items-center gap-4 overflow-visible md:flex">
+            {!isMaintenancePage && guideButton}
+            {!isMaintenancePage && <NotificationBell isAdmin={isAdminMode} />}
+            <ThemeToggle />
+            {accountMenu}
+          </div>
+
+          <div className="flex items-center gap-2 overflow-visible md:hidden">
+            {!isMaintenancePage && <NotificationBell isAdmin={isAdminMode} />}
+            <ThemeToggle />
+            {accountMenu}
+          </div>
+
+          {/* Mobile menu button */}
+          <button
+            className="lg:hidden"
+            onClick={() => {
+              // If sidebar context exists, toggle the sidebar instead of navbar menu
+              if (sidebarContext) {
+                const event = new CustomEvent("toggle-mobile-sidebar")
+                window.dispatchEvent(event)
+              } else {
+                setIsOpen(!isOpen)
+              }
+            }}
+          >
+            {sidebarContext && isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile menu - Only show if no sidebar context */}
+      {isOpen && !sidebarContext && (
+        <div
+          className={cn(
+            "space-y-2 border-t py-4 lg:hidden",
+            isScopedSurface ? "border-[var(--admin-sidebar-border)]" : "border-border"
+          )}
+        >
+          <div className={`flex items-center px-4 py-2 mb-2${isCollapsed ? "" : "gap-3"}`}>
+            <Avatar className="h-10 w-10">
+              {currentAvatarUrl && (
+                <AvatarImage
+                  src={currentAvatarUrl}
+                  alt={user?.user_metadata?.first_name || user?.email || "User avatar"}
+                  className="object-cover"
+                />
+              )}
+              <AvatarFallback
+                className={cn(
+                  "font-semibold",
+                  isScopedSurface
+                    ? "bg-[var(--admin-primary)] text-[var(--admin-primary-foreground)]"
+                    : "bg-primary text-primary-foreground"
+                )}
+              >
+                {getInitials(user?.email, user?.user_metadata?.first_name, user?.user_metadata?.last_name)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col">
+              <p className="text-sm font-medium">Account</p>
+              <p className="text-muted-foreground text-xs">{user?.email}</p>
+            </div>
+          </div>
+          <Link
+            href="/profile"
+            className={cn(
+              "flex items-center gap-2 rounded px-4 py-2 text-sm",
+              isScopedSurface
+                ? "hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+                : "hover:bg-accent"
+            )}
+          >
+            <User className="h-4 w-4" />
+            Profile
+          </Link>
+          <Link
+            href="/tasks"
+            className={cn(
+              "flex items-center gap-2 rounded px-4 py-2 text-sm",
+              isScopedSurface
+                ? "hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+                : "hover:bg-accent"
+            )}
+          >
+            <ClipboardList className="h-4 w-4" />
+            Task
+          </Link>
+          <Link
+            href="/help-desk"
+            className={cn(
+              "flex items-center gap-2 rounded px-4 py-2 text-sm",
+              isScopedSurface
+                ? "hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+                : "hover:bg-accent"
+            )}
+          >
+            <ClipboardList className="h-4 w-4" />
+            Help Desk
+          </Link>
+          <Link
+            href="/hr/leave"
+            className={cn(
+              "flex items-center gap-2 rounded px-4 py-2 text-sm",
+              isScopedSurface
+                ? "hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+                : "hover:bg-accent"
+            )}
+          >
+            <Calendar className="h-4 w-4" />
+            Leave
+          </Link>
+          <Link
+            href="/hr/attendance"
+            className={cn(
+              "flex items-center gap-2 rounded px-4 py-2 text-sm",
+              isScopedSurface
+                ? "hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+                : "hover:bg-accent"
+            )}
+          >
+            <Clock className="h-4 w-4" />
+            Attendance
+          </Link>
+          <Link
+            href="/settings"
+            className={cn(
+              "flex items-center gap-2 rounded px-4 py-2 text-sm",
+              isScopedSurface
+                ? "hover:bg-[var(--admin-accent-soft)] hover:text-[var(--admin-primary)]"
+                : "hover:bg-accent"
+            )}
+          >
+            <Settings className="h-4 w-4" />
+            Settings
+          </Link>
+          {canAccessAdmin && (
+            <>
+              <div
+                className={cn(
+                  "my-2 border-t",
+                  isScopedSurface ? "border-[var(--admin-sidebar-border)]" : "border-border"
+                )}
+              />
+              <Link href="/admin" className="hover:bg-accent flex items-center gap-2 rounded px-4 py-2 text-sm">
+                <ShieldCheck className="h-4 w-4" />
+                Admin
+              </Link>
+            </>
+          )}
+          <div
+            className={cn("my-2 border-t", isScopedSurface ? "border-[var(--admin-sidebar-border)]" : "border-border")}
+          />
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="w-full justify-start">
+            <LogOut className="mr-2 h-4 w-4" />
+            Logout
+          </Button>
+        </div>
+      )}
+    </nav>
+  )
+}

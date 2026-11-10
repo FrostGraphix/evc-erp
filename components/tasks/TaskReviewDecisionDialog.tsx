@@ -1,0 +1,428 @@
+"use client"
+
+import { useState } from "react"
+import { toast } from "sonner"
+import { CheckCircle2, AlertTriangle, Clock, UserCheck, RotateCcw, XCircle, Calendar, Ban } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { SearchableSelect } from "@/components/ui/searchable-select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/patterns/status-badge"
+import { RatingInput } from "@/components/ui/rating-input"
+import type { Task } from "@/types/task"
+import { apiFetch } from "@/lib/api-client"
+import { formatFullName } from "@/lib/utils"
+import { formatWATDate } from "@/lib/utils/date"
+import { TASK_CANCEL_REASONS, TASK_CANCEL_REASON_LABELS, type TaskCancelReason } from "@/lib/tasks/constants"
+import { TASK_RATING_MAX, TASK_RATING_MIN, TASK_WEIGHT_DEFAULT, isValidRating } from "@/lib/tasks/scoring"
+
+export interface TaskReviewEmployee {
+  id: string
+  first_name: string
+  last_name: string
+  department: string
+}
+
+interface TaskReviewDecisionDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  task: Task | null
+  assignableEmployees: TaskReviewEmployee[]
+  /** Set when this reviewer may not approve and rate the task (their own task). */
+  ratingBlockedReason?: string | null
+  onSuccess: () => void
+}
+
+type DecisionId = "approve" | "rework" | "reassign" | "fail" | "extend" | "reopen" | "cancel"
+
+const DECISIONS: Array<{
+  id: DecisionId
+  label: string
+  description: string
+  unavailableReason: string
+  icon: typeof CheckCircle2
+  className: string
+  available: (task: Task) => boolean
+}> = [
+  {
+    id: "approve",
+    label: "Approve & Complete",
+    description: "Accept the work and rate it — this is what turns its weight into a score.",
+    unavailableReason: "Requires submission",
+    icon: CheckCircle2,
+    className: "border-success/30 text-success hover:bg-emerald-500/10",
+    available: (task) => ["submitted_for_review", "in_progress", "pending", "unable_to_complete"].includes(task.status),
+  },
+  {
+    id: "rework",
+    label: "Return for Changes",
+    description: "Send it back to the assignee with instructions. Still open, not yet scored.",
+    unavailableReason: "Requires submission",
+    icon: RotateCcw,
+    className: "border-purple/30 text-purple hover:bg-purple-500/10",
+    available: (task) => ["submitted_for_review", "unable_to_complete"].includes(task.status),
+  },
+  {
+    id: "reassign",
+    label: "Reassign",
+    description: "Move the work to someone else. Neutral for the original assignee's score.",
+    unavailableReason: "Task closed",
+    icon: UserCheck,
+    className: "border-info/30 text-info hover:bg-sky-500/10",
+    available: (task) => !["completed", "reassigned", "cancelled"].includes(task.status),
+  },
+  {
+    id: "extend",
+    label: "Extend Deadline",
+    description: "Give more time, with a reason kept on the task.",
+    unavailableReason: "Task closed",
+    icon: Calendar,
+    className: "border-info/30 text-info hover:bg-blue-500/10",
+    available: (task) => !["completed", "reassigned", "cancelled"].includes(task.status),
+  },
+  {
+    id: "reopen",
+    label: "Reopen / Pardon",
+    description: "Reopen a previously failed task back to in-progress with an updated deadline.",
+    unavailableReason: "Only failed tasks",
+    icon: RotateCcw,
+    className: "border-warning/30 text-warning hover:bg-amber-500/10",
+    available: (task) => task.status === "failed",
+  },
+  {
+    id: "fail",
+    label: "Mark as Failed",
+    description: "Terminal write-off. The task scores zero at its full weight.",
+    unavailableReason: "Task closed",
+    icon: XCircle,
+    className: "border-danger/30 text-danger hover:bg-rose-500/10",
+    available: (task) => !["completed", "reassigned", "cancelled", "failed"].includes(task.status),
+  },
+  {
+    id: "cancel",
+    label: "Cancel (close as not planned)",
+    description: "Call the work off. Left out of the assignee's score entirely, neither credit nor failure.",
+    unavailableReason: "Task closed",
+    icon: Ban,
+    className: "border-border text-muted-foreground hover:bg-muted",
+    available: (task) => !["completed", "reassigned", "cancelled"].includes(task.status),
+  },
+]
+
+export function TaskReviewDecisionDialog({
+  open,
+  onOpenChange,
+  task,
+  assignableEmployees,
+  ratingBlockedReason = null,
+  onSuccess,
+}: TaskReviewDecisionDialogProps) {
+  const [actionType, setActionType] = useState<DecisionId | null>(null)
+  const [comment, setComment] = useState("")
+  const [newAssignee, setNewAssignee] = useState("")
+  const [newDueDate, setNewDueDate] = useState("")
+  const [rating, setRating] = useState<number | null>(null)
+  const [cancelReason, setCancelReason] = useState<TaskCancelReason | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  if (!task) return null
+
+  const isUnableToComplete = task.status === "unable_to_complete"
+
+  const employeeOptions = assignableEmployees
+    .filter((e) => e.id !== task.assigned_to)
+    .map((e) => ({
+      value: e.id,
+      label: `${formatFullName(e.first_name, e.last_name)} (${e.department})`,
+    }))
+
+  const handleReset = () => {
+    setActionType(null)
+    setComment("")
+    setNewAssignee("")
+    setNewDueDate("")
+    setRating(null)
+    setCancelReason(null)
+  }
+
+  const handleSubmitDecision = async () => {
+    if (!actionType) return
+    setIsSubmitting(true)
+
+    try {
+      let payload: Record<string, unknown> = {}
+
+      if (actionType === "approve") {
+        // Approval and rating are one action — a task cannot be completed
+        // unrated, because the rating is what turns its weight into a score.
+        if (!isValidRating(rating)) {
+          toast.error("Select a performance rating before approving this task")
+          setIsSubmitting(false)
+          return
+        }
+        payload = {
+          status: "completed",
+          rating,
+          comment: comment || "Approved by department lead/admin",
+        }
+      } else if (actionType === "rework") {
+        payload = {
+          status: "in_progress",
+          comment: comment || "Returned to the assignee for changes",
+        }
+      } else if (actionType === "reassign") {
+        if (!newAssignee) {
+          toast.error("Please select a new assignee to reassign this task")
+          setIsSubmitting(false)
+          return
+        }
+        payload = {
+          status: "reassigned",
+          reassigned_to: newAssignee,
+          reason: comment || "Reassigned by lead/admin",
+          due_date: newDueDate || task.due_date || null,
+        }
+      } else if (actionType === "fail") {
+        payload = {
+          status: "failed",
+          reason: comment || "Marked as failed by lead/admin",
+        }
+      } else if (actionType === "cancel") {
+        if (!cancelReason || (cancelReason === "other" && !comment.trim())) {
+          toast.error(cancelReason ? "Describe why the task is being cancelled" : "Choose why the task is cancelled")
+          setIsSubmitting(false)
+          return
+        }
+        payload = {
+          status: "cancelled",
+          cancel_reason: cancelReason,
+          reason: comment.trim() || undefined,
+        }
+      } else if (actionType === "extend" || actionType === "reopen") {
+        if (!newDueDate) {
+          toast.error("Please specify a new due date")
+          setIsSubmitting(false)
+          return
+        }
+        payload = {
+          status: "in_progress",
+          due_date: newDueDate,
+          extension_reason:
+            comment || (actionType === "reopen" ? "Reopened by lead/admin" : "Deadline extended by lead/admin"),
+        }
+      }
+
+      const res = await apiFetch(`/api/tasks/${task.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to submit decision")
+      }
+
+      toast.success("Task decision recorded successfully")
+      handleReset()
+      onOpenChange(false)
+      onSuccess()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to record decision")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) handleReset()
+        onOpenChange(v)
+      }}
+    >
+      <DialogContent className="flex max-h-[90vh] min-h-[min(540px,85vh)] w-[95vw] max-w-xl flex-col overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Task Review & Governance</DialogTitle>
+          <DialogDescription>Review task status, grant approvals, reassign, or extend timelines.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          {/* Task Summary Card */}
+          <div className="bg-muted/40 space-y-2 rounded-lg border p-3.5 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-foreground font-semibold">{task.title}</p>
+                {task.description && (
+                  <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">{task.description}</p>
+                )}
+              </div>
+              <StatusBadge status={task.status} className="shrink-0 text-xs capitalize" />
+            </div>
+
+            <div className="text-muted-foreground grid grid-cols-2 gap-2 pt-1 text-xs">
+              <div>
+                <span className="text-foreground font-medium">Assignee: </span>
+                {task.assigned_to_user
+                  ? formatFullName(task.assigned_to_user.first_name, task.assigned_to_user.last_name)
+                  : "Unassigned"}
+              </div>
+              <div>
+                <span className="text-foreground font-medium">Due Date: </span>
+                {task.due_date ? formatWATDate(task.due_date) : "None"}
+              </div>
+              {task.goal_title && (
+                <div className="col-span-2">
+                  <span className="text-foreground font-medium">Goal: </span>
+                  {task.goal_title}
+                </div>
+              )}
+            </div>
+
+            {isUnableToComplete && task.unable_to_complete_reason && (
+              <div className="text-warning border-warning/30 bg-warning/10 rounded border p-2.5 text-xs">
+                <span className="mb-0.5 block font-semibold">Reported Issue / Reason:</span>
+                {task.unable_to_complete_reason}
+              </div>
+            )}
+          </div>
+
+          {/* Decision dropdown */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Decision / Action</Label>
+            <Select
+              value={actionType ?? ""}
+              onValueChange={(val) => {
+                setActionType(val as DecisionId)
+                setComment("")
+                setRating(null)
+                setCancelReason(null)
+                setNewAssignee("")
+                setNewDueDate("")
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a decision..." />
+              </SelectTrigger>
+              <SelectContent>
+                {DECISIONS.filter((decision) => {
+                  if (decision.id === "approve" && ratingBlockedReason) return false
+                  return decision.available(task)
+                }).map((decision) => (
+                  <SelectItem key={decision.id} value={decision.id}>
+                    {decision.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {actionType && (
+              <p className="text-muted-foreground text-xs">{DECISIONS.find((d) => d.id === actionType)?.description}</p>
+            )}
+          </div>
+
+          {/* Selected Action Form */}
+          {actionType && (
+            <div className="space-y-3 rounded-lg border p-3.5">
+              {actionType === "reassign" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">New Assignee *</Label>
+                  <SearchableSelect
+                    options={employeeOptions}
+                    value={newAssignee}
+                    onValueChange={setNewAssignee}
+                    placeholder="Select new team member..."
+                  />
+                </div>
+              )}
+
+              {(actionType === "extend" || actionType === "reassign" || actionType === "reopen") && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">
+                    New Due Date {(actionType === "extend" || actionType === "reopen") && "*"}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={newDueDate}
+                    onChange={(e) => setNewDueDate(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+              )}
+
+              {actionType === "cancel" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Close as *</Label>
+                  <Select
+                    value={cancelReason ?? ""}
+                    onValueChange={(value) => setCancelReason(value as TaskCancelReason)}
+                  >
+                    <SelectTrigger className="w-full" aria-label="Cancel reason">
+                      <SelectValue placeholder="Choose a reason" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TASK_CANCEL_REASONS.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {TASK_CANCEL_REASON_LABELS[value]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {actionType === "approve" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Performance Rating *</Label>
+                  <RatingInput value={rating} onChange={setRating} min={TASK_RATING_MIN} max={TASK_RATING_MAX} />
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    {`Worth up to ${task.weight ?? TASK_WEIGHT_DEFAULT} points toward the assignee's KPI score (task weight ${task.weight ?? TASK_WEIGHT_DEFAULT})`}
+                    {rating
+                      ? ` — this rating earns ${Math.round((((task.weight ?? TASK_WEIGHT_DEFAULT) * rating) / TASK_RATING_MAX) * 100) / 100}.`
+                      : "."}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">
+                  {actionType === "approve"
+                    ? "Approval Note (Optional)"
+                    : actionType === "rework"
+                      ? "Rework Instructions *"
+                      : actionType === "fail"
+                        ? "Reason for rejection *"
+                        : actionType === "extend"
+                          ? "Extension Reason *"
+                          : actionType === "cancel"
+                            ? cancelReason === "other"
+                              ? "Note *"
+                              : "Note (Optional)"
+                            : "Reassignment Note"}
+                </Label>
+                <Textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Enter notes or explanation for audit log..."
+                  className="min-h-[70px] text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={handleReset} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleSubmitDecision} disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Confirm Decision"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}

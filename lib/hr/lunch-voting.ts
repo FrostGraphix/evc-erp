@@ -1,0 +1,318 @@
+import type { SupabaseClient } from "@supabase/supabase-js"
+
+/**
+ * Shared types and helpers for the lunch menu voting flow.
+ *
+ * A menu belongs to a single date and is made of an arbitrary number of
+ * ordered categories ("groups"), each holding the dishes staff pick from:
+ *
+ *   1 category, 1 option  → a fixed meal; voting just means "I'm eating"
+ *   1 category, N options → a straight choice (White Rice / Jollof / Fried)
+ *   2+ categories         → a pairing (Egusi/Ogbono/Afang + Fufu/Eba/Semovita)
+ *
+ * Nothing here is titled by hand. A single-category menu carries no group name
+ * (one list needs no heading), and the page heading comes from the date via
+ * menuHeading() — "Today's Menu" on the day, dated afterwards.
+ *
+ * The invariant that never changes: a voter picks at most one option per
+ * category, and must answer every category the admin marked required — never
+ * two from the same category, never only some of the required ones. It is
+ * enforced in three places: the unique (vote_id, group_id) key in the
+ * database, the required-category check in the vote route, and the
+ * single-select behaviour of the staff picker.
+ *
+ * `is_required` defaults to true; an admin opts a category out per menu (a
+ * drink alongside the food, say).
+ */
+
+export const DEFAULT_LUNCH_SETTINGS = {
+  cost: 2200,
+  subsidy_percent: 50,
+  eating_days: ["Monday", "Wednesday", "Friday"],
+  voting_deadline: "07:00",
+  voting_enabled: true,
+} as const
+
+export interface LunchSettingsValue {
+  cost: number
+  subsidy_percent: number
+  eating_days: string[]
+  /** Local (WAT) cut-off time for casting or changing a vote, "HH:MM". */
+  voting_deadline: string
+  voting_enabled: boolean
+}
+
+export type LunchMenuStatus = "draft" | "published" | "closed"
+
+export interface LunchMenuOption {
+  id: string
+  group_id: string
+  name: string
+  description: string | null
+  position: number
+  is_available: boolean
+}
+
+export interface LunchMenuGroup {
+  id: string
+  menu_id: string
+  /** Null on a single-category menu — one list needs no heading. */
+  name: string | null
+  position: number
+  is_required: boolean
+  options: LunchMenuOption[]
+}
+
+export interface LunchMenu {
+  id: string
+  date: string
+  status: LunchMenuStatus
+  voting_deadline: string | null
+  published_at: string | null
+  closed_at: string | null
+  /** Set when the day was cancelled — hidden from staff, no lunch charges. */
+  archived_at: string | null
+  groups: LunchMenuGroup[]
+}
+
+/** A single staff member's vote, with the option they picked in each group. */
+export interface LunchVoteRecord {
+  user_id: string
+  full_name: string
+  department: string | null
+  avatar_url: string | null
+  /** False for the poll's "NO" answer — a visible "not eating today". */
+  is_eating: boolean
+  created_at: string
+  updated_at: string
+  /** group_id → option_id. Empty for a NO vote. */
+  selections: Record<string, string>
+  /** The voter chose to hide their name from colleagues. */
+  hide_name: boolean
+  /**
+   * Set on a colleague's hidden vote after maskVotesForViewer: it still
+   * counts, but its name, photo and real user_id have been stripped.
+   */
+  is_masked?: boolean
+}
+
+export interface LunchVoter {
+  user_id: string
+  full_name: string
+  avatar_url: string | null
+  /** When they voted — the avatar stack shows the most recent first. */
+  voted_at: string
+  /** They hid their name from colleagues — only they and admins see this entry. */
+  hide_name: boolean
+}
+
+export interface LunchMenuViewRecord {
+  user_id: string
+  full_name: string
+  department: string | null
+  avatar_url: string | null
+  first_viewed_at: string
+  last_viewed_at: string
+  view_count: number
+}
+
+/** Aggregated count for one option, used by both the admin and staff views. */
+export interface LunchOptionTally {
+  option_id: string
+  group_id: string
+  name: string
+  count: number
+  /** Named voters only — hidden votes are in count and private_count. */
+  voters: LunchVoter[]
+  /** Votes for this option whose voter hid their name from the viewer. */
+  private_count: number
+}
+
+/**
+ * The synthetic "NO" row. Every poll carries it, so opting out is a visible
+ * answer rather than silence — but it is never a stored option row, which is
+ * why it needs an id that cannot collide with a real uuid.
+ */
+export const NOT_EATING_OPTION_ID = "not-eating"
+
+/** How far ahead staff may vote. Only published days inside it are offered. */
+export const LUNCH_LOOKAHEAD_DAYS = 7
+/** Yesterday stays readable so a just-closed poll can still be reviewed. */
+export const LUNCH_LOOKBACK_DAYS = 1
+
+/** Builds the poll's "NO" row from the votes that answered it. */
+export function notEatingTally(votes: LunchVoteRecord[]): LunchOptionTally {
+  const noVotes = votes.filter((vote) => !vote.is_eating)
+  const voters = noVotes
+    .filter((vote) => !vote.is_masked)
+    .map((vote) => ({
+      user_id: vote.user_id,
+      full_name: vote.full_name,
+      avatar_url: vote.avatar_url,
+      voted_at: vote.updated_at,
+      hide_name: vote.hide_name,
+    }))
+
+  return {
+    option_id: NOT_EATING_OPTION_ID,
+    group_id: NOT_EATING_OPTION_ID,
+    name: "NO — not eating",
+    count: noVotes.length,
+    voters,
+    private_count: noVotes.length - voters.length,
+  }
+}
+
+/**
+ * The heading staff see. Derived from the menu's date, never typed by an
+ * admin. Only today gets a relative name — every other day is shown as its
+ * actual date, so navigating the calendar is unambiguous.
+ */
+export function menuHeading(date: string, today: string): string {
+  if (date === today) return "Today's Menu"
+
+  const label = new Date(`${date}T12:00:00+01:00`).toLocaleDateString("en-GB", {
+    timeZone: "Africa/Lagos",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  })
+  return label
+}
+
+/** The label for one category, for menus that have more than one. */
+export function groupHeading(group: Pick<LunchMenuGroup, "name">, index: number): string {
+  return group.name?.trim() || `Choice ${index + 1}`
+}
+
+/** West Africa Time is UTC+1 year-round — no DST to account for. */
+const WAT_OFFSET = "+01:00"
+
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+export function isValidDeadlineTime(value: unknown): value is string {
+  return typeof value === "string" && TIME_PATTERN.test(value)
+}
+
+/**
+ * Merges the stored lunch_settings JSON over the defaults, discarding values
+ * that are the wrong shape so a bad hand-edit can't break the voting flow.
+ */
+export function normalizeLunchSettings(raw: unknown): LunchSettingsValue {
+  const value = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
+
+  const cost = Number(value.cost)
+  const subsidy = Number(value.subsidy_percent)
+  const eatingDays = Array.isArray(value.eating_days)
+    ? value.eating_days.filter((d): d is string => typeof d === "string")
+    : null
+
+  return {
+    cost: Number.isFinite(cost) && cost >= 0 ? cost : DEFAULT_LUNCH_SETTINGS.cost,
+    subsidy_percent:
+      Number.isFinite(subsidy) && subsidy >= 0 && subsidy <= 100 ? subsidy : DEFAULT_LUNCH_SETTINGS.subsidy_percent,
+    eating_days: eatingDays && eatingDays.length > 0 ? eatingDays : [...DEFAULT_LUNCH_SETTINGS.eating_days],
+    voting_deadline: isValidDeadlineTime(value.voting_deadline)
+      ? value.voting_deadline
+      : DEFAULT_LUNCH_SETTINGS.voting_deadline,
+    voting_enabled: typeof value.voting_enabled === "boolean" ? value.voting_enabled : true,
+  }
+}
+
+/** Reads and normalizes lunch_settings from system_settings. */
+export async function loadLunchSettings(client: SupabaseClient): Promise<LunchSettingsValue> {
+  const { data } = await client.from("system_settings").select("value").eq("key", "lunch_settings").maybeSingle()
+  return normalizeLunchSettings(data?.value)
+}
+
+/**
+ * Resolves the absolute cut-off instant for a menu: its explicit
+ * voting_deadline if the admin set one, otherwise the settings time applied
+ * to the menu's own date in WAT.
+ */
+export function resolveVotingDeadline(
+  menu: { date: string; voting_deadline: string | null },
+  settings: Pick<LunchSettingsValue, "voting_deadline">
+): Date {
+  if (menu.voting_deadline) return new Date(menu.voting_deadline)
+  return deadlineForDate(menu.date, settings.voting_deadline)
+}
+
+/** Builds the absolute instant for "HH:MM on this date, WAT". */
+export function deadlineForDate(date: string, time: string): Date {
+  const safeTime = isValidDeadlineTime(time) ? time : DEFAULT_LUNCH_SETTINGS.voting_deadline
+  return new Date(`${date}T${safeTime}:00${WAT_OFFSET}`)
+}
+
+/**
+ * Whether votes can still be cast or changed. A closed menu is closed
+ * regardless of the clock; a published menu closes when the deadline passes.
+ */
+export function isVotingOpen(
+  menu: { status: LunchMenuStatus; date: string; voting_deadline: string | null; archived_at?: string | null },
+  settings: Pick<LunchSettingsValue, "voting_deadline">,
+  now: Date = new Date()
+): boolean {
+  if (menu.archived_at) return false
+  if (menu.status !== "published") return false
+  return now.getTime() < resolveVotingDeadline(menu, settings).getTime()
+}
+
+/** Money split for one meal, given the configured cost and subsidy. */
+export function lunchCostBreakdown(settings: Pick<LunchSettingsValue, "cost" | "subsidy_percent">) {
+  const cost = Number(settings.cost)
+  const companySubsidy = cost * (Number(settings.subsidy_percent) / 100)
+  return {
+    cost,
+    companySubsidy,
+    employeeDeduction: cost - companySubsidy,
+  }
+}
+
+/**
+ * Rolls per-user selections up into per-option counts, preserving group and
+ * option ordering so the UI renders tallies in menu order.
+ */
+export function tallyVotes(groups: LunchMenuGroup[], votes: LunchVoteRecord[]): LunchOptionTally[] {
+  const tallies = new Map<string, LunchOptionTally>()
+
+  for (const group of groups) {
+    for (const option of group.options) {
+      tallies.set(option.id, {
+        option_id: option.id,
+        group_id: group.id,
+        name: option.name,
+        count: 0,
+        voters: [],
+        private_count: 0,
+      })
+    }
+  }
+
+  for (const vote of votes) {
+    if (!vote.is_eating) continue
+    for (const optionId of Object.values(vote.selections)) {
+      const tally = tallies.get(optionId)
+      if (!tally) continue
+      tally.count += 1
+      if (vote.is_masked) {
+        tally.private_count += 1
+        continue
+      }
+      tally.voters.push({
+        user_id: vote.user_id,
+        full_name: vote.full_name,
+        avatar_url: vote.avatar_url,
+        voted_at: vote.updated_at,
+        hide_name: vote.hide_name,
+      })
+    }
+  }
+
+  // Most recent first, so the collapsed avatar stack shows the latest voters.
+  for (const tally of tallies.values()) {
+    tally.voters.sort((a, b) => b.voted_at.localeCompare(a.voted_at))
+  }
+
+  return Array.from(tallies.values())
+}

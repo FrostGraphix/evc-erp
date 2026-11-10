@@ -1,0 +1,560 @@
+"use client"
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Copy } from "lucide-react"
+import { toast } from "sonner"
+import {
+  PHONE_ICON,
+  MAIL_ICON,
+  WEB_ICON,
+  OFFICE_ICON,
+  ACOB_LOGO,
+  LINKEDIN_ICON,
+  X_ICON,
+  FACEBOOK_ICON,
+  INSTAGRAM_ICON,
+  ANNIVERSARY_LOGO,
+} from "@/lib/signature-assets"
+import {
+  buildAnniversarySignatureHtml,
+  buildContactSequence as buildSharedContactSequence,
+  buildDefaultSignatureHtml,
+  buildEmailContactHtml as buildSharedEmailContactHtml,
+  buildOfficeRowHtml as buildSharedOfficeRowHtml,
+  buildPhoneContactHtml as buildSharedPhoneContactHtml,
+  formatNameProperly as formatSharedName,
+  formatSignaturePhone,
+  type EmailContactOrder,
+} from "@/lib/signature/default-signature"
+import { escapeHtml } from "@/lib/email-templates/utils"
+
+interface SignatureCreatorProps {
+  profile: {
+    first_name?: string | null
+    other_names?: string | null
+    last_name?: string | null
+    designation?: string | null
+    phone_number?: string | null
+    additional_phone?: string | null
+    company_email?: string | null
+    additional_email?: string | null
+  } | null
+  authEmail?: string | null
+  variant?: "default" | "anniversary" | "anniversary-hosted" | "selectable"
+  defaultSelectableMode?: "default" | "anniversary" | "anniversary-hosted"
+}
+
+interface FormData {
+  firstName: string
+  middleName: string
+  lastName: string
+  companyRole: string
+  phoneNumber: string
+  companyEmail: string
+  alternativeEmail: string
+}
+
+const ANNIVERSARY_FONT_OPTIONS = [
+  {
+    id: "trebuchet",
+    label: "Trebuchet",
+    value: "'Trebuchet MS', Arial, sans-serif",
+  },
+] as const
+
+const ANNIVERSARY_TEMPLATE_OPTIONS = [{ id: "minimal", label: "Template 7" }] as const
+
+/** Absolute base URL used when generating "hosted images" anniversary signatures.
+ *  Falls back to a relative root so signatures still render in dev/preview. */
+const HOSTED_IMAGES_BASE = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "")
+
+const normalizePreferredCompanyEmail = (email?: string | null) => {
+  const normalizedEmail = email?.trim().toLowerCase() || ""
+  return normalizedEmail
+}
+
+const buildCompanyEmailFallback = (firstName: string, lastName: string) => {
+  const normalizedFirstName = firstName.trim().toLowerCase().replace(/\s+/g, "")
+  const normalizedLastName = lastName.trim().toLowerCase()
+
+  if (!normalizedFirstName || !normalizedLastName) {
+    return ""
+  }
+
+  return `${normalizedLastName.charAt(0)}.${normalizedFirstName}@evcng.com`
+}
+
+export function SignatureCreator({
+  profile,
+  authEmail,
+  variant = "default",
+  defaultSelectableMode = "default",
+}: SignatureCreatorProps) {
+  const preferredCompanyEmail =
+    normalizePreferredCompanyEmail(authEmail) ||
+    normalizePreferredCompanyEmail(profile?.company_email) ||
+    buildCompanyEmailFallback(profile?.first_name || "", profile?.last_name || "")
+
+  const [formData, setFormData] = useState<FormData>({
+    firstName: profile?.first_name || "",
+    middleName: profile?.other_names || "",
+    lastName: profile?.last_name || "",
+    companyRole: profile?.designation || "",
+    phoneNumber: profile?.phone_number || "",
+    companyEmail: preferredCompanyEmail,
+    alternativeEmail: profile?.additional_email || "",
+  })
+
+  const [emailError, setEmailError] = useState("")
+  const [phoneError, setPhoneError] = useState("")
+  const [alternativeEmailError, setAlternativeEmailError] = useState("")
+  const [selectedAnniversaryFont] = useState<(typeof ANNIVERSARY_FONT_OPTIONS)[number]["value"]>(
+    ANNIVERSARY_FONT_OPTIONS[0].value
+  )
+  const [selectedAnniversaryTemplate, setSelectedAnniversaryTemplate] =
+    useState<(typeof ANNIVERSARY_TEMPLATE_OPTIONS)[number]["id"]>("minimal")
+  const [selectedSignatureMode, setSelectedSignatureMode] = useState<"default" | "anniversary" | "anniversary-hosted">(
+    defaultSelectableMode
+  )
+  const [emailContactOrder, setEmailContactOrder] = useState<EmailContactOrder>("main-first")
+
+  useEffect(() => {
+    if (!formData.companyEmail.trim()) {
+      const fallbackEmail = buildCompanyEmailFallback(formData.firstName, formData.lastName)
+
+      if (fallbackEmail) {
+        setFormData((prev) => ({ ...prev, companyEmail: fallbackEmail }))
+      }
+    }
+  }, [formData.companyEmail, formData.firstName, formData.lastName])
+
+  const formatPhoneNumber = (phone: string) => formatSignaturePhone(phone)
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
+  const validateAlternativeEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
+  const validatePhone = (phone: string) => {
+    const digits = phone.replace(/\D/g, "")
+    return digits.length >= 11
+  }
+
+  // The standard signature and its building blocks live in
+  // lib/signature/default-signature so the profile's email-setup dialog copies
+  // exactly the same signature. These wrappers keep the anniversary variants
+  // below reading the form state as before.
+  const formatNameProperly = (name: string) => formatSharedName(name)
+
+  const buildContactSequence = (sections: string[]) => buildSharedContactSequence(sections)
+
+  const buildPhoneContactHtml = (formattedPhone: string) =>
+    buildSharedPhoneContactHtml(formData.phoneNumber, formattedPhone)
+
+  const buildEmailContactHtml = () =>
+    buildSharedEmailContactHtml(formData.companyEmail, formData.alternativeEmail, emailContactOrder)
+
+  const buildOfficeRowHtml = () => buildSharedOfficeRowHtml()
+
+  const generateDefaultSignature = (fullName: string, formattedPhone: string) =>
+    buildDefaultSignatureHtml({
+      fullName,
+      companyRole: formData.companyRole,
+      phoneNumber: formData.phoneNumber,
+      formattedPhone,
+      companyEmail: formData.companyEmail,
+      alternativeEmail: formData.alternativeEmail,
+      emailContactOrder,
+    })
+
+  const generateAnniversarySignature = (fullName: string, formattedPhone: string) =>
+    buildAnniversarySignatureHtml(
+      {
+        fullName,
+        companyRole: formData.companyRole,
+        phoneNumber: formData.phoneNumber,
+        formattedPhone,
+        companyEmail: formData.companyEmail,
+        alternativeEmail: formData.alternativeEmail,
+        emailContactOrder,
+      },
+      { font: selectedAnniversaryFont, template: selectedAnniversaryTemplate }
+    )
+
+  /** Generates the anniversary signature using publicly hosted image URLs instead of
+   *  base64 data-URIs. The layout is identical to generateAnniversarySignature. */
+  const generateAnniversaryHostedSignature = (fullName: string, formattedPhone: string) => {
+    const base = HOSTED_IMAGES_BASE
+    const phoneContactHtml = buildPhoneContactHtml(formattedPhone)
+    const emailContactHtml = buildEmailContactHtml()
+    const officeRowHtml = buildOfficeRowHtml()
+
+    // Hosted icon URLs
+    const PHONE_ICON_URL = `${base}/images/signature/phone-email.png`
+    const MAIL_ICON_URL = `${base}/images/signature/mail-email.png`
+    const WEB_ICON_URL = `${base}/images/signature/web-email.png`
+    const LINKEDIN_ICON_URL = `${base}/images/signature/linkedin-email.png`
+    const X_ICON_URL = `${base}/images/signature/x-email.png`
+    const FACEBOOK_ICON_URL = `${base}/images/signature/facebook-email.png`
+    const INSTAGRAM_ICON_URL = `${base}/images/signature/instagram-email.png`
+    const ANNIVERSARY_LOGO_URL = `${base}/images/signature/acob-10th-anniversary-email.jpg`
+
+    const contactBlock = `<div style="font-size: 14px; color: #374151; line-height: 1.35;">
+  <div style="margin: 0 0 4px 0;">
+    <img src="${PHONE_ICON_URL}" width="18" height="18" style="vertical-align: middle; opacity: 0.8; margin-right: 6px; display: inline-block;" alt="Phone" />${phoneContactHtml}
+  </div>
+  <div style="margin: 0 0 4px 0;">
+    <img src="${MAIL_ICON_URL}" width="18" height="18" style="vertical-align: middle; opacity: 0.8; margin-right: 6px; display: inline-block;" alt="Email" />${emailContactHtml}
+  </div>
+  <div>
+    ${officeRowHtml}
+  </div>
+</div>`
+
+    const mutedSocialIconStyle =
+      "border-radius: 4px; display: inline-block; filter: brightness(0.9) saturate(0.92); opacity: 0.92;"
+
+    const socialBlock = `<div style="display: inline-block;">
+  <a href="https://www.linkedin.com/company/acob-lighting-technology-limited" style="text-decoration: none; display: inline-block;"><img src="${LINKEDIN_ICON_URL}" width="22" height="22" alt="LinkedIn" style="${mutedSocialIconStyle}" /></a>
+  <a href="https://twitter.com/AcobLimited" style="text-decoration: none; display: inline-block; margin-left: 4px;"><img src="${X_ICON_URL}" width="22" height="22" alt="X (Twitter)" style="${mutedSocialIconStyle}" /></a>
+  <a href="https://www.facebook.com/acoblightingtechltd" style="text-decoration: none; display: inline-block; margin-left: 4px;"><img src="${FACEBOOK_ICON_URL}" width="22" height="22" alt="Facebook" style="${mutedSocialIconStyle}" /></a>
+  <a href="https://www.instagram.com/evc_ng/" style="text-decoration: none; display: inline-block; margin-left: 4px;"><img src="${INSTAGRAM_ICON_URL}" width="22" height="22" alt="Instagram" style="${mutedSocialIconStyle}" /></a>
+</div>`
+
+    const compactNarrative = `<p style="margin: 0 0 5px 0; font-size: 13px; font-weight: 700; color: #0f5c4d;">A decade of purpose, progress, and power.</p>
+<p style="margin: 0; font-size: 12px; color: #374151;">From 2016 to 2026, EVC has remained committed to driving innovation and creating lasting impact across Nigeria.</p>`
+
+    const anniversaryLogo = `<img src="${ANNIVERSARY_LOGO_URL}" width="250" height="auto" alt="EVC Logo" style="display: block;" />`
+
+    const anniversaryFooter = `<div style="border-top: 0.5px solid #e7dec2; padding-top: 8px; font-size: 11px; color: #6b7280; line-height: 1.4;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td style="padding: 0; font-weight: 600; font-style: italic; color: #6b7280; text-align: left;">
+        Celebrating 10 Years of Impact &bull; Lighting up Nigeria!
+      </td>
+      <td style="padding: 0; font-weight: 600; color: #6b7280; text-align: right; white-space: nowrap; vertical-align: top;">
+        2016 &ndash; 2026
+      </td>
+    </tr>
+  </table>
+  <div style="margin-top: 8px; border-top: 0.5px solid #e7dec2;"></div>
+  <p style="margin: 8px 0 0 0; font-size: 10.5px; color: #7a828e; font-style: italic;">This email, including any attachments, contains confidential information intended solely for the recipient(s) named above. If you have received this email in error, please notify the sender immediately and delete the email from your system. Any unauthorized use, disclosure, distribution, or copying of this email is strictly prohibited and may be unlawful.</p>
+</div>`
+
+    const renderLayout = (body: string) =>
+      `<div style="font-family: ${"Trebuchet MS"}, Arial, sans-serif; max-width: 1000px; margin: 0; padding: 12px 0; line-height: 1.5; color: #1f2937;">
+  ${body}
+</div>`
+
+    return renderLayout(`<div style="color: #d4af37;">&mdash;&mdash;</div>
+  <p style="margin: 0 0 4px 0; font-size: 14px; color: #4b5563; font-style: italic;">Best Regards,</p>
+  <p style="margin: 0; line-height: 1; font-size: 20px; font-weight: 700; color: #0f172a;">${escapeHtml(fullName)}</p>
+  <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #0f5c4d;">${escapeHtml(formData.companyRole)}</p>
+  <div style="margin-bottom: 10px;">${contactBlock}</div>
+  <div style="padding: 8px 0 14px 0; border-top: 2px solid #e7dec2; border-bottom: 2px solid #e7dec2;">
+    <div style="margin-bottom: 8px;">${anniversaryLogo}</div>
+    ${compactNarrative}
+    <div style="margin-top: 8px; margin-bottom: 12px;">${socialBlock}</div>
+    ${anniversaryFooter}
+  </div>`)
+  }
+
+  const generateSignature = () => {
+    const formattedFirstName = formatNameProperly(formData.firstName)
+    const formattedMiddleName = formData.middleName ? formatNameProperly(formData.middleName) : ""
+    const formattedLastName = formatNameProperly(formData.lastName)
+
+    const fullName = `${formattedFirstName}${
+      formattedMiddleName ? " " + formattedMiddleName : ""
+    } ${formattedLastName}`.trim()
+    const formattedPhone = formatPhoneNumber(formData.phoneNumber)
+
+    const activeVariant = variant === "selectable" ? selectedSignatureMode : variant
+
+    if (activeVariant === "anniversary") {
+      return generateAnniversarySignature(fullName, formattedPhone)
+    }
+
+    if (activeVariant === "anniversary-hosted") {
+      return generateAnniversaryHostedSignature(fullName, formattedPhone)
+    }
+
+    return generateDefaultSignature(fullName, formattedPhone)
+  }
+
+  const copyToClipboard = async () => {
+    const signature = generateSignature()
+
+    try {
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+        const clipboardItem = new ClipboardItem({
+          "text/html": new Blob([signature], { type: "text/html" }),
+          "text/plain": new Blob([signature], { type: "text/plain" }),
+        })
+
+        await navigator.clipboard.write([clipboardItem])
+      } else {
+        await navigator.clipboard.writeText(signature)
+      }
+
+      toast.success("Base64 signature copied to clipboard!")
+    } catch {
+      toast.error("Failed to copy signature")
+    }
+  }
+
+  const handleInputChange = (field: keyof FormData, value: string) => {
+    if (field === "phoneNumber") {
+      const numbersOnly = value.replace(/\D/g, "")
+      setFormData((prev) => ({ ...prev, [field]: numbersOnly }))
+
+      if (numbersOnly && !validatePhone(numbersOnly)) {
+        setPhoneError("Phone number must be at least 11 digits")
+      } else {
+        setPhoneError("")
+      }
+      return
+    }
+
+    if (field === "companyEmail") {
+      setFormData((prev) => ({ ...prev, [field]: value }))
+
+      if (value && !validateEmail(value)) {
+        setEmailError("Enter a valid email")
+      } else {
+        setEmailError("")
+      }
+      return
+    }
+
+    if (field === "alternativeEmail") {
+      setFormData((prev) => ({ ...prev, [field]: value }))
+
+      if (value && !validateAlternativeEmail(value)) {
+        setAlternativeEmailError("Enter a valid alternative email")
+      } else {
+        setAlternativeEmailError("")
+      }
+      return
+    }
+
+    setFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const isFormValid =
+    formData.firstName &&
+    formData.lastName &&
+    formData.companyRole &&
+    formData.phoneNumber &&
+    validatePhone(formData.phoneNumber) &&
+    formData.companyEmail &&
+    validateEmail(formData.companyEmail) &&
+    (!formData.alternativeEmail || validateAlternativeEmail(formData.alternativeEmail)) &&
+    !emailError &&
+    !phoneError &&
+    !alternativeEmailError
+
+  const activeVariant = variant === "selectable" ? selectedSignatureMode : variant
+
+  const isAnniversaryVariant = activeVariant === "anniversary" || activeVariant === "anniversary-hosted"
+
+  const pageTitle = isAnniversaryVariant ? "10th Anniversary Signature" : "Personal Information"
+  const pageDescription =
+    activeVariant === "anniversary"
+      ? "Generate the temporary 10th anniversary email signature (base64 images)"
+      : activeVariant === "anniversary-hosted"
+        ? "Generate the anniversary signature with publicly hosted images (recommended for email clients that block data URIs)"
+        : variant === "selectable"
+          ? "Choose between the standard and anniversary employee signature"
+          : "Fill in your details to generate your signature"
+  const previewTitle = isAnniversaryVariant ? "Anniversary Preview" : "Signature Preview"
+  const previewDescription = isAnniversaryVariant
+    ? "This is how your temporary anniversary signature will look"
+    : "This is how your signature will look"
+  const copyButtonLabel =
+    activeVariant === "anniversary"
+      ? "Copy Anniversary Signature"
+      : activeVariant === "anniversary-hosted"
+        ? "Copy Anniversary Signature (Hosted)"
+        : "Copy Signature"
+
+  return (
+    <div className="grid gap-6 md:grid-cols-2">
+      {/* Form */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{pageTitle}</CardTitle>
+          <CardDescription>{pageDescription}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {variant === "selectable" && (
+            <div className="space-y-2">
+              <Label>Signature Type</Label>
+              <Tabs
+                value={selectedSignatureMode}
+                onValueChange={(value) =>
+                  setSelectedSignatureMode(value as "default" | "anniversary" | "anniversary-hosted")
+                }
+              >
+                <TabsList className="h-auto w-full flex-wrap justify-start gap-1 p-1">
+                  <TabsTrigger value="default" className="shrink-0 px-2.5 py-1.5 text-xs">
+                    Standard
+                  </TabsTrigger>
+                  <TabsTrigger value="anniversary" className="shrink-0 px-2.5 py-1.5 text-xs">
+                    10th Anniversary
+                  </TabsTrigger>
+                  <TabsTrigger value="anniversary-hosted" className="shrink-0 px-2.5 py-1.5 text-xs">
+                    Anniversary (Hosted Images)
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <p className="text-muted-foreground text-xs">
+                Use <strong>Anniversary (Hosted Images)</strong> when your email client strips data-URI images. It uses
+                the same anniversary design but loads images from our hosted public URL.
+              </p>
+            </div>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="firstName">First Name *</Label>
+              <Input
+                id="firstName"
+                value={formData.firstName}
+                onChange={(e) => handleInputChange("firstName", e.target.value)}
+                placeholder="John"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="middleName">Middle Name</Label>
+              <Input
+                id="middleName"
+                value={formData.middleName}
+                onChange={(e) => handleInputChange("middleName", e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="lastName">Last Name *</Label>
+            <Input
+              id="lastName"
+              value={formData.lastName}
+              onChange={(e) => handleInputChange("lastName", e.target.value)}
+              placeholder="Akpa"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="companyRole">Designation *</Label>
+            <Input
+              id="companyRole"
+              value={formData.companyRole}
+              onChange={(e) => handleInputChange("companyRole", e.target.value)}
+              placeholder="IT Support employee"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="phoneNumber">Phone Number *</Label>
+            <Input
+              id="phoneNumber"
+              value={formData.phoneNumber}
+              onChange={(e) => handleInputChange("phoneNumber", e.target.value)}
+              placeholder="07012345678"
+            />
+            {phoneError && <p className="text-destructive text-sm">{phoneError}</p>}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="companyEmail">Company Email *</Label>
+              <Input
+                id="companyEmail"
+                type="email"
+                value={formData.companyEmail}
+                onChange={(e) => handleInputChange("companyEmail", e.target.value)}
+                placeholder="staff@evcng.com"
+              />
+              {emailError && <p className="text-destructive text-sm">{emailError}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="alternativeEmail">Alternative Email</Label>
+              <Input
+                id="alternativeEmail"
+                type="email"
+                value={formData.alternativeEmail}
+                onChange={(e) => handleInputChange("alternativeEmail", e.target.value)}
+                placeholder="info@example.com"
+              />
+              {alternativeEmailError && <p className="text-destructive text-sm">{alternativeEmailError}</p>}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Email Order</Label>
+            <Tabs value={emailContactOrder} onValueChange={(value) => setEmailContactOrder(value as EmailContactOrder)}>
+              <TabsList className="h-auto w-full flex-wrap justify-start gap-1 p-1">
+                <TabsTrigger value="main-first" className="shrink-0 px-2.5 py-1.5 text-xs">
+                  Main First
+                </TabsTrigger>
+                <TabsTrigger value="alternative-first" className="shrink-0 px-2.5 py-1.5 text-xs">
+                  Alternative First
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {activeVariant === "anniversary-hosted" && (
+            <div className="border-warning/30 bg-warning/15 rounded-md border p-3">
+              <p className="text-warning text-xs">
+                <strong>Hosted Images Edition</strong> — This signature uses absolute HTTPS URLs for all images instead
+                of embedded base64 data. Images will only display correctly when the receiving email client can reach{" "}
+                <code>{HOSTED_IMAGES_BASE || window?.location?.origin}</code>.
+              </p>
+            </div>
+          )}
+
+          <div className="flex">
+            <Button onClick={copyToClipboard} disabled={!isFormValid} className="flex-1">
+              <Copy className="mr-2 h-4 w-4" />
+              {copyButtonLabel}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Preview */}
+      <Card className="flex flex-col">
+        <CardHeader>
+          <div>
+            <CardTitle>{previewTitle}</CardTitle>
+            <CardDescription>{previewDescription}</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="flex-1">
+          {isFormValid ? (
+            <div
+              className="overflow-x-auto rounded-lg border bg-white p-4 text-sm shadow-xs"
+              dangerouslySetInnerHTML={{ __html: generateSignature() }}
+            />
+          ) : (
+            <div className="flex h-64 items-center justify-center rounded-lg border border-dashed">
+              <p className="text-muted-foreground">Fill in the required fields to see preview</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

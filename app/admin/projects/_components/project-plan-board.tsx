@@ -1,0 +1,755 @@
+"use client"
+
+import { useMemo, useState, type ReactNode } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers"
+import { CSS } from "@dnd-kit/utilities"
+import {
+  ArrowDown,
+  ArrowUp,
+  GripVertical,
+  Plus,
+  Loader2,
+  Trash2,
+  FolderTree,
+  Scale,
+  Star,
+  Pencil,
+  ChevronDown,
+  ChevronRight,
+  MoreVertical,
+} from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Progress } from "@/components/ui/progress"
+import { apiFetch } from "@/lib/api-client"
+import { cn, formatFullName } from "@/lib/utils"
+import { formatWATDate, toLocalISODate } from "@/lib/utils/date"
+import { TASK_STATUS_CONFIG, type TaskStatus } from "@/lib/tasks/constants"
+import { TASK_WEIGHT_DEFAULT } from "@/lib/tasks/scoring"
+import { countWork } from "@/lib/projects/health"
+import { EMPTY_TASK_FORM, TaskFormDialog, type TaskFormState } from "@/components/tasks/TaskFormDialog"
+import { createSeriesFromForm, isRepeating, showSeriesCreated } from "@/lib/tasks/series-client"
+import type { employee } from "@/app/admin/tasks/management/admin-tasks-content"
+import type { Task } from "@/types/task"
+import type { Project } from "@/components/projects/project-list-content"
+import { fetchProjectTasks, projectTasksKey, type WorkTask } from "@/lib/projects/work-tasks"
+import { QUERY_KEYS } from "@/lib/query-keys"
+
+import { RowsSkeleton } from "@/components/skeletons"
+type Plan = {
+  id: string
+  project_id: string
+  name: string
+  description: string | null
+  sort_order: number
+}
+
+type ProjectTask = WorkTask
+
+export type ProjectPlanStaffOption = {
+  id: string
+  first_name?: string | null
+  last_name?: string | null
+  full_name?: string | null
+  department?: string | null
+  company_email?: string | null
+}
+
+/** One plan in the list, draggable by the handle it hands to its children. */
+function SortablePlan({
+  id,
+  disabled,
+  children,
+}: {
+  id: string
+  disabled: boolean
+  children: (handle: ReactNode) => ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled,
+  })
+  const handle = disabled ? null : (
+    <button
+      type="button"
+      ref={setActivatorNodeRef}
+      {...attributes}
+      {...listeners}
+      onClick={(e) => e.stopPropagation()}
+      className="text-muted-foreground hover:text-foreground hover:bg-muted -ml-1 flex h-7 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded active:cursor-grabbing"
+      aria-label="Drag to reorder plan"
+    >
+      <GripVertical className="h-4 w-4" />
+    </button>
+  )
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn("relative", isDragging && "z-10 opacity-90 shadow-lg")}
+    >
+      {children(handle)}
+    </div>
+  )
+}
+
+/**
+ * Plans and their tasks for one project.
+ *
+ * Tasks are created through the same dialog department leads use, with the
+ * project and plan locked — there is no separate project-task form, because
+ * there is no separate project-task table. One row, counted once.
+ */
+export function ProjectPlanBoard({
+  project,
+  profiles = [],
+  readOnly = false,
+}: {
+  project: Project
+  profiles?: ProjectPlanStaffOption[] | employee[]
+  readOnly?: boolean
+}) {
+  const queryClient = useQueryClient()
+  const [isAddPlanOpen, setIsAddPlanOpen] = useState(false)
+  const [planForm, setPlanForm] = useState({ name: "", description: "" })
+  const [taskDialogPlan, setTaskDialogPlan] = useState<Plan | null>(null)
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false)
+  const [taskForm, setTaskForm] = useState<TaskFormState>(EMPTY_TASK_FORM)
+  const [isSavingTask, setIsSavingTask] = useState(false)
+  const [expandedPlans, setExpandedPlans] = useState<Record<string, boolean>>({})
+
+  const togglePlan = (id: string) => {
+    setExpandedPlans((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }))
+  }
+
+  const plansKey = ["project-plans", project.id]
+  const tasksKey = projectTasksKey(project.id)
+
+  const { data: plans = [], isLoading: plansLoading } = useQuery<Plan[]>({
+    queryKey: plansKey,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/projects/${project.id}/plans`, { cache: "no-store" })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || "Failed to load plans")
+      return payload.data
+    },
+  })
+
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery<ProjectTask[]>({
+    queryKey: tasksKey,
+    queryFn: () => fetchProjectTasks(project.id),
+  })
+
+  const addPlan = useMutation({
+    mutationFn: async ({ name, description }: { name: string; description?: string }) => {
+      const res = await apiFetch(`/api/projects/${project.id}/plans`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: description || null, sort_order: plans.length }),
+      })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || "Failed to add plan")
+      return payload.data
+    },
+    onSuccess: () => {
+      toast.success("Plan added")
+      setPlanForm({ name: "", description: "" })
+      setIsAddPlanOpen(false)
+      void queryClient.invalidateQueries({ queryKey: plansKey })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const deletePlan = useMutation({
+    mutationFn: async (planId: string) => {
+      const res = await apiFetch(`/api/projects/${project.id}/plans?plan_id=${planId}`, { method: "DELETE" })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || "Failed to delete plan")
+      return payload.data
+    },
+    onSuccess: () => {
+      toast.success("Plan removed. Its tasks were kept and are now ungrouped.")
+      void queryClient.invalidateQueries({ queryKey: plansKey })
+      void queryClient.invalidateQueries({ queryKey: tasksKey })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  // Dragging needs a small movement first, so a click on the handle is not a drag;
+  // touch waits briefly so a phone can still scroll past the list.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const reorderPlans = useMutation({
+    mutationFn: async (next: Plan[]) => {
+      const res = await apiFetch(`/api/projects/${project.id}/plans`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: next.map((plan) => plan.id) }),
+      })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || "Failed to reorder plans")
+      return payload.data
+    },
+    // Move the list straight away; put it back if the save fails.
+    onMutate: async (next) => {
+      await queryClient.cancelQueries({ queryKey: plansKey })
+      const previous = queryClient.getQueryData<Plan[]>(plansKey)
+      queryClient.setQueryData(plansKey, next)
+      return { previous }
+    },
+    onError: (err: Error, _next, context) => {
+      if (context?.previous) queryClient.setQueryData(plansKey, context.previous)
+      toast.error(err.message)
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: plansKey }),
+  })
+
+  function movePlan(from: number, to: number) {
+    if (to < 0 || to >= plans.length || from === to) return
+    reorderPlans.mutate(arrayMove(plans, from, to))
+  }
+
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id) return
+    movePlan(
+      plans.findIndex((plan) => plan.id === active.id),
+      plans.findIndex((plan) => plan.id === over.id)
+    )
+  }
+
+  function renderPlanMenuItems(plan: Plan) {
+    const index = plans.findIndex((p) => p.id === plan.id)
+    return (
+      <>
+        <DropdownMenuItem
+          className="cursor-pointer"
+          disabled={index <= 0 || reorderPlans.isPending}
+          onClick={() => movePlan(index, index - 1)}
+        >
+          <ArrowUp className="mr-2 h-4 w-4" />
+          Move up
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="cursor-pointer"
+          disabled={index === plans.length - 1 || reorderPlans.isPending}
+          onClick={() => movePlan(index, index + 1)}
+        >
+          <ArrowDown className="mr-2 h-4 w-4" />
+          Move down
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+          onClick={() => deletePlan.mutate(plan.id)}
+          disabled={deletePlan.isPending}
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete plan
+        </DropdownMenuItem>
+      </>
+    )
+  }
+
+  const tasksByPlan = useMemo(() => {
+    const map = new Map<string, ProjectTask[]>()
+    for (const task of tasks) {
+      if (task.is_archived) continue
+      const key = task.plan_id || ""
+      const bucket = map.get(key) || []
+      bucket.push(task)
+      map.set(key, bucket)
+    }
+    return map
+  }, [tasks])
+
+  async function handleSaveTask(form: TaskFormState) {
+    if (isSavingTask) return
+    setIsSavingTask(true)
+    try {
+      if (editingTask) {
+        const res = await apiFetch(`/api/tasks/${editingTask.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: form.title,
+            description: form.description || null,
+            priority: form.priority,
+            due_date: form.due_date || null,
+            department: form.department || null,
+            assignment_type: form.assignment_type,
+            assigned_to: form.assigned_to || null,
+            goal_id: form.goal_id || null,
+            kpi_id: form.kpi_id || null,
+            project_id: project.id,
+            plan_id: form.plan_id || null,
+            weight: form.weight,
+            task_start_date: form.task_start_date || null,
+            task_end_date: form.task_end_date || null,
+          }),
+        })
+        const payload = await res.json()
+        if (!res.ok) throw new Error(payload.error || "Failed to update task")
+        toast.success("Task updated")
+      } else if (isRepeating(form)) {
+        // Repeat set: a series in this project, whose repeats are created on schedule.
+        const result = await createSeriesFromForm(form, { project_id: project.id, plan_id: form.plan_id || null })
+        showSeriesCreated(result)
+      } else {
+        const res = await apiFetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: form.title,
+            description: form.description || null,
+            priority: form.priority,
+            status: "pending",
+            due_date: form.due_date || null,
+            department: form.department || null,
+            assignment_type: form.assignment_type,
+            assigned_to: form.assigned_to || null,
+            assigned_users: form.assigned_users || [],
+            goal_id: form.goal_id || null,
+            kpi_id: form.kpi_id || null,
+            project_id: project.id,
+            plan_id: form.plan_id || null,
+            weight: form.weight,
+            task_start_date: form.task_start_date || null,
+            task_end_date: form.task_end_date || null,
+            source_type: "manual",
+          }),
+        })
+        const payload = await res.json()
+        if (!res.ok) throw new Error(payload.error || "Failed to create task")
+        toast.success("Task added to the plan")
+      }
+      setIsTaskDialogOpen(false)
+      setEditingTask(null)
+      setTaskDialogPlan(null)
+      void queryClient.invalidateQueries({ queryKey: tasksKey })
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.projects() })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save task")
+    } finally {
+      setIsSavingTask(false)
+    }
+  }
+
+  function openTaskDialog(plan: Plan | null) {
+    setEditingTask(null)
+    setTaskForm({
+      ...EMPTY_TASK_FORM,
+      project_id: project.id,
+      plan_id: plan?.id ?? "",
+      task_start_date: toLocalISODate(),
+    })
+    setTaskDialogPlan(plan)
+    setIsTaskDialogOpen(true)
+  }
+
+  function openEditTaskDialog(task: ProjectTask) {
+    const plan = plans.find((p) => p.id === task.plan_id) || null
+    setEditingTask(task as unknown as Task)
+    setTaskDialogPlan(plan)
+    setTaskForm({
+      title: task.title,
+      description: task.description || "",
+      priority: task.priority || "medium",
+      status: task.status || "pending",
+      assigned_to: task.assigned_to || "",
+      department: task.department || "",
+      due_date: task.due_date || "",
+      assignment_type: (task.assignment_type as "individual" | "multiple") || "individual",
+      assigned_users: task.assigned_to ? [task.assigned_to] : [],
+      project_id: project.id,
+      portfolio_id: "",
+      plan_id: task.plan_id || "",
+      goal_id: task.goal_id || "",
+      kpi_id: task.kpi_id || "",
+      weight: task.weight ?? TASK_WEIGHT_DEFAULT,
+      task_start_date: task.task_start_date || "",
+      task_end_date: task.task_end_date || "",
+    })
+    setIsTaskDialogOpen(true)
+  }
+
+  function renderTaskRow(task: ProjectTask, index: number) {
+    const config = TASK_STATUS_CONFIG[task.status as TaskStatus]
+    return (
+      <div
+        key={task.id}
+        onClick={readOnly ? undefined : () => openEditTaskDialog(task)}
+        className={cn(
+          "hover:bg-muted/40 flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-sm transition-colors",
+          !readOnly && "group cursor-pointer"
+        )}
+        role={readOnly ? undefined : "button"}
+        tabIndex={readOnly ? undefined : 0}
+        onKeyDown={
+          readOnly
+            ? undefined
+            : (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  openEditTaskDialog(task)
+                }
+              }
+        }
+      >
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+          <span className="text-muted-foreground w-6 shrink-0 pt-0.5 font-mono text-xs font-semibold">
+            {index + 1}.
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className={cn("truncate font-medium transition-colors", !readOnly && "group-hover:text-primary")}>
+                {task.title}
+              </p>
+              {task.work_item_number && (
+                <Badge variant="outline" className="text-muted-foreground shrink-0 px-1.5 py-0 font-mono text-xs">
+                  {task.work_item_number}
+                </Badge>
+              )}
+            </div>
+            <p className="text-muted-foreground text-xs">
+              {task.assigned_user
+                ? formatFullName(task.assigned_user.first_name, task.assigned_user.last_name)
+                : "Unassigned"}
+              {task.task_end_date || task.due_date
+                ? ` · due ${formatWATDate(task.task_end_date || task.due_date!)}`
+                : ""}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Badge variant="outline" className="gap-1 text-xs">
+            <Scale className="h-3 w-3" />
+            {task.weight ?? TASK_WEIGHT_DEFAULT}
+          </Badge>
+          <Badge variant="outline" className="gap-1 text-xs">
+            <Star className="h-3 w-3" />
+            {task.rating ? `${task.rating}/5` : "unrated"}
+          </Badge>
+          <Badge variant={config?.badgeVariant ?? "outline"} className={cn("text-xs capitalize", config?.color)}>
+            {config?.label ?? task.status.replaceAll("_", " ")}
+          </Badge>
+          {!readOnly && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground h-7 gap-1 px-2 text-xs"
+              onClick={(e) => {
+                e.stopPropagation()
+                openEditTaskDialog(task)
+              }}
+            >
+              <Pencil className="h-3 w-3" />
+              <span className="hidden sm:inline">Edit</span>
+            </Button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  function renderGroup(
+    key: string,
+    title: string,
+    description: string | null,
+    plan: Plan | null,
+    dragHandle: ReactNode = null
+  ) {
+    const groupTasks = tasksByPlan.get(key) || []
+    const progress = countWork(groupTasks)
+    const isExpanded = Boolean(expandedPlans[key])
+
+    return (
+      <div key={key || "ungrouped"} className="bg-background overflow-hidden rounded-lg border transition-all">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => togglePlan(key)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault()
+              togglePlan(key)
+            }
+          }}
+          className="hover:bg-muted/40 flex cursor-pointer flex-wrap items-center justify-between gap-2 px-3 py-2.5 transition-colors"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            {dragHandle}
+            {isExpanded ? (
+              <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
+            ) : (
+              <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
+            )}
+            <FolderTree className="text-muted-foreground h-4 w-4 shrink-0" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-semibold">{title}</span>
+                <Badge variant="secondary" className="h-4 px-1.5 py-0 text-xs font-normal">
+                  {groupTasks.length} {groupTasks.length === 1 ? "task" : "tasks"}
+                </Badge>
+              </div>
+              {description && <p className="text-muted-foreground max-w-md truncate text-xs">{description}</p>}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-3" onClick={(e) => e.stopPropagation()}>
+            <div className="w-28">
+              <Progress value={progress.workDonePct ?? 0} />
+              <p className="text-muted-foreground mt-1 text-xs">
+                {progress.taskCount === 0 ? "No tasks yet" : `${progress.doneCount} of ${progress.taskCount} done`}
+              </p>
+            </div>
+            {!readOnly && plan && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground hover:text-foreground h-7 w-7 p-0"
+                    aria-label={`Options for ${plan.name}`}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">{renderPlanMenuItems(plan)}</DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div className="bg-muted/10 border-t">
+            {plan && (
+              <div className="bg-background/50 flex items-center justify-between border-b px-3 py-2">
+                <span className="text-muted-foreground text-xs font-medium">Tasks in {title}</span>
+                {!readOnly && (
+                  <div className="flex items-center gap-1.5">
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openTaskDialog(plan)}>
+                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      Task
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-foreground h-7 w-7 p-0"
+                          aria-label={`Options for ${plan.name}`}
+                        >
+                          <MoreVertical className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">{renderPlanMenuItems(plan)}</DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {groupTasks.length === 0 ? (
+              <div className="px-3 py-6 text-center">
+                <p className="text-muted-foreground mb-2 text-xs">No tasks in this plan yet.</p>
+                {!readOnly && plan && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openTaskDialog(plan)}>
+                    <Plus className="mr-1 h-3.5 w-3.5" />
+                    Add First Task
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div>{groupTasks.map((task, idx) => renderTaskRow(task, idx))}</div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const ungroupedCount = (tasksByPlan.get("") || []).length
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="text-sm font-semibold">Plans</h4>
+          <p className="text-muted-foreground text-xs">
+            Plans and their tasks. Progress updates as tasks are completed.
+            {!readOnly && plans.length > 1 && " Drag a plan by its handle to change the order."}
+          </p>
+        </div>
+        {!readOnly && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setPlanForm({ name: "", description: "" })
+              setIsAddPlanOpen(true)
+            }}
+            className="gap-1.5 text-xs"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add Plan
+          </Button>
+        )}
+      </div>
+
+      {plansLoading || tasksLoading ? (
+        <div className="py-6">
+          <RowsSkeleton rows={3} />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={plans.map((plan) => plan.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {plans.map((plan) => (
+                  <SortablePlan key={plan.id} id={plan.id} disabled={readOnly || plans.length < 2}>
+                    {(handle) => renderGroup(plan.id, plan.name, plan.description, plan, handle)}
+                  </SortablePlan>
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+          {ungroupedCount > 0 && renderGroup("", "Ungrouped tasks", "Project work not filed under a plan.", null)}
+          {plans.length === 0 && ungroupedCount === 0 && (
+            <p className="text-muted-foreground rounded-lg border border-dashed py-6 text-center text-sm">
+              No plans yet. Add one to start breaking this project into tasks.
+            </p>
+          )}
+        </div>
+      )}
+
+      <Dialog open={isAddPlanOpen} onOpenChange={setIsAddPlanOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (!planForm.name.trim()) return
+              addPlan.mutate({
+                name: planForm.name.trim(),
+                description: planForm.description.trim() || undefined,
+              })
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Add Plan</DialogTitle>
+              <DialogDescription>Create a new plan for {project.project_name}.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="plan-name" className="text-xs font-medium">
+                  Plan Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="plan-name"
+                  value={planForm.name}
+                  onChange={(e) => setPlanForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Civil Works, Electrical Rough-in, Procurement"
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="plan-description" className="text-xs font-medium">
+                  Description <span className="text-muted-foreground">(Optional)</span>
+                </Label>
+                <Textarea
+                  id="plan-description"
+                  value={planForm.description}
+                  onChange={(e) => setPlanForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Summary of scope, milestones, or deliverables for this plan..."
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsAddPlanOpen(false)}
+                disabled={addPlan.isPending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={addPlan.isPending || !planForm.name.trim()}>
+                {addPlan.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Create Plan
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <TaskFormDialog
+        isOpen={isTaskDialogOpen}
+        onOpenChange={(open) => {
+          setIsTaskDialogOpen(open)
+          if (!open) {
+            setEditingTask(null)
+            setTaskDialogPlan(null)
+          }
+        }}
+        selectedTask={editingTask}
+        taskForm={taskForm}
+        setTaskForm={setTaskForm}
+        onSave={handleSaveTask}
+        isSaving={isSavingTask}
+        scopedAssignableEmployees={profiles as employee[]}
+        scopedAssignableDepartments={Array.from(new Set(profiles.map((p) => p.department).filter(Boolean) as string[]))}
+        lockedProjectId={project.id}
+        lockedProjectName={project.project_name}
+        lockedPlanId={editingTask ? null : taskDialogPlan?.id || null}
+        lockedPlanName={editingTask ? null : taskDialogPlan?.name || null}
+      />
+    </div>
+  )
+}

@@ -1,0 +1,583 @@
+"use client"
+
+import { useCallback, useMemo, useState } from "react"
+import { useNow } from "@/hooks/use-now"
+import { toast } from "sonner"
+import { DataTable, DataTablePage } from "@/components/ui/data-table"
+import type { DataTableColumn, DataTableFilter, DataTableTab } from "@/components/ui/data-table"
+import { StatCard } from "@/components/ui/stat-card"
+import { StatGrid } from "@/components/ui/stat-grid"
+
+import {
+  Headset,
+  Clock,
+  AlertCircle,
+  History,
+  UserCheck,
+  ShieldCheck,
+  MoveRight,
+  Building2,
+  ListTodo,
+  Star,
+} from "lucide-react"
+import { canReassignTicket, canConvertToTask, canCloseTicket } from "@/lib/help-desk/permissions"
+import { TaskFormDialog, EMPTY_TASK_FORM, type TaskFormState } from "@/components/tasks/TaskFormDialog"
+import { CloseTicketDialog } from "@/components/help-desk/close-ticket-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { PriorityBadge, TicketStatusBadge } from "@/components/dashboard/help-desk/ticket-badges"
+import { isAssignableProfile } from "@/lib/workforce/assignment-policy"
+import { formatName } from "@/lib/utils"
+import { formatWATDateTime } from "@/lib/utils/date"
+import type { HelpDeskTicket, EmployeeOption, LeadDirectoryMember } from "@/lib/help-desk/ticket-display"
+import { resolveCurrentStage, resolveApproverName } from "@/lib/help-desk/ticket-display"
+import { apiFetch } from "@/lib/api-client"
+
+interface AdminHelpDeskContentProps {
+  initialTickets: HelpDeskTicket[]
+  employees: EmployeeOption[]
+  leadDirectory: LeadDirectoryMember[]
+  viewer: {
+    id: string
+    role: string
+    department: string | null
+    is_department_lead: boolean
+    lead_departments: string[]
+    managed_departments: string[]
+  }
+  lockedDepartment?: string
+  backLinkHref?: string
+}
+
+const FINAL_STATUSES = new Set(["resolved", "closed", "cancelled", "rejected", "converted"])
+
+const TABS: DataTableTab[] = [
+  { key: "my-actions", label: "My Actions", icon: UserCheck },
+  { key: "pending", label: "Global Queue", icon: Clock },
+  { key: "history", label: "History", icon: History },
+]
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+export function AdminHelpDeskContent({
+  initialTickets,
+  employees,
+  leadDirectory,
+  viewer,
+  lockedDepartment,
+  backLinkHref = "/admin",
+}: AdminHelpDeskContentProps) {
+  const now = useNow()
+  const [tickets, setTickets] = useState(initialTickets)
+  const [activeTab, setActiveTab] = useState("my-actions")
+  const [assignmentMap, setAssignmentMap] = useState<Record<string, string>>({})
+  const [loadingTicketId, setLoadingTicketId] = useState<string | null>(null)
+  const [convertingTicket, setConvertingTicket] = useState<HelpDeskTicket | null>(null)
+  const [taskFormState, setTaskFormState] = useState<TaskFormState>(EMPTY_TASK_FORM)
+  const [isConverting, setIsConverting] = useState(false)
+  const [closingTicket, setClosingTicket] = useState<HelpDeskTicket | null>(null)
+
+  const stats = useMemo(() => {
+    const breached = tickets.filter(
+      (t) => t.sla_target_at && new Date(t.sla_target_at).getTime() < now && !["resolved", "closed"].includes(t.status)
+    ).length
+    return {
+      total: tickets.length,
+      pendingReview: tickets.filter((t) => t.status === "pending_lead_review").length,
+      inProgress: tickets.filter((t) => t.status === "in_progress").length,
+      breached,
+    }
+  }, [tickets, now])
+
+  const managedDepartments = useMemo(
+    () =>
+      (Array.isArray(viewer.managed_departments) && viewer.managed_departments.length > 0
+        ? viewer.managed_departments
+        : viewer.lead_departments) || [],
+    [viewer.lead_departments, viewer.managed_departments]
+  )
+
+  const canLeadDepartment = useCallback(
+    (department: string | null) =>
+      Boolean(viewer.is_department_lead && department && managedDepartments.includes(department)),
+    [managedDepartments, viewer.is_department_lead]
+  )
+
+  const canAssignTicket = useCallback(
+    (ticket: HelpDeskTicket) => {
+      return canReassignTicket(viewer, ticket)
+    },
+    [viewer]
+  )
+
+  const allPendingTickets = useMemo(() => tickets.filter((ticket) => !FINAL_STATUSES.has(ticket.status)), [tickets])
+  const historyTickets = useMemo(() => tickets.filter((ticket) => FINAL_STATUSES.has(ticket.status)), [tickets])
+
+  const myActionQueue = useMemo(() => {
+    return allPendingTickets.filter((ticket) => {
+      if (ticket.status === "pending_approval") {
+        if (ticket.current_approval_stage === "department_lead") {
+          return canLeadDepartment(ticket.service_department)
+        }
+        if (ticket.current_approval_stage === "requester_department_lead") {
+          return canLeadDepartment(ticket.requester_department)
+        }
+        if (ticket.current_approval_stage === "service_department_lead") {
+          return canLeadDepartment(ticket.service_department)
+        }
+        if (ticket.current_approval_stage === "head_corporate_services") {
+          return canLeadDepartment("Corporate Services")
+        }
+        if (ticket.current_approval_stage === "managing_director") {
+          return canLeadDepartment("Executive Management")
+        }
+      }
+      if (ticket.status === "pending_lead_review" || ticket.status === "department_queue") {
+        return canLeadDepartment(ticket.service_department)
+      }
+      return ticket.assigned_to === viewer.id
+    })
+  }, [allPendingTickets, canLeadDepartment, viewer.id])
+
+  const myActionQueueIds = useMemo(() => new Set(myActionQueue.map((t) => t.id)), [myActionQueue])
+
+  const activeData = useMemo(() => {
+    if (activeTab === "my-actions") return myActionQueue
+    if (activeTab === "pending") return allPendingTickets
+    return historyTickets
+  }, [activeTab, myActionQueue, allPendingTickets, historyTickets])
+
+  const filters = useMemo(() => {
+    const statuses = Array.from(
+      new Set(
+        [...tickets.map((t) => t.status), "new", "in_progress", "pending_approval", "resolved", "closed"].filter(
+          Boolean
+        )
+      )
+    )
+    const priorities = Array.from(
+      new Set([...tickets.map((t) => t.priority), "low", "normal", "high", "urgent"].filter(Boolean))
+    )
+    const departments = Array.from(new Set(tickets.map((t) => t.service_department).filter(Boolean)))
+
+    return [
+      {
+        key: "status",
+        label: "Status",
+        options: statuses.map((s) => ({ value: s, label: formatName(s) })),
+      },
+      {
+        key: "priority",
+        label: "Priority",
+        options: priorities.map((p) => ({ value: p, label: formatName(p) })),
+      },
+      {
+        key: "service_department",
+        label: "Department",
+        options: departments.map((d) => ({ value: d, label: d })),
+        hidden: departments.length === 0,
+      },
+    ] as DataTableFilter<HelpDeskTicket>[]
+  }, [tickets])
+
+  const refresh = useCallback(async () => {
+    const params = new URLSearchParams({ scope: "department" })
+    if (lockedDepartment) params.set("department", lockedDepartment)
+    const res = await apiFetch(`/api/help-desk/tickets?${params.toString()}`, { cache: "no-store" })
+    const json = await res.json()
+    if (!res.ok) {
+      toast.error(json?.error || "Failed to refresh help desk queue")
+      return
+    }
+    setTickets(json.data || [])
+  }, [lockedDepartment])
+
+  const assign = useCallback(
+    async (ticketId: string) => {
+      const assignedTo = assignmentMap[ticketId]
+      if (!assignedTo) {
+        toast.error("Choose a staff member first")
+        return
+      }
+      setLoadingTicketId(ticketId)
+      try {
+        const res = await apiFetch(`/api/help-desk/tickets/${ticketId}/assign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "assign_staff", assigned_to: assignedTo }),
+        })
+        if (!res.ok) {
+          const body = await res.json()
+          throw new Error(body.error || "Assignment failed")
+        }
+        toast.success("Ticket assigned")
+        await refresh()
+      } catch (error: unknown) {
+        toast.error(getErrorMessage(error, "Assignment failed"))
+      } finally {
+        setLoadingTicketId(null)
+      }
+    },
+    [assignmentMap, refresh]
+  )
+
+  async function routeTicket(ticketId: string, action: "send_to_queue" | "assign_department" | "assign_me") {
+    setLoadingTicketId(ticketId)
+    try {
+      const res = await apiFetch(`/api/help-desk/tickets/${ticketId}/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error || "Routing failed")
+      }
+      toast.success("Ticket updated")
+      await refresh()
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Routing failed"))
+    } finally {
+      setLoadingTicketId(null)
+    }
+  }
+
+  const columns: DataTableColumn<HelpDeskTicket>[] = useMemo(
+    () => [
+      {
+        key: "ticket_number",
+        label: "Ticket #",
+        sortable: true,
+        resizable: true,
+        initialWidth: 120,
+        accessor: (r) => r.ticket_number,
+        hideOnMobile: true,
+        render: (r) => <span className="text-muted-foreground font-mono text-xs font-semibold">{r.ticket_number}</span>,
+      },
+      {
+        key: "title",
+        label: "Subject",
+        sortable: true,
+        resizable: true,
+        initialWidth: 300,
+        accessor: (r) => r.title,
+        render: (r) => (
+          <div className="flex max-w-[300px] flex-col">
+            <span className="truncate font-medium">{r.title}</span>
+          </div>
+        ),
+      },
+      {
+        key: "service_department",
+        label: "Service Dept",
+        sortable: true,
+        resizable: true,
+        initialWidth: 150,
+        accessor: (r) => r.service_department,
+        hideOnMobile: true,
+      },
+      {
+        key: "priority",
+        label: "Priority",
+        sortable: true,
+        accessor: (r) => r.priority,
+        render: (r) => <PriorityBadge priority={r.priority} />,
+      },
+      {
+        key: "status",
+        label: "Status",
+        sortable: true,
+        accessor: (r) => r.status,
+        render: (r) => <TicketStatusBadge status={r.status} />,
+      },
+      {
+        key: "stage",
+        label: "Workflow Stage",
+        accessor: (r) => resolveCurrentStage(r),
+        render: (r) => (
+          <Badge variant="outline" className="font-normal">
+            {resolveCurrentStage(r)}
+          </Badge>
+        ),
+      },
+      {
+        key: "approver",
+        label: "Current Owner",
+        resizable: true,
+        initialWidth: 150,
+        accessor: (r) => resolveApproverName(r, leadDirectory),
+        hideOnMobile: true,
+        render: (r) => <span className="text-xs">{resolveApproverName(r, leadDirectory)}</span>,
+      },
+    ],
+    [leadDirectory]
+  )
+
+  const finalColumns = useMemo(() => {
+    const cols = [...columns]
+    if (activeTab === "my-actions") {
+      cols.push({
+        key: "assignment",
+        label: "Assign Staff",
+        render: (r) => {
+          if (!canAssignTicket(r)) {
+            return <span className="text-muted-foreground text-xs italic">Restricted stage</span>
+          }
+          return (
+            <div className="flex items-center gap-2">
+              <Select
+                value={assignmentMap[r.id] || ""}
+                onValueChange={(val) => setAssignmentMap((prev) => ({ ...prev, [r.id]: val }))}
+              >
+                <SelectTrigger className="h-8 w-[160px] text-xs">
+                  <SelectValue placeholder="Staff..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {employees
+                    .filter(
+                      (e) =>
+                        isAssignableProfile(e, { allowLegacyNullStatus: false }) &&
+                        (!e.department || e.department === r.service_department)
+                    )
+                    .map((e) => (
+                      <SelectItem key={e.id} value={e.id} className="text-xs">
+                        {e.first_name} {e.last_name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" className="h-8 px-2" onClick={() => assign(r.id)} disabled={loadingTicketId === r.id}>
+                Assign
+              </Button>
+            </div>
+          )
+        },
+      })
+    }
+    return cols
+  }, [activeTab, assignmentMap, assign, canAssignTicket, columns, employees, loadingTicketId])
+
+  return (
+    <DataTablePage
+      title="Help Desk"
+      description="Manage ticket routing, department approvals, and technical escalations."
+      icon={Headset}
+      tabs={TABS}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      stats={
+        <StatGrid>
+          <StatCard
+            variant="compact"
+            title="In Progress"
+            value={stats.inProgress}
+            icon={Clock}
+            iconBgColor="bg-violet-500/10"
+            iconColor="text-violet-500"
+          />
+          <StatCard
+            variant="compact"
+            title="SLA Breached"
+            value={stats.breached}
+            icon={ShieldCheck}
+            iconBgColor="bg-red-500/10"
+            iconColor="text-red-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Pending Review"
+            value={stats.pendingReview}
+            icon={AlertCircle}
+            iconBgColor="bg-amber-500/10"
+            iconColor="text-amber-500"
+          />
+          <StatCard
+            variant="compact"
+            title="Total Tickets"
+            value={stats.total}
+            icon={Headset}
+            iconBgColor="bg-blue-500/10"
+            iconColor="text-blue-500"
+          />
+        </StatGrid>
+      }
+    >
+      <DataTable<HelpDeskTicket>
+        data={activeData}
+        columns={finalColumns}
+        getRowId={(r) => r.id}
+        pagination={{ pageSize: 50 }}
+        isLoading={loadingTicketId !== null && loadingTicketId === "REFRESH"}
+        onRetry={refresh}
+        searchPlaceholder="Search ticket number, subject or requester department..."
+        searchFn={(r, q) =>
+          `${r.ticket_number} ${r.title} ${r.requester_department} ${r.service_department}`.toLowerCase().includes(q)
+        }
+        filters={filters}
+        rowActions={[
+          {
+            label: "Convert to Task",
+            icon: ListTodo,
+            onClick: (r) => {
+              setConvertingTicket(r)
+              setTaskFormState({
+                ...EMPTY_TASK_FORM,
+                title: r.title,
+                description: "",
+                priority: r.priority || "medium",
+                department: r.service_department || "",
+                assigned_to: r.assigned_to || "",
+                weight: 3,
+              })
+            },
+            hidden: (r) => !canConvertToTask(viewer, r),
+          },
+          {
+            label: "Close & Rate",
+            icon: Star,
+            onClick: (r) => setClosingTicket(r),
+            hidden: (r) => !canCloseTicket(viewer, r),
+          },
+          {
+            label: "Send to Queue",
+            icon: MoveRight,
+            onClick: (r) => routeTicket(r.id, "send_to_queue"),
+            hidden: (r) => !canReassignTicket(viewer, r) || r.status === "department_queue",
+          },
+          {
+            label: "Claim Ticket",
+            icon: UserCheck,
+            onClick: (r) => routeTicket(r.id, "assign_me"),
+            hidden: (r) => !canReassignTicket(viewer, r) || r.assigned_to === viewer.id,
+          },
+        ]}
+        viewToggle
+        contactsView
+        stickyToolbar
+        defaultViewMode={{ mobile: "contacts", desktop: "list" }}
+        mobileRow={{
+          title: (r) => r.title,
+          subtitle: (r) => `${r.ticket_number} · ${r.service_department} · ${r.requester_department || "Staff"}`,
+          trailing: (r) => (
+            <div className="flex flex-col items-end gap-1">
+              <PriorityBadge priority={r.priority} />
+              <TicketStatusBadge status={r.status} />
+            </div>
+          ),
+          detail: {
+            title: (r) => r.title,
+            subtitle: (r) => `${r.ticket_number} · ${r.service_department}`,
+            fields: (r) => [
+              {
+                label: "Ticket Number",
+                value: r.ticket_number,
+              },
+              {
+                label: "Priority",
+                value: r.priority,
+              },
+              {
+                label: "Status",
+                value: r.status.replace(/_/g, " "),
+              },
+              {
+                label: "Service Dept",
+                value: r.service_department,
+              },
+              {
+                label: "Requester Dept",
+                value: r.requester_department || "Staff",
+              },
+              {
+                label: "Handling Mode",
+                value: r.handling_mode || "Individual",
+              },
+              {
+                label: "SLA Target",
+                value: r.sla_target_at ? formatWATDateTime(r.sla_target_at) : "-",
+              },
+            ],
+          },
+        }}
+        cardRenderer={(r) => (
+          <div className="bg-card space-y-4 rounded-xl border p-4 transition-shadow hover:shadow-md">
+            <div className="flex items-start justify-between">
+              <span className="text-muted-foreground font-mono text-xs">{r.ticket_number}</span>
+              <PriorityBadge priority={r.priority} />
+            </div>
+            <div>
+              <h4 className="line-clamp-1 font-semibold">{r.title}</h4>
+              <p className="text-muted-foreground mt-1 text-xs uppercase">{r.service_department}</p>
+            </div>
+            <div className="flex items-center justify-between border-t pt-2">
+              <TicketStatusBadge status={r.status} />
+              <Badge variant="outline" className="text-xs font-normal">
+                {resolveCurrentStage(r)}
+              </Badge>
+            </div>
+          </div>
+        )}
+        urlSync
+      />
+      {convertingTicket && (
+        <TaskFormDialog
+          isOpen={Boolean(convertingTicket)}
+          onOpenChange={(open: boolean) => {
+            if (!open) setConvertingTicket(null)
+          }}
+          selectedTask={null}
+          taskForm={taskFormState}
+          setTaskForm={setTaskFormState}
+          onSave={async (form: TaskFormState) => {
+            if (!convertingTicket) return
+            setIsConverting(true)
+            try {
+              const res = await apiFetch(`/api/help-desk/tickets/${convertingTicket.id}/convert-to-task`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(form),
+              })
+              const json = await res.json().catch(() => null)
+              if (!res.ok) {
+                throw new Error(json?.error || "Failed to convert ticket to task")
+              }
+              toast.success("Ticket converted to task successfully")
+              setConvertingTicket(null)
+              await refresh()
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Failed to convert ticket")
+            } finally {
+              setIsConverting(false)
+            }
+          }}
+          isSaving={isConverting}
+          scopedAssignableEmployees={employees as any}
+          scopedAssignableDepartments={
+            lockedDepartment
+              ? [lockedDepartment]
+              : viewer.lead_departments.length
+                ? viewer.lead_departments
+                : [convertingTicket.service_department]
+          }
+        />
+      )}
+
+      {closingTicket && (
+        <CloseTicketDialog
+          open={Boolean(closingTicket)}
+          onOpenChange={(open: boolean) => {
+            if (!open) setClosingTicket(null)
+          }}
+          ticket={closingTicket}
+          onSuccess={async () => {
+            setClosingTicket(null)
+            await refresh()
+          }}
+        />
+      )}
+    </DataTablePage>
+  )
+}
