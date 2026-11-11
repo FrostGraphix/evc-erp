@@ -3,7 +3,8 @@ import path from "path"
 // ---------------------------------------------------------------------------
 // Security headers applied to all routes
 // ---------------------------------------------------------------------------
-const supabaseHost = "https://itqegqxeqkeogwrvlzlj.supabase.co"
+const supabaseHost = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://unuhnhknczcgxqaekzrh.supabase.co"
+const supabaseWsHost = supabaseHost.replace(/^http/, "ws")
 
 const securityHeaders = [
   // Prevent browsers from sniffing a different MIME type than declared
@@ -52,7 +53,7 @@ const securityHeaders = [
       // Fonts: self-hosted Geist font only
       "font-src 'self'",
       // API calls: self + Supabase
-      `connect-src 'self' ${supabaseHost} wss://itqegqxeqkeogwrvlzlj.supabase.co https://vitals.vercel-insights.com`,
+      `connect-src 'self' ${supabaseHost} ${supabaseWsHost} https://vitals.vercel-insights.com`,
       // Allow embedding only from the same origin
       "frame-ancestors 'self'",
       // Same-origin frames, plus blob: for the client-side document previews
@@ -383,6 +384,9 @@ const nextConfig = {
   },
 
   webpack: (config, { isServer }) => {
+    // Prevent symlink / casing resolution issues across packages
+    config.resolve.symlinks = false
+
     // Handle canvas module for jsPDF
     config.resolve.alias.canvas = false
     config.resolve.alias.encoding = false

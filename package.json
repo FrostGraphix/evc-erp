@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "next dev --turbopack",
     "build": "node scripts/clean-next.mjs && node scripts/copy-pdf-engines.mjs && next build --webpack",
     "postinstall": "node scripts/copy-pdf-engines.mjs",
     "start": "next start",

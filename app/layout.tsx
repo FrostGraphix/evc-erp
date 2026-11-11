@@ -101,26 +101,28 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable} overflow-x-clip`}>
-        <Suspense fallback={null}>
-          {/* Theme follows system preference automatically (light/dark mode) */}
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="acob-theme">
-            <QueryProvider>
-              <ConfirmProvider>
-                <SeasonalFaviconSwitcher />
-                <SidebarProvider>
-                  <NProgressProvider />
+        {/* Theme follows system preference automatically (light/dark mode) */}
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="acob-theme">
+          <QueryProvider>
+            <ConfirmProvider>
+              <SeasonalFaviconSwitcher />
+              <SidebarProvider>
+                <NProgressProvider />
+                <Suspense fallback={null}>
                   <NProgressHandler />
-                  <ClientErrorMonitor />
+                </Suspense>
+                <ClientErrorMonitor />
+                <Suspense fallback={null}>
                   <HeaderWrapperWithData />
-                  {/* Intentionally public routes outside (app): /employee/new, /maintenance */}
-                  {children}
-                  <Toaster />
-                  <SeriesCreatedDialog />
-                </SidebarProvider>
-              </ConfirmProvider>
-            </QueryProvider>
-          </ThemeProvider>
-        </Suspense>
+                </Suspense>
+                {/* Intentionally public routes outside (app): /employee/new, /maintenance */}
+                {children}
+                <Toaster />
+                <SeriesCreatedDialog />
+              </SidebarProvider>
+            </ConfirmProvider>
+          </QueryProvider>
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>
