@@ -17,7 +17,7 @@ end;
 $$;
 
 drop trigger if exists trg_assets_prevent_delete on public.assets;
-create trigger trg_assets_prevent_delete
+CREATE OR REPLACE TRIGGER trg_assets_prevent_delete
 before delete on public.assets
 for each row
 execute function public.prevent_asset_delete();

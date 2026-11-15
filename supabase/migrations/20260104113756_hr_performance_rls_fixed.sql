@@ -24,14 +24,14 @@ DROP POLICY IF EXISTS "Only admins can manage performance ratings" ON performanc
 -- =====================================================
 
 -- Users can view their own reviews
-CREATE POLICY "Users can view own reviews"
-  ON performance_reviews FOR SELECT
+DROP POLICY IF EXISTS "Users can view own reviews" ON performance_reviews;
+CREATE POLICY "Users can view own reviews" ON performance_reviews FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id OR auth.uid() = reviewer_id);
 
 -- Department leads can view department reviews
-CREATE POLICY "Department leads can view department reviews"
-  ON performance_reviews FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view department reviews" ON performance_reviews;
+CREATE POLICY "Department leads can view department reviews" ON performance_reviews FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -45,8 +45,8 @@ CREATE POLICY "Department leads can view department reviews"
   );
 
 -- Admins can view all reviews
-CREATE POLICY "Admins can view all reviews"
-  ON performance_reviews FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all reviews" ON performance_reviews;
+CREATE POLICY "Admins can view all reviews" ON performance_reviews FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -57,8 +57,8 @@ CREATE POLICY "Admins can view all reviews"
   );
 
 -- Department leads and admins can create reviews
-CREATE POLICY "Leads and admins can create reviews"
-  ON performance_reviews FOR INSERT
+DROP POLICY IF EXISTS "Leads and admins can create reviews" ON performance_reviews;
+CREATE POLICY "Leads and admins can create reviews" ON performance_reviews FOR INSERT
   TO authenticated
   WITH CHECK (
     auth.uid() = reviewer_id
@@ -80,15 +80,15 @@ CREATE POLICY "Leads and admins can create reviews"
   );
 
 -- Reviewers can update their reviews
-CREATE POLICY "Reviewers can update own reviews"
-  ON performance_reviews FOR UPDATE
+DROP POLICY IF EXISTS "Reviewers can update own reviews" ON performance_reviews;
+CREATE POLICY "Reviewers can update own reviews" ON performance_reviews FOR UPDATE
   TO authenticated
   USING (auth.uid() = reviewer_id)
   WITH CHECK (auth.uid() = reviewer_id);
 
 -- Only admins can delete reviews
-CREATE POLICY "Admins can delete reviews"
-  ON performance_reviews FOR DELETE
+DROP POLICY IF EXISTS "Admins can delete reviews" ON performance_reviews;
+CREATE POLICY "Admins can delete reviews" ON performance_reviews FOR DELETE
   TO authenticated
   USING (
     EXISTS (
@@ -103,14 +103,14 @@ CREATE POLICY "Admins can delete reviews"
 -- =====================================================
 
 -- All authenticated users can view review cycles
-CREATE POLICY "All users can view review cycles"
-  ON review_cycles FOR SELECT
+DROP POLICY IF EXISTS "All users can view review cycles" ON review_cycles;
+CREATE POLICY "All users can view review cycles" ON review_cycles FOR SELECT
   TO authenticated
   USING (true);
 
 -- Only admins can manage review cycles
-CREATE POLICY "Only admins can manage review cycles"
-  ON review_cycles FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage review cycles" ON review_cycles;
+CREATE POLICY "Only admins can manage review cycles" ON review_cycles FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -125,14 +125,14 @@ CREATE POLICY "Only admins can manage review cycles"
 -- =====================================================
 
 -- Users can view their own goals
-CREATE POLICY "Users can view own goals"
-  ON goals_objectives FOR SELECT
+DROP POLICY IF EXISTS "Users can view own goals" ON goals_objectives;
+CREATE POLICY "Users can view own goals" ON goals_objectives FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
 
 -- Department leads can view department goals
-CREATE POLICY "Department leads can view department goals"
-  ON goals_objectives FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view department goals" ON goals_objectives;
+CREATE POLICY "Department leads can view department goals" ON goals_objectives FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -146,8 +146,8 @@ CREATE POLICY "Department leads can view department goals"
   );
 
 -- Admins can view all goals
-CREATE POLICY "Admins can view all goals"
-  ON goals_objectives FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all goals" ON goals_objectives;
+CREATE POLICY "Admins can view all goals" ON goals_objectives FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -158,8 +158,8 @@ CREATE POLICY "Admins can view all goals"
   );
 
 -- Users and managers can create goals
-CREATE POLICY "Users and managers can create goals"
-  ON goals_objectives FOR INSERT
+DROP POLICY IF EXISTS "Users and managers can create goals" ON goals_objectives;
+CREATE POLICY "Users and managers can create goals" ON goals_objectives FOR INSERT
   TO authenticated
   WITH CHECK (
     auth.uid() = user_id
@@ -171,8 +171,8 @@ CREATE POLICY "Users and managers can create goals"
   );
 
 -- Users can update their own goals
-CREATE POLICY "Users can update own goals"
-  ON goals_objectives FOR UPDATE
+DROP POLICY IF EXISTS "Users can update own goals" ON goals_objectives;
+CREATE POLICY "Users can update own goals" ON goals_objectives FOR UPDATE
   TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
@@ -182,14 +182,14 @@ CREATE POLICY "Users can update own goals"
 -- =====================================================
 
 -- All authenticated users can view rating scales
-CREATE POLICY "All users can view ratings"
-  ON performance_ratings FOR SELECT
+DROP POLICY IF EXISTS "All users can view ratings" ON performance_ratings;
+CREATE POLICY "All users can view ratings" ON performance_ratings FOR SELECT
   TO authenticated
   USING (true);
 
 -- Only admins can manage ratings
-CREATE POLICY "Only admins can manage ratings"
-  ON performance_ratings FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage ratings" ON performance_ratings;
+CREATE POLICY "Only admins can manage ratings" ON performance_ratings FOR ALL
   TO authenticated
   USING (
     EXISTS (

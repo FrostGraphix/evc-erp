@@ -62,12 +62,12 @@ BEGIN
 
   PERFORM setval('public.employee_number_seq', v_next_serial, false);
 
-  CREATE TRIGGER trg_profiles_prevent_employee_number_mutation
+  CREATE OR REPLACE TRIGGER trg_profiles_prevent_employee_number_mutation
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW
   EXECUTE FUNCTION public.prevent_employee_number_mutation();
 
-  CREATE TRIGGER trg_profiles_prevent_delete
+  CREATE OR REPLACE TRIGGER trg_profiles_prevent_delete
   BEFORE DELETE ON public.profiles
   FOR EACH ROW
   EXECUTE FUNCTION public.prevent_profile_delete();

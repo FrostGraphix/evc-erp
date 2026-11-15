@@ -13,16 +13,19 @@ CREATE TABLE IF NOT EXISTS system_settings (
 ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
 
 -- Everyone can read (public settings need to be accessible)
+DROP POLICY IF EXISTS "Authenticated users can read system settings" ON system_settings;
 CREATE POLICY "Authenticated users can read system settings" ON system_settings
   FOR SELECT TO authenticated
   USING (true);
 
 -- Allow anon read for maintenance mode checks (middleware needs this often)
+DROP POLICY IF EXISTS "Anon can read system settings" ON system_settings;
 CREATE POLICY "Anon can read system settings" ON system_settings
   FOR SELECT TO anon
   USING (true);
 
 -- Only admins/super_admins can manage settings
+DROP POLICY IF EXISTS "Admins can manage system settings" ON system_settings;
 CREATE POLICY "Admins can manage system settings" ON system_settings
   FOR ALL TO authenticated
   USING (
@@ -40,5 +43,5 @@ ON CONFLICT ("key") DO NOTHING;
 
 -- Trigger for updated_at
 DROP TRIGGER IF EXISTS update_system_settings_updated_at ON system_settings;
-CREATE TRIGGER update_system_settings_updated_at BEFORE UPDATE ON system_settings
+CREATE OR REPLACE TRIGGER update_system_settings_updated_at BEFORE UPDATE ON system_settings
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();;

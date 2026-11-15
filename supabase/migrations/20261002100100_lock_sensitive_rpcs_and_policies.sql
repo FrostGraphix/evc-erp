@@ -87,7 +87,7 @@ DROP POLICY IF EXISTS "Salary components select policy" ON public.salary_compone
 CREATE POLICY "Salary components select policy" ON public.salary_components
   FOR SELECT TO authenticated USING ((SELECT public.has_role('admin')));
 
-DROP POLICY IF EXISTS "Profiles select policy" ON public.employee_department_history;
+DROP POLICY IF EXISTS "Department history select policy" ON public.employee_department_history;
 CREATE POLICY "Department history select policy" ON public.employee_department_history
   FOR SELECT TO authenticated USING ((SELECT public.has_role('admin')));
 

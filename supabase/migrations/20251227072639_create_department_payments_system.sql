@@ -62,13 +62,13 @@ CREATE TABLE IF NOT EXISTS public.payment_documents (
 COMMENT ON TABLE public.payment_documents IS 'Documents attached to department payments';
 
 -- Create indexes
-CREATE INDEX idx_dept_payments_department ON public.department_payments(department_id);
-CREATE INDEX idx_dept_payments_type ON public.department_payments(payment_type);
-CREATE INDEX idx_dept_payments_category ON public.department_payments(category);
-CREATE INDEX idx_dept_payments_status ON public.department_payments(status);
-CREATE INDEX idx_dept_payments_next_due ON public.department_payments(next_payment_due);
-CREATE INDEX idx_dept_payments_created_by ON public.department_payments(created_by);
-CREATE INDEX idx_payment_docs_payment ON public.payment_documents(payment_id);
+CREATE INDEX IF NOT EXISTS idx_dept_payments_department ON public.department_payments(department_id);
+CREATE INDEX IF NOT EXISTS idx_dept_payments_type ON public.department_payments(payment_type);
+CREATE INDEX IF NOT EXISTS idx_dept_payments_category ON public.department_payments(category);
+CREATE INDEX IF NOT EXISTS idx_dept_payments_status ON public.department_payments(status);
+CREATE INDEX IF NOT EXISTS idx_dept_payments_next_due ON public.department_payments(next_payment_due);
+CREATE INDEX IF NOT EXISTS idx_dept_payments_created_by ON public.department_payments(created_by);
+CREATE INDEX IF NOT EXISTS idx_payment_docs_payment ON public.payment_documents(payment_id);
 
 -- Enable RLS
 ALTER TABLE public.payment_categories ENABLE ROW LEVEL SECURITY;
@@ -76,14 +76,14 @@ ALTER TABLE public.department_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payment_documents ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for payment_categories
-CREATE POLICY "Anyone can view categories"
-    ON public.payment_categories FOR SELECT
+DROP POLICY IF EXISTS "Anyone can view categories" ON public.payment_categories;
+CREATE POLICY "Anyone can view categories" ON public.payment_categories FOR SELECT
     TO authenticated
     USING (true);
 
 -- RLS Policies for department_payments
-CREATE POLICY "Users can view payments in their department or all if admin"
-    ON public.department_payments FOR SELECT
+DROP POLICY IF EXISTS "Users can view payments in their department or all if admin" ON public.department_payments;
+CREATE POLICY "Users can view payments in their department or all if admin" ON public.department_payments FOR SELECT
     TO authenticated
     USING (
         -- Admins can see all
@@ -100,8 +100,8 @@ CREATE POLICY "Users can view payments in their department or all if admin"
         )
     );
 
-CREATE POLICY "Users can create payments in their department or any if admin"
-    ON public.department_payments FOR INSERT
+DROP POLICY IF EXISTS "Users can create payments in their department or any if admin" ON public.department_payments;
+CREATE POLICY "Users can create payments in their department or any if admin" ON public.department_payments FOR INSERT
     TO authenticated
     WITH CHECK (
         -- Admins can create in any department
@@ -118,8 +118,8 @@ CREATE POLICY "Users can create payments in their department or any if admin"
         )
     );
 
-CREATE POLICY "Users can update payments in their department or all if admin"
-    ON public.department_payments FOR UPDATE
+DROP POLICY IF EXISTS "Users can update payments in their department or all if admin" ON public.department_payments;
+CREATE POLICY "Users can update payments in their department or all if admin" ON public.department_payments FOR UPDATE
     TO authenticated
     USING (
         EXISTS (
@@ -134,8 +134,8 @@ CREATE POLICY "Users can update payments in their department or all if admin"
         )
     );
 
-CREATE POLICY "Only admins can delete payments"
-    ON public.department_payments FOR DELETE
+DROP POLICY IF EXISTS "Only admins can delete payments" ON public.department_payments;
+CREATE POLICY "Only admins can delete payments" ON public.department_payments FOR DELETE
     TO authenticated
     USING (
         EXISTS (
@@ -145,8 +145,8 @@ CREATE POLICY "Only admins can delete payments"
     );
 
 -- RLS Policies for payment_documents
-CREATE POLICY "Users can view documents for payments they can see"
-    ON public.payment_documents FOR SELECT
+DROP POLICY IF EXISTS "Users can view documents for payments they can see" ON public.payment_documents;
+CREATE POLICY "Users can view documents for payments they can see" ON public.payment_documents FOR SELECT
     TO authenticated
     USING (
         payment_id IN (
@@ -154,8 +154,8 @@ CREATE POLICY "Users can view documents for payments they can see"
         )
     );
 
-CREATE POLICY "Users can upload documents to payments they can access"
-    ON public.payment_documents FOR INSERT
+DROP POLICY IF EXISTS "Users can upload documents to payments they can access" ON public.payment_documents;
+CREATE POLICY "Users can upload documents to payments they can access" ON public.payment_documents FOR INSERT
     TO authenticated
     WITH CHECK (
         payment_id IN (
@@ -163,8 +163,8 @@ CREATE POLICY "Users can upload documents to payments they can access"
         )
     );
 
-CREATE POLICY "Users can delete their own uploaded documents or admins can delete any"
-    ON public.payment_documents FOR DELETE
+DROP POLICY IF EXISTS "Users can delete their own uploaded documents or admins can delete any" ON public.payment_documents;
+CREATE POLICY "Users can delete their own uploaded documents or admins can delete any" ON public.payment_documents FOR DELETE
     TO authenticated
     USING (
         uploaded_by = auth.uid()
@@ -184,7 +184,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER set_dept_payments_updated_at
+CREATE OR REPLACE TRIGGER set_dept_payments_updated_at
     BEFORE UPDATE ON public.department_payments
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_dept_payments_updated_at();
@@ -200,7 +200,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER populate_payment_categories
+CREATE OR REPLACE TRIGGER populate_payment_categories
     AFTER INSERT OR UPDATE OF category ON public.department_payments
     FOR EACH ROW
     EXECUTE FUNCTION public.auto_add_payment_category();;

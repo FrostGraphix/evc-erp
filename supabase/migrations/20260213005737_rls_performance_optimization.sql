@@ -7,7 +7,7 @@ USING (
   EXISTS (
     SELECT 1 FROM profiles
     WHERE profiles.id = (SELECT auth.uid())
-    AND profiles.role = ANY (ARRAY['super_admin'::user_role, 'admin'::user_role])
+    AND profiles.role::text = ANY (ARRAY['super_admin', 'admin'])
   )
 );
 
@@ -20,7 +20,7 @@ USING (
   EXISTS (
     SELECT 1 FROM profiles
     WHERE profiles.id = (SELECT auth.uid())
-    AND profiles.role = ANY (ARRAY['super_admin'::user_role, 'admin'::user_role])
+    AND profiles.role::text = ANY (ARRAY['super_admin', 'admin'])
   )
 );
 
@@ -33,7 +33,7 @@ USING (
   EXISTS (
     SELECT 1 FROM profiles AS p
     WHERE p.id = (SELECT auth.uid())
-    AND p.role = ANY (ARRAY['super_admin'::user_role, 'admin'::user_role])
+    AND p.role::text = ANY (ARRAY['super_admin', 'admin'])
   )
 );
 
@@ -45,7 +45,7 @@ WITH CHECK (
   EXISTS (
     SELECT 1 FROM profiles AS p
     WHERE p.id = (SELECT auth.uid())
-    AND p.role = ANY (ARRAY['super_admin'::user_role, 'admin'::user_role])
+    AND p.role::text = ANY (ARRAY['super_admin', 'admin'])
   )
 );
 
@@ -67,7 +67,6 @@ USING (
   EXISTS (
     SELECT 1 FROM profiles
     WHERE profiles.id = (SELECT auth.uid())
-    AND profiles.role = ANY (ARRAY['admin'::user_role, 'super_admin'::user_role])
+    AND profiles.role::text = ANY (ARRAY['admin', 'super_admin'])
   )
 );
-;

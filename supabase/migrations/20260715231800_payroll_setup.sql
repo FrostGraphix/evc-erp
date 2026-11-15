@@ -18,5 +18,6 @@ ON CONFLICT (code) DO NOTHING;
 -- Seed initial test base salary for Chibuikem Michael Ilonze (ID: 1aeae0c5-ef2f-4790-be14-d0e696be01af)
 -- Base salary = 195,000 NGN
 INSERT INTO public.employee_salaries (user_id, basic_salary, effective_from, is_active)
-VALUES ('1aeae0c5-ef2f-4790-be14-d0e696be01af', 195000.00, '2026-01-01', true)
+SELECT '1aeae0c5-ef2f-4790-be14-d0e696be01af'::uuid, 195000.00, '2026-01-01'::date, true
+WHERE EXISTS (SELECT 1 FROM auth.users WHERE id = '1aeae0c5-ef2f-4790-be14-d0e696be01af')
 ON CONFLICT DO NOTHING;

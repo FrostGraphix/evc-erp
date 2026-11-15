@@ -316,27 +316,27 @@ begin
 end;
 $$;
 
-create trigger trg_correspondence_department_codes_updated_at
+CREATE OR REPLACE TRIGGER trg_correspondence_department_codes_updated_at
 before update on public.correspondence_department_codes
 for each row execute function public.correspondence_set_updated_at();
 
-create trigger trg_correspondence_counters_updated_at
+CREATE OR REPLACE TRIGGER trg_correspondence_counters_updated_at
 before update on public.correspondence_counters
 for each row execute function public.correspondence_set_updated_at();
 
-create trigger trg_correspondence_records_updated_at
+CREATE OR REPLACE TRIGGER trg_correspondence_records_updated_at
 before update on public.correspondence_records
 for each row execute function public.correspondence_set_updated_at();
 
-create trigger trg_correspondence_approvals_updated_at
+CREATE OR REPLACE TRIGGER trg_correspondence_approvals_updated_at
 before update on public.correspondence_approvals
 for each row execute function public.correspondence_set_updated_at();
 
-create trigger trg_correspondence_records_before_insert
+CREATE OR REPLACE TRIGGER trg_correspondence_records_before_insert
 before insert on public.correspondence_records
 for each row execute function public.correspondence_before_insert();
 
-create trigger trg_correspondence_records_before_update
+CREATE OR REPLACE TRIGGER trg_correspondence_records_before_update
 before update on public.correspondence_records
 for each row execute function public.correspondence_before_update();
 
@@ -347,19 +347,19 @@ alter table public.correspondence_approvals enable row level security;
 alter table public.correspondence_events enable row level security;
 alter table public.correspondence_versions enable row level security;
 
-create policy "correspondence_department_codes_select"
-on public.correspondence_department_codes
+DROP POLICY IF EXISTS "correspondence_department_codes_select" ON public.correspondence_department_codes;
+CREATE POLICY "correspondence_department_codes_select" ON public.correspondence_department_codes
 for select
 using (auth.uid() is not null);
 
-create policy "correspondence_department_codes_manage"
-on public.correspondence_department_codes
+DROP POLICY IF EXISTS "correspondence_department_codes_manage" ON public.correspondence_department_codes;
+CREATE POLICY "correspondence_department_codes_manage" ON public.correspondence_department_codes
 for all
 using (public.correspondence_is_admin())
 with check (public.correspondence_is_admin());
 
-create policy "correspondence_records_select"
-on public.correspondence_records
+DROP POLICY IF EXISTS "correspondence_records_select" ON public.correspondence_records;
+CREATE POLICY "correspondence_records_select" ON public.correspondence_records
 for select
 using (
   originator_id = auth.uid()
@@ -373,16 +373,16 @@ using (
   )
 );
 
-create policy "correspondence_records_insert"
-on public.correspondence_records
+DROP POLICY IF EXISTS "correspondence_records_insert" ON public.correspondence_records;
+CREATE POLICY "correspondence_records_insert" ON public.correspondence_records
 for insert
 with check (
   auth.uid() is not null
   and originator_id = auth.uid()
 );
 
-create policy "correspondence_records_update"
-on public.correspondence_records
+DROP POLICY IF EXISTS "correspondence_records_update" ON public.correspondence_records;
+CREATE POLICY "correspondence_records_update" ON public.correspondence_records
 for update
 using (
   originator_id = auth.uid()
@@ -407,8 +407,8 @@ with check (
   )
 );
 
-create policy "correspondence_approvals_select"
-on public.correspondence_approvals
+DROP POLICY IF EXISTS "correspondence_approvals_select" ON public.correspondence_approvals;
+CREATE POLICY "correspondence_approvals_select" ON public.correspondence_approvals
 for select
 using (
   exists (
@@ -425,8 +425,8 @@ using (
   )
 );
 
-create policy "correspondence_approvals_insert"
-on public.correspondence_approvals
+DROP POLICY IF EXISTS "correspondence_approvals_insert" ON public.correspondence_approvals;
+CREATE POLICY "correspondence_approvals_insert" ON public.correspondence_approvals
 for insert
 with check (
   public.correspondence_is_admin()
@@ -441,8 +441,8 @@ with check (
   )
 );
 
-create policy "correspondence_approvals_update"
-on public.correspondence_approvals
+DROP POLICY IF EXISTS "correspondence_approvals_update" ON public.correspondence_approvals;
+CREATE POLICY "correspondence_approvals_update" ON public.correspondence_approvals
 for update
 using (
   approver_id = auth.uid()
@@ -453,8 +453,8 @@ with check (
   or public.correspondence_is_admin()
 );
 
-create policy "correspondence_events_select"
-on public.correspondence_events
+DROP POLICY IF EXISTS "correspondence_events_select" ON public.correspondence_events;
+CREATE POLICY "correspondence_events_select" ON public.correspondence_events
 for select
 using (
   exists (
@@ -471,16 +471,16 @@ using (
   )
 );
 
-create policy "correspondence_events_insert"
-on public.correspondence_events
+DROP POLICY IF EXISTS "correspondence_events_insert" ON public.correspondence_events;
+CREATE POLICY "correspondence_events_insert" ON public.correspondence_events
 for insert
 with check (
   actor_id = auth.uid()
   or public.correspondence_is_admin()
 );
 
-create policy "correspondence_versions_select"
-on public.correspondence_versions
+DROP POLICY IF EXISTS "correspondence_versions_select" ON public.correspondence_versions;
+CREATE POLICY "correspondence_versions_select" ON public.correspondence_versions
 for select
 using (
   exists (
@@ -497,21 +497,21 @@ using (
   )
 );
 
-create policy "correspondence_versions_insert"
-on public.correspondence_versions
+DROP POLICY IF EXISTS "correspondence_versions_insert" ON public.correspondence_versions;
+CREATE POLICY "correspondence_versions_insert" ON public.correspondence_versions
 for insert
 with check (
   uploaded_by = auth.uid()
   or public.correspondence_is_admin()
 );
 
-create policy "correspondence_counters_select_admin_only"
-on public.correspondence_counters
+DROP POLICY IF EXISTS "correspondence_counters_select_admin_only" ON public.correspondence_counters;
+CREATE POLICY "correspondence_counters_select_admin_only" ON public.correspondence_counters
 for select
 using (public.correspondence_is_admin());
 
-create policy "correspondence_counters_manage_service"
-on public.correspondence_counters
+DROP POLICY IF EXISTS "correspondence_counters_manage_service" ON public.correspondence_counters;
+CREATE POLICY "correspondence_counters_manage_service" ON public.correspondence_counters
 for all
 using (auth.role() = 'service_role' or public.correspondence_is_admin())
 with check (auth.role() = 'service_role' or public.correspondence_is_admin());

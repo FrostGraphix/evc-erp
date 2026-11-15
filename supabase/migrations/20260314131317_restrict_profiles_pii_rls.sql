@@ -62,22 +62,22 @@ $$;
 -- ---------------------------------------------------------------------------
 
 -- Policy A: Users can always read their own full profile
-CREATE POLICY "profiles_select_own"
-  ON public.profiles
+DROP POLICY IF EXISTS "profiles_select_own" ON public.profiles;
+CREATE POLICY "profiles_select_own" ON public.profiles
   FOR SELECT
   TO authenticated
   USING (id = auth.uid());
 
 -- Policy B: Admins, super_admins, developers can read all profiles
-CREATE POLICY "profiles_select_admin"
-  ON public.profiles
+DROP POLICY IF EXISTS "profiles_select_admin" ON public.profiles;
+CREATE POLICY "profiles_select_admin" ON public.profiles
   FOR SELECT
   TO authenticated
   USING (public.is_admin_like());
 
 -- Policy C: Department leads can read profiles in their departments
-CREATE POLICY "profiles_select_lead_department"
-  ON public.profiles
+DROP POLICY IF EXISTS "profiles_select_lead_department" ON public.profiles;
+CREATE POLICY "profiles_select_lead_department" ON public.profiles
   FOR SELECT
   TO authenticated
   USING (

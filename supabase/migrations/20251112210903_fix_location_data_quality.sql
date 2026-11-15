@@ -1,3 +1,8 @@
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS company_email TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS current_work_location TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS site_name TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS site_state TEXT;
+
 
 -- Fix Critical Location Field Data Quality Issues
 -- This migration addresses phone numbers, emails, and job titles in location fields

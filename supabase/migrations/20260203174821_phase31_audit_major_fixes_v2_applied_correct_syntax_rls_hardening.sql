@@ -9,8 +9,7 @@
 DROP POLICY IF EXISTS "User roles admin write" ON user_roles;
 DROP POLICY IF EXISTS "User roles admin insert" ON user_roles;
 DROP POLICY IF EXISTS "User roles admin update" ON user_roles;
-DROP POLICY IF EXISTS "User roles admin delete" ON user_roles;
-
+DROP POLICY IF EXISTS "User roles admin insert" ON user_roles;
 CREATE POLICY "User roles admin insert" ON user_roles 
 FOR INSERT TO authenticated 
 WITH CHECK (
@@ -18,6 +17,7 @@ WITH CHECK (
     ((SELECT has_role('admin')) AND role NOT IN ('admin', 'super_admin'))
 );
 
+DROP POLICY IF EXISTS "User roles admin update" ON user_roles;
 CREATE POLICY "User roles admin update" ON user_roles 
 FOR UPDATE TO authenticated 
 USING (
@@ -33,6 +33,7 @@ WITH CHECK (
     ((SELECT has_role('admin')) AND role NOT IN ('admin', 'super_admin'))
 );
 
+DROP POLICY IF EXISTS "User roles admin delete" ON user_roles;
 CREATE POLICY "User roles admin delete" ON user_roles 
 FOR DELETE TO authenticated 
 USING (
@@ -48,12 +49,12 @@ USING (
 -- =====================================================
 -- 2. NOTIFICATIONS & AUDIT LOGS (Harden Insert)
 -- =====================================================
-DROP POLICY IF EXISTS "System and Staff can create notifications" ON notifications;
+DROP POLICY IF EXISTS "Staff can create notifications" ON notifications;
 CREATE POLICY "Staff can create notifications" ON notifications 
 FOR INSERT TO authenticated 
 WITH CHECK ((SELECT has_role('staff')) OR (SELECT has_role('admin')));
 
-DROP POLICY IF EXISTS "System can insert audit logs" ON audit_logs;
+DROP POLICY IF EXISTS "Admins can insert audit logs" ON audit_logs;
 CREATE POLICY "Admins can insert audit logs" ON audit_logs 
 FOR INSERT TO authenticated 
 WITH CHECK ((SELECT has_role('admin')));

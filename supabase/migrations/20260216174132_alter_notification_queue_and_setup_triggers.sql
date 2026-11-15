@@ -1,3 +1,18 @@
+CREATE TABLE IF NOT EXISTS public.notification_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id),
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT,
+  fingerprint TEXT,
+  data JSONB,
+  status TEXT DEFAULT 'pending',
+  process_after TIMESTAMPTZ DEFAULT (now() + interval '5 minutes'),
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- 1. Ensure Table Columns Exist
 ALTER TABLE public.notification_queue 
 ADD COLUMN IF NOT EXISTS process_after timestamptz DEFAULT (now() + interval '5 minutes');
@@ -116,7 +131,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS on_asset_assignment_created ON public.asset_assignments;
-CREATE TRIGGER on_asset_assignment_created
+CREATE OR REPLACE TRIGGER on_asset_assignment_created
 AFTER INSERT ON public.asset_assignments
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_new_asset_assignment();
@@ -158,7 +173,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS on_asset_assignment_return ON public.asset_assignments;
-CREATE TRIGGER on_asset_assignment_return
+CREATE OR REPLACE TRIGGER on_asset_assignment_return
 AFTER UPDATE ON public.asset_assignments
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_asset_return();

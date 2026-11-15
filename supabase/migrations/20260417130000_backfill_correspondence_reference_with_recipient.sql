@@ -8,7 +8,7 @@ set department_code = excluded.department_code,
     is_active = true,
     updated_at = now();
 
-alter table public.correspondence_records disable trigger trg_correspondence_before_update;
+DO $$ BEGIN ALTER TABLE public.correspondence_records DISABLE TRIGGER trg_correspondence_before_update; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 
 with source_rows as (
   select
@@ -87,7 +87,7 @@ from prepared p
 where cr.id = p.id
   and cr.reference_number is distinct from p.next_reference;
 
-alter table public.correspondence_records enable trigger trg_correspondence_before_update;
+DO $$ BEGIN ALTER TABLE public.correspondence_records ENABLE TRIGGER trg_correspondence_before_update; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 
 delete from public.correspondence_counters
 where counter_key like 'outgoing:%';

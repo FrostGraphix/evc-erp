@@ -9,7 +9,31 @@
 -- 3. lead - Department leads with limited management access
 -- 4. staff - Regular employees
 -- 5. visitor - Read-only guest access
-CREATE TYPE user_role AS ENUM ('visitor', 'staff', 'lead', 'admin', 'super_admin');
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Authorized users can upload task attachments" ON storage.objects;
+  DROP POLICY IF EXISTS "Authorized users can view task attachments" ON storage.objects;
+  DROP POLICY IF EXISTS "Authorized users can update task attachments" ON storage.objects;
+  DROP POLICY IF EXISTS "Authorized users can delete task attachments" ON storage.objects;
+  DROP POLICY IF EXISTS "Users can view tasks in their department or assigned to them" ON public.tasks;
+  DROP POLICY IF EXISTS "Admins, team leads, and assignees can update tasks" ON public.tasks;
+  DROP POLICY IF EXISTS "Admins and team leads can create tasks" ON public.tasks;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'tasks' AND column_name = 'assigned_to' AND data_type = 'ARRAY'
+  ) THEN
+    ALTER TABLE tasks ALTER COLUMN assigned_to DROP DEFAULT;
+    ALTER TABLE tasks ALTER COLUMN assigned_to TYPE uuid USING NULL;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'tasks' AND column_name = 'status' AND data_type = 'USER-DEFINED'
+  ) THEN
+    ALTER TABLE tasks ALTER COLUMN status DROP DEFAULT;
+    ALTER TABLE tasks ALTER COLUMN status TYPE text;
+    ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'pending';
+  END IF;
+END $$;
 -- Update profiles table to include role and department lead info
 ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS role user_role DEFAULT 'staff',
@@ -70,6 +94,37 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS title TEXT,
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'medium',
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS assigned_to UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS assigned_by UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS department TEXT,
+  ADD COLUMN IF NOT EXISTS due_date DATE,
+  ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0;
+
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'tasks' AND column_name = 'assigned_to' AND data_type = 'ARRAY'
+  ) THEN
+    ALTER TABLE tasks ALTER COLUMN assigned_to DROP DEFAULT;
+    ALTER TABLE tasks ALTER COLUMN assigned_to TYPE uuid USING NULL;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'tasks' AND column_name = 'status' AND data_type = 'USER-DEFINED'
+  ) THEN
+    ALTER TABLE tasks ALTER COLUMN status DROP DEFAULT;
+    ALTER TABLE tasks ALTER COLUMN status TYPE text;
+    ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'pending';
+  END IF;
+END $$;
 -- Task comments/updates
 CREATE TABLE IF NOT EXISTS task_updates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -142,7 +197,9 @@ ALTER TABLE task_updates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_documentation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 -- Devices policies
+DROP POLICY IF EXISTS "Users can view all devices" ON devices;
 CREATE POLICY "Users can view all devices" ON devices FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Only super_admin/admin can create devices" ON devices;
 CREATE POLICY "Only super_admin/admin can create devices" ON devices FOR INSERT WITH CHECK (
   EXISTS (
     SELECT 1 FROM profiles
@@ -150,6 +207,7 @@ CREATE POLICY "Only super_admin/admin can create devices" ON devices FOR INSERT 
     AND (profiles.role IN ('super_admin', 'admin'))
   )
 );
+DROP POLICY IF EXISTS "Only super_admin/admin can update devices" ON devices;
 CREATE POLICY "Only super_admin/admin can update devices" ON devices FOR UPDATE USING (
   EXISTS (
     SELECT 1 FROM profiles
@@ -158,6 +216,7 @@ CREATE POLICY "Only super_admin/admin can update devices" ON devices FOR UPDATE 
   )
 );
 -- Device assignments policies
+DROP POLICY IF EXISTS "Users can view their own device assignments" ON device_assignments;
 CREATE POLICY "Users can view their own device assignments" ON device_assignments FOR SELECT USING (
   assigned_to = auth.uid() OR
   EXISTS (
@@ -166,6 +225,7 @@ CREATE POLICY "Users can view their own device assignments" ON device_assignment
     AND (profiles.role IN ('super_admin', 'admin', 'lead'))
   )
 );
+DROP POLICY IF EXISTS "Only super_admin/admin can create device assignments" ON device_assignments;
 CREATE POLICY "Only super_admin/admin can create device assignments" ON device_assignments FOR INSERT WITH CHECK (
   EXISTS (
     SELECT 1 FROM profiles
@@ -174,6 +234,7 @@ CREATE POLICY "Only super_admin/admin can create device assignments" ON device_a
   )
 );
 -- Tasks policies
+DROP POLICY IF EXISTS "Users can view their assigned tasks or tasks they created" ON tasks;
 CREATE POLICY "Users can view their assigned tasks or tasks they created" ON tasks FOR SELECT USING (
   assigned_to = auth.uid() OR
   assigned_by = auth.uid() OR
@@ -186,6 +247,7 @@ CREATE POLICY "Users can view their assigned tasks or tasks they created" ON tas
     )
   )
 );
+DROP POLICY IF EXISTS "Leads/admin/super_admin can create tasks" ON tasks;
 CREATE POLICY "Leads/admin/super_admin can create tasks" ON tasks FOR INSERT WITH CHECK (
   EXISTS (
     SELECT 1 FROM profiles
@@ -193,6 +255,7 @@ CREATE POLICY "Leads/admin/super_admin can create tasks" ON tasks FOR INSERT WIT
     AND profiles.role IN ('super_admin', 'admin', 'lead')
   )
 );
+DROP POLICY IF EXISTS "Task assignee or creator can update" ON tasks;
 CREATE POLICY "Task assignee or creator can update" ON tasks FOR UPDATE USING (
   assigned_to = auth.uid() OR
   assigned_by = auth.uid() OR
@@ -206,6 +269,7 @@ CREATE POLICY "Task assignee or creator can update" ON tasks FOR UPDATE USING (
   )
 );
 -- Task updates policies
+DROP POLICY IF EXISTS "Users can view task updates for their tasks" ON task_updates;
 CREATE POLICY "Users can view task updates for their tasks" ON task_updates FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM tasks
@@ -218,8 +282,10 @@ CREATE POLICY "Users can view task updates for their tasks" ON task_updates FOR 
     AND profiles.role IN ('super_admin', 'admin', 'lead')
   )
 );
+DROP POLICY IF EXISTS "Users can create task updates" ON task_updates;
 CREATE POLICY "Users can create task updates" ON task_updates FOR INSERT WITH CHECK (true);
 -- Documentation policies
+DROP POLICY IF EXISTS "Users can view their own documentation" ON user_documentation;
 CREATE POLICY "Users can view their own documentation" ON user_documentation FOR SELECT USING (
   user_id = auth.uid() OR
   EXISTS (
@@ -232,10 +298,14 @@ CREATE POLICY "Users can view their own documentation" ON user_documentation FOR
     )
   )
 );
+DROP POLICY IF EXISTS "Users can create their own documentation" ON user_documentation;
 CREATE POLICY "Users can create their own documentation" ON user_documentation FOR INSERT WITH CHECK (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users can update their own documentation" ON user_documentation;
 CREATE POLICY "Users can update their own documentation" ON user_documentation FOR UPDATE USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users can delete their own documentation" ON user_documentation;
 CREATE POLICY "Users can delete their own documentation" ON user_documentation FOR DELETE USING (user_id = auth.uid());
 -- Audit logs policies
+DROP POLICY IF EXISTS "super_admin/admin can view all audit logs" ON audit_logs;
 CREATE POLICY "super_admin/admin can view all audit logs" ON audit_logs FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM profiles
@@ -243,6 +313,7 @@ CREATE POLICY "super_admin/admin can view all audit logs" ON audit_logs FOR SELE
     AND profiles.role IN ('super_admin', 'admin')
   )
 );
+DROP POLICY IF EXISTS "Leads can view their department audit logs" ON audit_logs;
 CREATE POLICY "Leads can view their department audit logs" ON audit_logs FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM profiles p
@@ -288,11 +359,14 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices
+DROP TRIGGER IF EXISTS update_devices_updated_at ON devices;
+CREATE OR REPLACE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks
+DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
+CREATE OR REPLACE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_user_documentation_updated_at BEFORE UPDATE ON user_documentation
+DROP TRIGGER IF EXISTS update_user_documentation_updated_at ON user_documentation;
+CREATE OR REPLACE TRIGGER update_user_documentation_updated_at BEFORE UPDATE ON user_documentation
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 -- ============================================
 -- Initial Data / Grants

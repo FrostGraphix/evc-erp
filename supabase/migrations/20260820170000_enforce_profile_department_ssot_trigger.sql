@@ -83,7 +83,7 @@ GRANT EXECUTE ON FUNCTION public.handle_profile_department_ssot_sync() TO authen
 DROP TRIGGER IF EXISTS trg_profile_department_ssot_sync ON public.profiles;
 
 -- Create BEFORE INSERT OR UPDATE trigger
-CREATE TRIGGER trg_profile_department_ssot_sync
+CREATE OR REPLACE TRIGGER trg_profile_department_ssot_sync
 BEFORE INSERT OR UPDATE OF department, department_id, lead_departments, lead_department_ids, is_department_lead
 ON public.profiles
 FOR EACH ROW

@@ -42,6 +42,24 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   UNIQUE(user_id, date)
 );
 
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'attendance_records' AND column_name = 'attendance_date'
+  ) THEN
+    ALTER TABLE attendance_records RENAME COLUMN attendance_date TO date;
+  END IF;
+  ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS date DATE;
+  ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS clock_in TIME;
+  ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS clock_out TIME;
+  ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS break_duration INTEGER DEFAULT 0;
+  ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS total_hours DECIMAL(5,2);
+  ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS overtime_hours DECIMAL(5,2) DEFAULT 0;
+  ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS shift_id UUID;
+  ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'present';
+  ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS notes TEXT;
+END $$;
+
 -- Timesheets
 CREATE TABLE IF NOT EXISTS timesheets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -359,15 +377,15 @@ CREATE TABLE IF NOT EXISTS offers (
 -- INDEXES
 -- ============================================
 
-CREATE INDEX idx_attendance_user_date ON attendance_records(user_id, date);
-CREATE INDEX idx_timesheets_user_week ON timesheets(user_id, week_start_date);
-CREATE INDEX idx_leave_requests_user ON leave_requests(user_id);
-CREATE INDEX idx_leave_requests_status ON leave_requests(status);
-CREATE INDEX idx_payroll_entries_user ON payroll_entries(user_id);
-CREATE INDEX idx_payroll_entries_period ON payroll_entries(payroll_period_id);
-CREATE INDEX idx_performance_reviews_user ON performance_reviews(user_id);
-CREATE INDEX idx_applications_job ON applications(job_posting_id);
-CREATE INDEX idx_applications_status ON applications(status);
+CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance_records(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_timesheets_user_week ON timesheets(user_id, week_start_date);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_user ON leave_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
+CREATE INDEX IF NOT EXISTS idx_payroll_entries_user ON payroll_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_entries_period ON payroll_entries(payroll_period_id);
+CREATE INDEX IF NOT EXISTS idx_performance_reviews_user ON performance_reviews(user_id);
+CREATE INDEX IF NOT EXISTS idx_applications_job ON applications(job_posting_id);
+CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 
 -- ============================================
 -- RLS POLICIES
@@ -399,30 +417,39 @@ ALTER TABLE offers ENABLE ROW LEVEL SECURITY;
 
 -- Basic policies: Users can view their own data, admins can view all
 -- Attendance
+DROP POLICY IF EXISTS "Users can view own attendance" ON attendance_records;
 CREATE POLICY "Users can view own attendance" ON attendance_records FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all attendance" ON attendance_records;
 CREATE POLICY "Admins can view all attendance" ON attendance_records FOR SELECT USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('super_admin', 'admin'))
 );
 
 -- Leave
+DROP POLICY IF EXISTS "Users can view own leave" ON leave_requests;
 CREATE POLICY "Users can view own leave" ON leave_requests FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all leave" ON leave_requests;
 CREATE POLICY "Admins can view all leave" ON leave_requests FOR SELECT USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('super_admin', 'admin'))
 );
 
 -- Payroll
+DROP POLICY IF EXISTS "Users can view own payroll" ON payroll_entries;
 CREATE POLICY "Users can view own payroll" ON payroll_entries FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all payroll" ON payroll_entries;
 CREATE POLICY "Admins can view all payroll" ON payroll_entries FOR SELECT USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('super_admin', 'admin'))
 );
 
 -- Performance
+DROP POLICY IF EXISTS "Users can view own reviews" ON performance_reviews;
 CREATE POLICY "Users can view own reviews" ON performance_reviews FOR SELECT USING (auth.uid() = user_id OR auth.uid() = reviewer_id);
+DROP POLICY IF EXISTS "Admins can view all reviews" ON performance_reviews;
 CREATE POLICY "Admins can view all reviews" ON performance_reviews FOR SELECT USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('super_admin', 'admin'))
 );
 
 -- Recruitment
+DROP POLICY IF EXISTS "Admins can manage recruitment" ON job_postings;
 CREATE POLICY "Admins can manage recruitment" ON job_postings FOR ALL USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('super_admin', 'admin'))
 );

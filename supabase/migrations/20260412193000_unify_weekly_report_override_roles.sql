@@ -50,6 +50,7 @@ begin
 end;
 $$;
 
+drop function if exists public.weekly_report_lock_state(integer, integer) cascade;
 create or replace function public.weekly_report_lock_state(p_week integer, p_year integer)
 returns table (
   meeting_date date,

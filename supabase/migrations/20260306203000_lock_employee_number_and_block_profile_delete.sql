@@ -14,7 +14,7 @@ end;
 $$;
 
 drop trigger if exists trg_profiles_prevent_employee_number_mutation on public.profiles;
-create trigger trg_profiles_prevent_employee_number_mutation
+CREATE OR REPLACE TRIGGER trg_profiles_prevent_employee_number_mutation
 before update on public.profiles
 for each row
 execute function public.prevent_employee_number_mutation();
@@ -31,7 +31,7 @@ end;
 $$;
 
 drop trigger if exists trg_profiles_prevent_delete on public.profiles;
-create trigger trg_profiles_prevent_delete
+CREATE OR REPLACE TRIGGER trg_profiles_prevent_delete
 before delete on public.profiles
 for each row
 execute function public.prevent_profile_delete();

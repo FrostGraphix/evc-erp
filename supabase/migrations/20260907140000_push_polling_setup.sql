@@ -44,7 +44,8 @@ WHERE notification_key = 'system';
 -- ---------------------------------------------------------------------------
 
 ALTER TABLE public.notifications
-  ADD COLUMN IF NOT EXISTS pushed_at timestamptz;
+  ADD COLUMN IF NOT EXISTS pushed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS link_url text;
 
 -- Backfill every existing row as already handled. Without this the first cron
 -- run would treat the entire history (~4,600 rows) as a pending push and

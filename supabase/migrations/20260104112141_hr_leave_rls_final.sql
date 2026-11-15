@@ -24,14 +24,14 @@ DROP POLICY IF EXISTS "Only admins can manage leave approvals" ON leave_approval
 -- =====================================================
 
 -- Users can view their own leave requests
-CREATE POLICY "Users can view own leave requests"
-  ON leave_requests FOR SELECT
+DROP POLICY IF EXISTS "Users can view own leave requests" ON leave_requests;
+CREATE POLICY "Users can view own leave requests" ON leave_requests FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
 
 -- Department leads can view their department's leave requests
-CREATE POLICY "Department leads can view department leave requests"
-  ON leave_requests FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view department leave requests" ON leave_requests;
+CREATE POLICY "Department leads can view department leave requests" ON leave_requests FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -45,8 +45,8 @@ CREATE POLICY "Department leads can view department leave requests"
   );
 
 -- Admins can view all leave requests
-CREATE POLICY "Admins can view all leave requests"
-  ON leave_requests FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all leave requests" ON leave_requests;
+CREATE POLICY "Admins can view all leave requests" ON leave_requests FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -57,14 +57,14 @@ CREATE POLICY "Admins can view all leave requests"
   );
 
 -- Users can create their own leave requests
-CREATE POLICY "Users can create own leave requests"
-  ON leave_requests FOR INSERT
+DROP POLICY IF EXISTS "Users can create own leave requests" ON leave_requests;
+CREATE POLICY "Users can create own leave requests" ON leave_requests FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
 -- Users can update their own pending leave requests
-CREATE POLICY "Users can update own pending leave requests"
-  ON leave_requests FOR UPDATE
+DROP POLICY IF EXISTS "Users can update own pending leave requests" ON leave_requests;
+CREATE POLICY "Users can update own pending leave requests" ON leave_requests FOR UPDATE
   TO authenticated
   USING (
     auth.uid() = user_id 
@@ -76,8 +76,8 @@ CREATE POLICY "Users can update own pending leave requests"
   );
 
 -- Department leads can update department leave requests (for approval)
-CREATE POLICY "Department leads can approve department leave"
-  ON leave_requests FOR UPDATE
+DROP POLICY IF EXISTS "Department leads can approve department leave" ON leave_requests;
+CREATE POLICY "Department leads can approve department leave" ON leave_requests FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
@@ -91,8 +91,8 @@ CREATE POLICY "Department leads can approve department leave"
   );
 
 -- Admins can update any leave request
-CREATE POLICY "Admins can update all leave requests"
-  ON leave_requests FOR UPDATE
+DROP POLICY IF EXISTS "Admins can update all leave requests" ON leave_requests;
+CREATE POLICY "Admins can update all leave requests" ON leave_requests FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
@@ -103,8 +103,8 @@ CREATE POLICY "Admins can update all leave requests"
   );
 
 -- Only admins can delete leave requests
-CREATE POLICY "Admins can delete leave requests"
-  ON leave_requests FOR DELETE
+DROP POLICY IF EXISTS "Admins can delete leave requests" ON leave_requests;
+CREATE POLICY "Admins can delete leave requests" ON leave_requests FOR DELETE
   TO authenticated
   USING (
     EXISTS (
@@ -119,14 +119,14 @@ CREATE POLICY "Admins can delete leave requests"
 -- =====================================================
 
 -- All authenticated users can view leave types
-CREATE POLICY "All users can view leave types"
-  ON leave_types FOR SELECT
+DROP POLICY IF EXISTS "All users can view leave types" ON leave_types;
+CREATE POLICY "All users can view leave types" ON leave_types FOR SELECT
   TO authenticated
   USING (true);
 
 -- Only admins can manage leave types
-CREATE POLICY "Only admins can manage leave types"
-  ON leave_types FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage leave types" ON leave_types;
+CREATE POLICY "Only admins can manage leave types" ON leave_types FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -141,14 +141,14 @@ CREATE POLICY "Only admins can manage leave types"
 -- =====================================================
 
 -- Users can view their own leave balances
-CREATE POLICY "Users can view own leave balances"
-  ON leave_balances FOR SELECT
+DROP POLICY IF EXISTS "Users can view own leave balances" ON leave_balances;
+CREATE POLICY "Users can view own leave balances" ON leave_balances FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
 
 -- Department leads can view department leave balances
-CREATE POLICY "Department leads can view department balances"
-  ON leave_balances FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view department balances" ON leave_balances;
+CREATE POLICY "Department leads can view department balances" ON leave_balances FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -162,8 +162,8 @@ CREATE POLICY "Department leads can view department balances"
   );
 
 -- Admins can view all leave balances
-CREATE POLICY "Admins can view all leave balances"
-  ON leave_balances FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all leave balances" ON leave_balances;
+CREATE POLICY "Admins can view all leave balances" ON leave_balances FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -174,8 +174,8 @@ CREATE POLICY "Admins can view all leave balances"
   );
 
 -- Only admins can manage leave balances
-CREATE POLICY "Only admins can manage leave balances"
-  ON leave_balances FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage leave balances" ON leave_balances;
+CREATE POLICY "Only admins can manage leave balances" ON leave_balances FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -190,8 +190,8 @@ CREATE POLICY "Only admins can manage leave balances"
 -- =====================================================
 
 -- Users can view approvals for their leave requests
-CREATE POLICY "Users can view own leave approvals"
-  ON leave_approvals FOR SELECT
+DROP POLICY IF EXISTS "Users can view own leave approvals" ON leave_approvals;
+CREATE POLICY "Users can view own leave approvals" ON leave_approvals FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -202,8 +202,8 @@ CREATE POLICY "Users can view own leave approvals"
   );
 
 -- Department leads can view department leave approvals
-CREATE POLICY "Department leads can view department approvals"
-  ON leave_approvals FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view department approvals" ON leave_approvals;
+CREATE POLICY "Department leads can view department approvals" ON leave_approvals FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -218,8 +218,8 @@ CREATE POLICY "Department leads can view department approvals"
   );
 
 -- Admins can view all approvals
-CREATE POLICY "Admins can view all leave approvals"
-  ON leave_approvals FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all leave approvals" ON leave_approvals;
+CREATE POLICY "Admins can view all leave approvals" ON leave_approvals FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -230,8 +230,8 @@ CREATE POLICY "Admins can view all leave approvals"
   );
 
 -- Department leads and admins can create approvals
-CREATE POLICY "Leads and admins can create approvals"
-  ON leave_approvals FOR INSERT
+DROP POLICY IF EXISTS "Leads and admins can create approvals" ON leave_approvals;
+CREATE POLICY "Leads and admins can create approvals" ON leave_approvals FOR INSERT
   TO authenticated
   WITH CHECK (
     auth.uid() = approver_id

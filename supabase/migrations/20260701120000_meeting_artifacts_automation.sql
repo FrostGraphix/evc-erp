@@ -162,7 +162,7 @@ grant all on table public.meeting_artifact_ledger to authenticated, service_role
 
 -- ── 5. updated_at trigger (reuse the shared meeting-docs helper) ──────────────
 drop trigger if exists trg_meeting_artifact_sources_updated_at on public.meeting_artifact_sources;
-create trigger trg_meeting_artifact_sources_updated_at
+CREATE OR REPLACE TRIGGER trg_meeting_artifact_sources_updated_at
 before update on public.meeting_artifact_sources
 for each row
 execute function public.meeting_docs_set_updated_at();

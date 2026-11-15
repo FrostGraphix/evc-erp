@@ -40,7 +40,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_assign_work_item_number ON public.tasks;
-CREATE TRIGGER trg_assign_work_item_number
+CREATE OR REPLACE TRIGGER trg_assign_work_item_number
   BEFORE INSERT ON public.tasks
   FOR EACH ROW
   EXECUTE FUNCTION public.assign_work_item_number();
@@ -64,7 +64,7 @@ SET source_type = 'action_item'
 WHERE category = 'weekly_action' AND source_type = 'manual';
 
 -- ─────────────────────────────────────────────────────────────
--- 5. Create index for fast lookups
+-- 5. CREATE INDEX IF NOT EXISTS for fast lookups
 -- ─────────────────────────────────────────────────────────────
 
 CREATE INDEX IF NOT EXISTS idx_tasks_source_type ON public.tasks(source_type);

@@ -119,48 +119,48 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Step 3: Add triggers to important tables that don't have them
 -- Projects table
 DROP TRIGGER IF EXISTS audit_projects_changes ON projects;
-CREATE TRIGGER audit_projects_changes
+CREATE OR REPLACE TRIGGER audit_projects_changes
     AFTER INSERT OR UPDATE OR DELETE ON projects
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 -- Feedback table
 DROP TRIGGER IF EXISTS audit_feedback_changes ON feedback;
-CREATE TRIGGER audit_feedback_changes
+CREATE OR REPLACE TRIGGER audit_feedback_changes
     AFTER INSERT OR UPDATE OR DELETE ON feedback
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 -- Job postings table
 DROP TRIGGER IF EXISTS audit_job_postings_changes ON job_postings;
-CREATE TRIGGER audit_job_postings_changes
+CREATE OR REPLACE TRIGGER audit_job_postings_changes
     AFTER INSERT OR UPDATE OR DELETE ON job_postings
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 -- User documentation table
 DROP TRIGGER IF EXISTS audit_user_documentation_changes ON user_documentation;
-CREATE TRIGGER audit_user_documentation_changes
+CREATE OR REPLACE TRIGGER audit_user_documentation_changes
     AFTER INSERT OR UPDATE OR DELETE ON user_documentation
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 -- Employee salaries table
 DROP TRIGGER IF EXISTS audit_employee_salaries_changes ON employee_salaries;
-CREATE TRIGGER audit_employee_salaries_changes
+CREATE OR REPLACE TRIGGER audit_employee_salaries_changes
     AFTER INSERT OR UPDATE OR DELETE ON employee_salaries
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 -- Employee suspensions table
 DROP TRIGGER IF EXISTS audit_employee_suspensions_changes ON employee_suspensions;
-CREATE TRIGGER audit_employee_suspensions_changes
+CREATE OR REPLACE TRIGGER audit_employee_suspensions_changes
     AFTER INSERT OR UPDATE OR DELETE ON employee_suspensions
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 -- Roles table
 DROP TRIGGER IF EXISTS audit_roles_changes ON roles;
-CREATE TRIGGER audit_roles_changes
+CREATE OR REPLACE TRIGGER audit_roles_changes
     AFTER INSERT OR UPDATE OR DELETE ON roles
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 -- Pending users table (invitations)
 DROP TRIGGER IF EXISTS audit_pending_users_changes ON pending_users;
-CREATE TRIGGER audit_pending_users_changes
+CREATE OR REPLACE TRIGGER audit_pending_users_changes
     AFTER INSERT OR UPDATE OR DELETE ON pending_users
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();;

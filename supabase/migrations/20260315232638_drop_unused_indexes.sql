@@ -3,266 +3,266 @@
 -- These have never been used since the last pg_stat reset and are pure overhead
 
 -- admin_logs
-DROP INDEX IF EXISTS idx_admin_logs_admin_id;
-DROP INDEX IF EXISTS idx_admin_logs_target_user_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_admin_logs_admin_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_admin_logs_target_user_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- applications
-DROP INDEX IF EXISTS idx_applications_job;
-DROP INDEX IF EXISTS idx_applications_status;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_applications_job CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_applications_status CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- asset_assignments
-DROP INDEX IF EXISTS idx_asset_assignments_one_current_per_asset;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_asset_assignments_one_current_per_asset CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- asset_issues
-DROP INDEX IF EXISTS idx_asset_issues_created_by;
-DROP INDEX IF EXISTS idx_asset_issues_resolved;
-DROP INDEX IF EXISTS idx_asset_issues_resolved_by;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_asset_issues_created_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_asset_issues_resolved CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_asset_issues_resolved_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- asset_types
-DROP INDEX IF EXISTS idx_asset_types_code;
-DROP INDEX IF EXISTS idx_asset_types_created_by;
-DROP INDEX IF EXISTS idx_asset_types_label;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_asset_types_code CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_asset_types_created_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_asset_types_label CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- assets
-DROP INDEX IF EXISTS assets_serial_number_key;
-DROP INDEX IF EXISTS idx_assets_unique_code;
+DO $$ BEGIN DROP INDEX IF EXISTS assets_serial_number_key CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_assets_unique_code CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- attendance_records
-DROP INDEX IF EXISTS idx_attendance_records_shift_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_attendance_records_shift_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- audit_logs
-DROP INDEX IF EXISTS idx_audit_logs_user_created;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_audit_logs_user_created CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- consumption_data
-DROP INDEX IF EXISTS idx_consumption_data_meter_id;
-DROP INDEX IF EXISTS idx_consumption_data_reading_date;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_consumption_data_meter_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_consumption_data_reading_date CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- correspondence_approvals
-DROP INDEX IF EXISTS idx_correspondence_approvals_correspondence;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_correspondence_approvals_correspondence CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- correspondence_events
-DROP INDEX IF EXISTS idx_correspondence_events_correspondence;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_correspondence_events_correspondence CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- correspondence_records
-DROP INDEX IF EXISTS idx_correspondence_records_assigned_department;
-DROP INDEX IF EXISTS idx_correspondence_records_department_status;
-DROP INDEX IF EXISTS idx_correspondence_records_direction_status;
-DROP INDEX IF EXISTS idx_correspondence_records_reference_number;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_correspondence_records_assigned_department CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_correspondence_records_department_status CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_correspondence_records_direction_status CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_correspondence_records_reference_number CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- correspondence_versions
-DROP INDEX IF EXISTS idx_correspondence_versions_correspondence;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_correspondence_versions_correspondence CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- crm_activities
-DROP INDEX IF EXISTS idx_crm_activities_assigned_to;
-DROP INDEX IF EXISTS idx_crm_activities_completed;
-DROP INDEX IF EXISTS idx_crm_activities_contact_id;
-DROP INDEX IF EXISTS idx_crm_activities_due_date;
-DROP INDEX IF EXISTS idx_crm_activities_opportunity_id;
-DROP INDEX IF EXISTS idx_crm_activities_type;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_activities_assigned_to CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_activities_completed CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_activities_contact_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_activities_due_date CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_activities_opportunity_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_activities_type CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- crm_contacts
-DROP INDEX IF EXISTS idx_crm_contacts_assigned_to;
-DROP INDEX IF EXISTS idx_crm_contacts_meter_customer_id;
-DROP INDEX IF EXISTS idx_crm_contacts_pipeline_id;
-DROP INDEX IF EXISTS idx_crm_contacts_stage;
-DROP INDEX IF EXISTS idx_crm_contacts_tags;
-DROP INDEX IF EXISTS idx_crm_contacts_type;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_contacts_assigned_to CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_contacts_meter_customer_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_contacts_pipeline_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_contacts_stage CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_contacts_tags CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_contacts_type CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- crm_opportunities
-DROP INDEX IF EXISTS idx_crm_opportunities_assigned_to;
-DROP INDEX IF EXISTS idx_crm_opportunities_contact_id;
-DROP INDEX IF EXISTS idx_crm_opportunities_pipeline_id;
-DROP INDEX IF EXISTS idx_crm_opportunities_stage;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_opportunities_assigned_to CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_opportunities_contact_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_opportunities_pipeline_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_crm_opportunities_stage CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- customers
-DROP INDEX IF EXISTS idx_customers_crm_contact_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_customers_crm_contact_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- department_payments
-DROP INDEX IF EXISTS idx_department_payments_invoice_number;
-DROP INDEX IF EXISTS idx_department_payments_site_id;
-DROP INDEX IF EXISTS idx_dept_payments_category;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_department_payments_invoice_number CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_department_payments_site_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_dept_payments_category CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- departments
-DROP INDEX IF EXISTS idx_departments_active;
-DROP INDEX IF EXISTS idx_departments_head_id;
-DROP INDEX IF EXISTS idx_departments_name;
-DROP INDEX IF EXISTS unique_department_head;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_departments_active CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_departments_head_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_departments_name CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS unique_department_head CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- dev_login_logs
-DROP INDEX IF EXISTS idx_dev_login_logs_email_login_desc;
-DROP INDEX IF EXISTS idx_dev_login_logs_user_login_desc;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_dev_login_logs_email_login_desc CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_dev_login_logs_user_login_desc CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- employee_suspensions
-DROP INDEX IF EXISTS idx_employee_suspensions_is_active;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_employee_suspensions_is_active CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- event_notifications
-DROP INDEX IF EXISTS idx_event_notifications_site_id;
-DROP INDEX IF EXISTS idx_events_meter_id;
-DROP INDEX IF EXISTS idx_events_severity;
-DROP INDEX IF EXISTS idx_events_timestamp;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_event_notifications_site_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_events_meter_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_events_severity CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_events_timestamp CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- feedback
-DROP INDEX IF EXISTS idx_feedback_user_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_feedback_user_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- firmware_tasks
-DROP INDEX IF EXISTS idx_firmware_tasks_firmware_id;
-DROP INDEX IF EXISTS idx_firmware_tasks_meter_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_firmware_tasks_firmware_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_firmware_tasks_meter_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- goals_objectives
-DROP INDEX IF EXISTS idx_goals_objectives_cycle_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_goals_objectives_cycle_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- gprs_status
-DROP INDEX IF EXISTS idx_gprs_status_meter_id;
-DROP INDEX IF EXISTS idx_gprs_status_online;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_gprs_status_meter_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_gprs_status_online CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- gprs_tasks
-DROP INDEX IF EXISTS idx_gprs_tasks_meter_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_gprs_tasks_meter_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- help_desk_tickets
-DROP INDEX IF EXISTS idx_help_desk_tickets_handling_mode_status;
-DROP INDEX IF EXISTS idx_help_desk_tickets_priority;
-DROP INDEX IF EXISTS idx_help_desk_tickets_requester_created;
-DROP INDEX IF EXISTS idx_help_desk_tickets_requester_department_status;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_help_desk_tickets_handling_mode_status CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_help_desk_tickets_priority CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_help_desk_tickets_requester_created CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_help_desk_tickets_requester_department_status CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- holiday_calendar
-DROP INDEX IF EXISTS idx_holiday_calendar_location_date;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_holiday_calendar_location_date CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- interviews
-DROP INDEX IF EXISTS idx_interviews_app_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_interviews_app_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- leave_approver_assignments
-DROP INDEX IF EXISTS idx_leave_approver_assignments_primary_scope;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_leave_approver_assignments_primary_scope CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- leave_balances
-DROP INDEX IF EXISTS idx_leave_balances_type_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_leave_balances_type_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- leave_evidence
-DROP INDEX IF EXISTS idx_leave_evidence_status;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_leave_evidence_status CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- leave_requests
-DROP INDEX IF EXISTS idx_leave_requests_approval_stage;
-DROP INDEX IF EXISTS idx_leave_requests_approved_by;
-DROP INDEX IF EXISTS idx_leave_requests_stage_code;
-DROP INDEX IF EXISTS idx_leave_requests_supervisor_id;
-DROP INDEX IF EXISTS idx_leave_requests_type_id;
-DROP INDEX IF EXISTS idx_leave_requests_user_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_leave_requests_approval_stage CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_leave_requests_approved_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_leave_requests_stage_code CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_leave_requests_supervisor_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_leave_requests_type_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_leave_requests_user_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- meter_readings
-DROP INDEX IF EXISTS idx_meter_readings_meter_id;
-DROP INDEX IF EXISTS idx_meter_readings_meter_time;
-DROP INDEX IF EXISTS idx_meter_readings_odyssey_unique;
-DROP INDEX IF EXISTS idx_meter_readings_site_id;
-DROP INDEX IF EXISTS idx_meter_readings_type;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_meter_readings_meter_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_meter_readings_meter_time CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_meter_readings_odyssey_unique CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_meter_readings_site_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_meter_readings_type CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- meters
-DROP INDEX IF EXISTS idx_meters_gateway_id;
-DROP INDEX IF EXISTS idx_meters_tariff_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_meters_gateway_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_meters_tariff_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- notification_queue (both duplicates, both zero scans)
-DROP INDEX IF EXISTS idx_notification_queue_status_process;
-DROP INDEX IF EXISTS idx_notification_queue_status_process_after;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_notification_queue_status_process CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_notification_queue_status_process_after CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- notifications
-DROP INDEX IF EXISTS idx_notifications_priority;
-DROP INDEX IF EXISTS idx_notifications_read;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_notifications_priority CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_notifications_read CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- offers
-DROP INDEX IF EXISTS idx_offers_app_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_offers_app_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- office_locations
-DROP INDEX IF EXISTS idx_office_locations_department;
-DROP INDEX IF EXISTS idx_office_locations_site;
-DROP INDEX IF EXISTS idx_office_locations_type;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_office_locations_department CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_office_locations_site CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_office_locations_type CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- payment_documents
-DROP INDEX IF EXISTS idx_payment_docs_replaced_by;
-DROP INDEX IF EXISTS idx_payment_documents_archived;
-DROP INDEX IF EXISTS idx_payment_documents_date;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_payment_docs_replaced_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_payment_documents_archived CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_payment_documents_date CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- payroll_entries
-DROP INDEX IF EXISTS idx_payroll_entries_period;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_payroll_entries_period CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- payslips
-DROP INDEX IF EXISTS idx_payslips_entry_id;
-DROP INDEX IF EXISTS idx_payslips_period_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_payslips_entry_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_payslips_period_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- performance_ratings
-DROP INDEX IF EXISTS idx_performance_ratings_review_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_performance_ratings_review_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- performance_reviews
-DROP INDEX IF EXISTS idx_perf_reviews_cycle_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_perf_reviews_cycle_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- profiles
-DROP INDEX IF EXISTS idx_profiles_company_email;
-DROP INDEX IF EXISTS idx_profiles_department;
-DROP INDEX IF EXISTS idx_profiles_lead_department_ids;
-DROP INDEX IF EXISTS idx_profiles_lead_departments;
-DROP INDEX IF EXISTS idx_profiles_office_location;
-DROP INDEX IF EXISTS unique_lead_per_department;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_profiles_company_email CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_profiles_department CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_profiles_lead_department_ids CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_profiles_lead_departments CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_profiles_office_location CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS unique_lead_per_department CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- project_items
-DROP INDEX IF EXISTS idx_project_items_created_by;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_project_items_created_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- project_members
-DROP INDEX IF EXISTS idx_project_members_assigned_by;
-DROP INDEX IF EXISTS idx_project_members_is_active;
-DROP INDEX IF EXISTS idx_project_members_project_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_project_members_assigned_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_project_members_is_active CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_project_members_project_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- project_updates
-DROP INDEX IF EXISTS idx_project_updates_project_id;
-DROP INDEX IF EXISTS idx_project_updates_user_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_project_updates_project_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_project_updates_user_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- projects
-DROP INDEX IF EXISTS idx_projects_dates;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_projects_dates CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- remote_tasks
-DROP INDEX IF EXISTS idx_remote_tasks_created_at;
-DROP INDEX IF EXISTS idx_remote_tasks_meter_id;
-DROP INDEX IF EXISTS idx_remote_tasks_odyssey_id;
-DROP INDEX IF EXISTS idx_remote_tasks_task_id;
-DROP INDEX IF EXISTS idx_unique_remote_tasks;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_remote_tasks_created_at CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_remote_tasks_meter_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_remote_tasks_odyssey_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_remote_tasks_task_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_unique_remote_tasks CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- salary_structures
-DROP INDEX IF EXISTS idx_salary_structures_comp_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_salary_structures_comp_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- starlink_documents
-DROP INDEX IF EXISTS idx_starlink_documents_payment;
-DROP INDEX IF EXISTS idx_starlink_documents_type;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_starlink_documents_payment CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_starlink_documents_type CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- starlink_payments
-DROP INDEX IF EXISTS idx_starlink_payments_created_by;
-DROP INDEX IF EXISTS idx_starlink_payments_reminder;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_starlink_payments_created_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_starlink_payments_reminder CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- starlink_sites
-DROP INDEX IF EXISTS idx_starlink_sites_active;
-DROP INDEX IF EXISTS idx_starlink_sites_created_by;
-DROP INDEX IF EXISTS idx_starlink_sites_state;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_starlink_sites_active CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_starlink_sites_created_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_starlink_sites_state CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- sync_state
-DROP INDEX IF EXISTS idx_sync_state_last_sync;
-DROP INDEX IF EXISTS idx_sync_state_type;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_sync_state_last_sync CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_sync_state_type CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- system_settings
-DROP INDEX IF EXISTS idx_system_settings_updated_by;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_system_settings_updated_by CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- task_updates
-DROP INDEX IF EXISTS idx_task_updates_task_id;
-DROP INDEX IF EXISTS idx_task_updates_user_id_fk;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_task_updates_task_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_task_updates_user_id_fk CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- tasks
-DROP INDEX IF EXISTS idx_tasks_assigned_by_fk;
-DROP INDEX IF EXISTS idx_tasks_category;
-DROP INDEX IF EXISTS idx_tasks_project_id;
-DROP INDEX IF EXISTS idx_tasks_source_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_tasks_assigned_by_fk CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_tasks_category CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_tasks_project_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_tasks_source_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- token_records
-DROP INDEX IF EXISTS idx_token_records_generated_at;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_token_records_generated_at CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- token_sales
-DROP INDEX IF EXISTS idx_token_sales_created_at;
-DROP INDEX IF EXISTS idx_token_sales_customer_id;
-DROP INDEX IF EXISTS idx_token_sales_meter_id;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_token_sales_created_at CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_token_sales_customer_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_token_sales_meter_id CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- user_lead_departments
-DROP INDEX IF EXISTS idx_user_lead_departments_user;
+DO $$ BEGIN DROP INDEX IF EXISTS idx_user_lead_departments_user CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 ;

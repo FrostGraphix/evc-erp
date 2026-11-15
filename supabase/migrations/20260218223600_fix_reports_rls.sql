@@ -4,8 +4,8 @@ DROP POLICY IF EXISTS "Users can update their own action items or admins/leads" 
 DROP POLICY IF EXISTS "Users can delete action items" ON public.action_items;
 
 -- Update: Allowed for creator, Admins, or Leads of the SAME department
-CREATE POLICY "Leads and admins can update department action items"
-    ON public.action_items FOR UPDATE
+DROP POLICY IF EXISTS "Leads and admins can update department action items" ON public.action_items;
+CREATE POLICY "Leads and admins can update department action items" ON public.action_items FOR UPDATE
     USING (
         auth.uid() = assigned_by
         OR EXISTS (
@@ -19,8 +19,8 @@ CREATE POLICY "Leads and admins can update department action items"
     );
 
 -- Delete: ONLY Admins can delete
-CREATE POLICY "Only admins can delete action items"
-    ON public.action_items FOR DELETE
+DROP POLICY IF EXISTS "Only admins can delete action items" ON public.action_items;
+CREATE POLICY "Only admins can delete action items" ON public.action_items FOR DELETE
     USING (
         EXISTS (
             SELECT 1 FROM profiles
@@ -34,8 +34,8 @@ CREATE POLICY "Only admins can delete action items"
 DROP POLICY IF EXISTS "Leads can manage their own reports" ON public.weekly_reports;
 
 -- Update: Allowed for owner, Admins, or Leads of the SAME department
-CREATE POLICY "Leads and admins can update weekly reports"
-    ON public.weekly_reports FOR UPDATE
+DROP POLICY IF EXISTS "Leads and admins can update weekly reports" ON public.weekly_reports;
+CREATE POLICY "Leads and admins can update weekly reports" ON public.weekly_reports FOR UPDATE
     USING (
         auth.uid() = user_id
         OR EXISTS (
@@ -49,8 +49,8 @@ CREATE POLICY "Leads and admins can update weekly reports"
     );
 
 -- Delete: ONLY Admins can delete (moved from general management to specific policy)
-CREATE POLICY "Only admins can delete weekly reports"
-    ON public.weekly_reports FOR DELETE
+DROP POLICY IF EXISTS "Only admins can delete weekly reports" ON public.weekly_reports;
+CREATE POLICY "Only admins can delete weekly reports" ON public.weekly_reports FOR DELETE
     USING (
         EXISTS (
             SELECT 1 FROM profiles

@@ -11,24 +11,24 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Create storage policies for payment_documents bucket
 -- Allow authenticated users to upload documents
-CREATE POLICY "Authenticated users can upload payment documents"
-ON storage.objects FOR INSERT
+DROP POLICY IF EXISTS "Authenticated users can upload payment documents" ON storage.objects;
+CREATE POLICY "Authenticated users can upload payment documents" ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (
   bucket_id = 'payment_documents'
 );
 
 -- Allow authenticated users to view their own department's payment documents
-CREATE POLICY "Users can view payment documents"
-ON storage.objects FOR SELECT
+DROP POLICY IF EXISTS "Users can view payment documents" ON storage.objects;
+CREATE POLICY "Users can view payment documents" ON storage.objects FOR SELECT
 TO authenticated
 USING (
   bucket_id = 'payment_documents'
 );
 
 -- Allow authenticated users to delete their own uploaded documents
-CREATE POLICY "Users can delete their own payment documents"
-ON storage.objects FOR DELETE
+DROP POLICY IF EXISTS "Users can delete their own payment documents" ON storage.objects;
+CREATE POLICY "Users can delete their own payment documents" ON storage.objects FOR DELETE
 TO authenticated
 USING (
   bucket_id = 'payment_documents' AND
@@ -36,8 +36,8 @@ USING (
 );
 
 -- Allow authenticated users to update their own payment documents
-CREATE POLICY "Users can update their own payment documents"
-ON storage.objects FOR UPDATE
+DROP POLICY IF EXISTS "Users can update their own payment documents" ON storage.objects;
+CREATE POLICY "Users can update their own payment documents" ON storage.objects FOR UPDATE
 TO authenticated
 USING (
   bucket_id = 'payment_documents' AND

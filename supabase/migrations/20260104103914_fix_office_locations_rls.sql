@@ -2,13 +2,13 @@
 -- CRITICAL: This table was completely exposed without any RLS policies
 
 -- Office Locations Policies
-CREATE POLICY "All authenticated users can view office locations"
-  ON office_locations FOR SELECT
+DROP POLICY IF EXISTS "All authenticated users can view office locations" ON office_locations;
+CREATE POLICY "All authenticated users can view office locations" ON office_locations FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Only super_admin and admin can insert office locations"
-  ON office_locations FOR INSERT
+DROP POLICY IF EXISTS "Only super_admin and admin can insert office locations" ON office_locations;
+CREATE POLICY "Only super_admin and admin can insert office locations" ON office_locations FOR INSERT
   TO authenticated
   WITH CHECK (
     EXISTS (
@@ -18,8 +18,8 @@ CREATE POLICY "Only super_admin and admin can insert office locations"
     )
   );
 
-CREATE POLICY "Only super_admin and admin can update office locations"
-  ON office_locations FOR UPDATE
+DROP POLICY IF EXISTS "Only super_admin and admin can update office locations" ON office_locations;
+CREATE POLICY "Only super_admin and admin can update office locations" ON office_locations FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
@@ -29,8 +29,8 @@ CREATE POLICY "Only super_admin and admin can update office locations"
     )
   );
 
-CREATE POLICY "Only super_admin can delete office locations"
-  ON office_locations FOR DELETE
+DROP POLICY IF EXISTS "Only super_admin can delete office locations" ON office_locations;
+CREATE POLICY "Only super_admin can delete office locations" ON office_locations FOR DELETE
   TO authenticated
   USING (
     EXISTS (

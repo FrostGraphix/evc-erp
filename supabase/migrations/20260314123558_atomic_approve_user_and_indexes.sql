@@ -165,12 +165,12 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_profiles_set_updated_at ON public.profiles;
-CREATE TRIGGER trg_profiles_set_updated_at
+CREATE OR REPLACE TRIGGER trg_profiles_set_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 DROP TRIGGER IF EXISTS trg_departments_set_updated_at ON public.departments;
-CREATE TRIGGER trg_departments_set_updated_at
+CREATE OR REPLACE TRIGGER trg_departments_set_updated_at
   BEFORE UPDATE ON public.departments
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -178,7 +178,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'assets') THEN
     DROP TRIGGER IF EXISTS trg_assets_set_updated_at ON public.assets;
-    EXECUTE 'CREATE TRIGGER trg_assets_set_updated_at BEFORE UPDATE ON public.assets FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()';
+    EXECUTE 'CREATE OR REPLACE TRIGGER trg_assets_set_updated_at BEFORE UPDATE ON public.assets FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()';
   END IF;
 END $$;
 
@@ -186,7 +186,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'leave_requests') THEN
     DROP TRIGGER IF EXISTS trg_leave_requests_set_updated_at ON public.leave_requests;
-    EXECUTE 'CREATE TRIGGER trg_leave_requests_set_updated_at BEFORE UPDATE ON public.leave_requests FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()';
+    EXECUTE 'CREATE OR REPLACE TRIGGER trg_leave_requests_set_updated_at BEFORE UPDATE ON public.leave_requests FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()';
   END IF;
 END $$;
 
@@ -194,7 +194,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'help_desk_tickets') THEN
     DROP TRIGGER IF EXISTS trg_help_desk_tickets_set_updated_at ON public.help_desk_tickets;
-    EXECUTE 'CREATE TRIGGER trg_help_desk_tickets_set_updated_at BEFORE UPDATE ON public.help_desk_tickets FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()';
+    EXECUTE 'CREATE OR REPLACE TRIGGER trg_help_desk_tickets_set_updated_at BEFORE UPDATE ON public.help_desk_tickets FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()';
   END IF;
 END $$;
 

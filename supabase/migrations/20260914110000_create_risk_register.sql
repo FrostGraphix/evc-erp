@@ -99,7 +99,7 @@ GRANT ALL ON public.risk_register TO service_role;
 
 -- Trigger for updated_at
 DROP TRIGGER IF EXISTS tr_risk_register_updated_at ON public.risk_register;
-CREATE TRIGGER tr_risk_register_updated_at
+CREATE OR REPLACE TRIGGER tr_risk_register_updated_at
   BEFORE UPDATE ON public.risk_register
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 

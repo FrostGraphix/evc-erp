@@ -28,8 +28,8 @@ BEGIN
       AND tablename = 'objects'
       AND policyname = 'Correspondence objects read'
   ) THEN
-    CREATE POLICY "Correspondence objects read"
-    ON storage.objects
+    DROP POLICY IF EXISTS "Correspondence objects read" ON storage.objects;
+CREATE POLICY "Correspondence objects read" ON storage.objects
     FOR SELECT
     TO authenticated
     USING (bucket_id = 'correspondence_documents');
@@ -41,8 +41,8 @@ BEGIN
       AND tablename = 'objects'
       AND policyname = 'Correspondence objects insert'
   ) THEN
-    CREATE POLICY "Correspondence objects insert"
-    ON storage.objects
+    DROP POLICY IF EXISTS "Correspondence objects insert" ON storage.objects;
+CREATE POLICY "Correspondence objects insert" ON storage.objects
     FOR INSERT
     TO authenticated
     WITH CHECK (
@@ -57,8 +57,8 @@ BEGIN
       AND tablename = 'objects'
       AND policyname = 'Correspondence objects update'
   ) THEN
-    CREATE POLICY "Correspondence objects update"
-    ON storage.objects
+    DROP POLICY IF EXISTS "Correspondence objects update" ON storage.objects;
+CREATE POLICY "Correspondence objects update" ON storage.objects
     FOR UPDATE
     TO authenticated
     USING (
@@ -77,8 +77,8 @@ BEGIN
       AND tablename = 'objects'
       AND policyname = 'Correspondence objects delete'
   ) THEN
-    CREATE POLICY "Correspondence objects delete"
-    ON storage.objects
+    DROP POLICY IF EXISTS "Correspondence objects delete" ON storage.objects;
+CREATE POLICY "Correspondence objects delete" ON storage.objects
     FOR DELETE
     TO authenticated
     USING (

@@ -77,7 +77,7 @@ CREATE INDEX IF NOT EXISTS events_md_involvement_idx
   ON public.events (start_at) WHERE md_involvement <> 'none';
 
 DROP TRIGGER IF EXISTS events_set_updated_at ON public.events;
-CREATE TRIGGER events_set_updated_at
+CREATE OR REPLACE TRIGGER events_set_updated_at
   BEFORE UPDATE ON public.events
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -101,7 +101,7 @@ CREATE INDEX IF NOT EXISTS event_attendees_profile_id_idx
   ON public.event_attendees (profile_id);
 
 DROP TRIGGER IF EXISTS event_attendees_set_updated_at ON public.event_attendees;
-CREATE TRIGGER event_attendees_set_updated_at
+CREATE OR REPLACE TRIGGER event_attendees_set_updated_at
   BEFORE UPDATE ON public.event_attendees
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS public.md_desk_delegates (
 );
 
 DROP TRIGGER IF EXISTS md_desk_delegates_set_updated_at ON public.md_desk_delegates;
-CREATE TRIGGER md_desk_delegates_set_updated_at
+CREATE OR REPLACE TRIGGER md_desk_delegates_set_updated_at
   BEFORE UPDATE ON public.md_desk_delegates
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -420,7 +420,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.events_guard_write() FROM PUBLIC, anon;
 
 DROP TRIGGER IF EXISTS events_guard_write ON public.events;
-CREATE TRIGGER events_guard_write
+CREATE OR REPLACE TRIGGER events_guard_write
   BEFORE INSERT OR UPDATE ON public.events
   FOR EACH ROW EXECUTE FUNCTION public.events_guard_write();
 
@@ -485,7 +485,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.event_attendees_guard_self_update() FROM PUBLIC, anon;
 
 DROP TRIGGER IF EXISTS event_attendees_guard_self_update ON public.event_attendees;
-CREATE TRIGGER event_attendees_guard_self_update
+CREATE OR REPLACE TRIGGER event_attendees_guard_self_update
   BEFORE UPDATE ON public.event_attendees
   FOR EACH ROW EXECUTE FUNCTION public.event_attendees_guard_self_update();
 

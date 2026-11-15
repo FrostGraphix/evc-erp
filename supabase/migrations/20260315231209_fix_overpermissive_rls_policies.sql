@@ -20,10 +20,8 @@ CREATE POLICY "Leave requests approver update policy"
 
 -- 3. reminder_schedules: this is a system config table (no user_id).
 --    Replace the blanket "ALL = true" with admin-only access using the is_admin() helper.
-DROP POLICY IF EXISTS "Allow authenticated users full access on reminder_schedules" ON public.reminder_schedules;
-
-CREATE POLICY "reminder_schedules_admin_all"
-  ON public.reminder_schedules FOR ALL TO authenticated
+DROP POLICY IF EXISTS "reminder_schedules_admin_all" ON public.reminder_schedules;
+CREATE POLICY "reminder_schedules_admin_all" ON public.reminder_schedules FOR ALL TO authenticated
   USING (is_admin())
   WITH CHECK (is_admin());
 ;

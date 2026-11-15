@@ -87,7 +87,7 @@ $function$;
 
 -- 2. Update the trigger to fire on UPDATE as well
 DROP TRIGGER IF EXISTS on_asset_assignment_created ON asset_assignments;
-CREATE TRIGGER on_asset_assignment_created
+CREATE OR REPLACE TRIGGER on_asset_assignment_created
   AFTER INSERT OR UPDATE ON asset_assignments
   FOR EACH ROW
   EXECUTE FUNCTION handle_new_asset_assignment();

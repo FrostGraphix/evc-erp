@@ -80,7 +80,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.guard_profile_privileged_columns() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS trg_guard_profile_privileged ON public.profiles;
-CREATE TRIGGER trg_guard_profile_privileged
+CREATE OR REPLACE TRIGGER trg_guard_profile_privileged
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.guard_profile_privileged_columns();
 

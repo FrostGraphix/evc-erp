@@ -11,11 +11,11 @@ DROP POLICY IF EXISTS "Users can view project members" ON project_members;
 DROP POLICY IF EXISTS "Project members select policy" ON project_members;
 DROP POLICY IF EXISTS "Project members insert policy" ON project_members;
 DROP POLICY IF EXISTS "Project members update policy" ON project_members;
-DROP POLICY IF EXISTS "Project members delete policy" ON project_members;
-
+DROP POLICY IF EXISTS "Project members select policy" ON project_members;
 CREATE POLICY "Project members select policy" ON project_members 
 FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Project members insert policy" ON project_members;
 CREATE POLICY "Project members insert policy" ON project_members 
 FOR INSERT TO authenticated 
 WITH CHECK (
@@ -28,6 +28,7 @@ WITH CHECK (
     (SELECT has_role('lead'))
 );
 
+DROP POLICY IF EXISTS "Project members update policy" ON project_members;
 CREATE POLICY "Project members update policy" ON project_members 
 FOR UPDATE TO authenticated 
 USING (
@@ -40,6 +41,7 @@ USING (
     (SELECT has_role('lead'))
 );
 
+DROP POLICY IF EXISTS "Project members delete policy" ON project_members;
 CREATE POLICY "Project members delete policy" ON project_members 
 FOR DELETE TO authenticated 
 USING ((SELECT has_role('admin')) OR (SELECT has_role('lead')));
@@ -54,8 +56,7 @@ DROP POLICY IF EXISTS "Users and managers can create goals" ON goals_objectives;
 DROP POLICY IF EXISTS "Users can update own goals" ON goals_objectives;
 DROP POLICY IF EXISTS "Goals insert policy" ON goals_objectives;
 DROP POLICY IF EXISTS "Goals update policy" ON goals_objectives;
-DROP POLICY IF EXISTS "Goals delete policy" ON goals_objectives;
-
+DROP POLICY IF EXISTS "Goals select policy" ON goals_objectives;
 CREATE POLICY "Goals select policy" ON goals_objectives 
 FOR SELECT TO authenticated 
 USING (
@@ -68,6 +69,7 @@ USING (
     ))
 );
 
+DROP POLICY IF EXISTS "Goals insert policy" ON goals_objectives;
 CREATE POLICY "Goals insert policy" ON goals_objectives 
 FOR INSERT TO authenticated 
 WITH CHECK (
@@ -80,6 +82,7 @@ WITH CHECK (
     ))
 );
 
+DROP POLICY IF EXISTS "Goals update policy" ON goals_objectives;
 CREATE POLICY "Goals update policy" ON goals_objectives 
 FOR UPDATE TO authenticated 
 USING (
@@ -87,6 +90,7 @@ USING (
     (SELECT has_role('admin'))
 );
 
+DROP POLICY IF EXISTS "Goals delete policy" ON goals_objectives;
 CREATE POLICY "Goals delete policy" ON goals_objectives 
 FOR DELETE TO authenticated 
 USING ((SELECT has_role('admin')));
@@ -101,18 +105,20 @@ DROP POLICY IF EXISTS "Only admins can view interviews" ON interviews;
 DROP POLICY IF EXISTS "Recruitment staff view interviews" ON interviews;
 DROP POLICY IF EXISTS "Interviews insert policy" ON interviews;
 DROP POLICY IF EXISTS "Interviews update policy" ON interviews;
-DROP POLICY IF EXISTS "Interviews delete policy" ON interviews;
-
+DROP POLICY IF EXISTS "Interviews select policy" ON interviews;
 CREATE POLICY "Interviews select policy" ON interviews 
 FOR SELECT TO authenticated 
 USING ((SELECT has_role('admin')) OR interviewer_id = (SELECT auth.uid()));
 
+DROP POLICY IF EXISTS "Interviews insert policy" ON interviews;
 CREATE POLICY "Interviews insert policy" ON interviews 
 FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
 
+DROP POLICY IF EXISTS "Interviews update policy" ON interviews;
 CREATE POLICY "Interviews update policy" ON interviews 
 FOR UPDATE TO authenticated USING ((SELECT has_role('admin')) OR interviewer_id = (SELECT auth.uid()));
 
+DROP POLICY IF EXISTS "Interviews delete policy" ON interviews;
 CREATE POLICY "Interviews delete policy" ON interviews 
 FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
@@ -167,7 +173,7 @@ WITH CHECK ((SELECT auth.uid()) IS NOT NULL);
 -- 6. PROFILE REDUNDANCY
 -- =====================================================
 DROP POLICY IF EXISTS "Profiles select policy" ON profiles;
-DROP POLICY IF EXISTS "Profiles view policy" ON profiles;
+DROP POLICY IF EXISTS "Profiles select policy" ON profiles;
 CREATE POLICY "Profiles select policy" ON profiles 
 FOR SELECT TO authenticated 
 USING (true);

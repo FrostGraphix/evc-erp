@@ -30,11 +30,13 @@ DROP POLICY IF EXISTS "Only admins can manage leave types" ON leave_types;
 DROP POLICY IF EXISTS "Leave types manage policy" ON leave_types;
 DROP POLICY IF EXISTS "Leave types insert policy" ON leave_types;
 DROP POLICY IF EXISTS "Leave types update policy" ON leave_types;
-DROP POLICY IF EXISTS "Leave types delete policy" ON leave_types;
-
+DROP POLICY IF EXISTS "Leave types select policy" ON leave_types;
 CREATE POLICY "Leave types select policy" ON leave_types FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Leave types insert policy" ON leave_types;
 CREATE POLICY "Leave types insert policy" ON leave_types FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Leave types update policy" ON leave_types;
 CREATE POLICY "Leave types update policy" ON leave_types FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Leave types delete policy" ON leave_types;
 CREATE POLICY "Leave types delete policy" ON leave_types FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 
@@ -49,11 +51,13 @@ DROP POLICY IF EXISTS "Tasks select policy" ON tasks;
 DROP POLICY IF EXISTS "Tasks manage policy" ON tasks;
 DROP POLICY IF EXISTS "Tasks insert policy" ON tasks;
 DROP POLICY IF EXISTS "Tasks update policy" ON tasks;
-DROP POLICY IF EXISTS "Tasks delete policy" ON tasks;
-
+DROP POLICY IF EXISTS "Tasks select policy" ON tasks;
 CREATE POLICY "Tasks select policy" ON tasks FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Tasks insert policy" ON tasks;
 CREATE POLICY "Tasks insert policy" ON tasks FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')) OR (SELECT has_role('lead')));
+DROP POLICY IF EXISTS "Tasks update policy" ON tasks;
 CREATE POLICY "Tasks update policy" ON tasks FOR UPDATE TO authenticated USING ((SELECT has_role('admin')) OR (SELECT has_role('lead')));
+DROP POLICY IF EXISTS "Tasks delete policy" ON tasks;
 CREATE POLICY "Tasks delete policy" ON tasks FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: task_assignments
@@ -64,8 +68,7 @@ DROP POLICY IF EXISTS "Users can view their own task assignments" ON task_assign
 DROP POLICY IF EXISTS "Task assignments select policy" ON task_assignments;
 DROP POLICY IF EXISTS "Task assignments insert policy" ON task_assignments;
 DROP POLICY IF EXISTS "Task assignments update policy" ON task_assignments;
-DROP POLICY IF EXISTS "Task assignments delete policy" ON task_assignments;
-
+DROP POLICY IF EXISTS "Task assignments select policy" ON task_assignments;
 CREATE POLICY "Task assignments select policy" ON task_assignments 
 FOR SELECT TO authenticated 
 USING (
@@ -78,19 +81,22 @@ USING (
     ))
 );
 
+DROP POLICY IF EXISTS "Task assignments insert policy" ON task_assignments;
 CREATE POLICY "Task assignments insert policy" ON task_assignments FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')) OR (SELECT has_role('lead')));
+DROP POLICY IF EXISTS "Task assignments update policy" ON task_assignments;
 CREATE POLICY "Task assignments update policy" ON task_assignments FOR UPDATE TO authenticated USING ((SELECT has_role('admin')) OR (SELECT has_role('lead')));
+DROP POLICY IF EXISTS "Task assignments delete policy" ON task_assignments;
 CREATE POLICY "Task assignments delete policy" ON task_assignments FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: task_user_completion
 DROP POLICY IF EXISTS "Users can mark their own tasks as complete" ON task_user_completion;
 DROP POLICY IF EXISTS "Task user completion select policy" ON task_user_completion;
-DROP POLICY IF EXISTS "Task user completion insert policy" ON task_user_completion;
-
+DROP POLICY IF EXISTS "Task user completion select policy" ON task_user_completion;
 CREATE POLICY "Task user completion select policy" ON task_user_completion 
 FOR SELECT TO authenticated 
 USING (user_id = (SELECT auth.uid()) OR (SELECT has_role('admin')));
 
+DROP POLICY IF EXISTS "Task user completion insert policy" ON task_user_completion;
 CREATE POLICY "Task user completion insert policy" ON task_user_completion 
 FOR INSERT TO authenticated 
 WITH CHECK (user_id = (SELECT auth.uid()));
@@ -110,13 +116,14 @@ DROP POLICY IF EXISTS "Employee suspensions select policy" ON employee_suspensio
 DROP POLICY IF EXISTS "Admins can create suspensions" ON employee_suspensions;
 DROP POLICY IF EXISTS "Admins can update suspensions" ON employee_suspensions;
 DROP POLICY IF EXISTS "Employee suspensions insert policy" ON employee_suspensions;
-DROP POLICY IF EXISTS "Employee suspensions update policy" ON employee_suspensions;
-
+DROP POLICY IF EXISTS "Employee suspensions select policy" ON employee_suspensions;
 CREATE POLICY "Employee suspensions select policy" ON employee_suspensions 
 FOR SELECT TO authenticated 
 USING (employee_id = (SELECT auth.uid()) OR (SELECT has_role('admin')));
 
+DROP POLICY IF EXISTS "Employee suspensions insert policy" ON employee_suspensions;
 CREATE POLICY "Employee suspensions insert policy" ON employee_suspensions FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Employee suspensions update policy" ON employee_suspensions;
 CREATE POLICY "Employee suspensions update policy" ON employee_suspensions FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
 
 

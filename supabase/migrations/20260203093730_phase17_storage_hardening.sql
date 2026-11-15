@@ -18,6 +18,7 @@ DROP POLICY IF EXISTS "Give users access to own folder 1ok222k_2" ON storage.obj
 DROP POLICY IF EXISTS "Give users access to own folder 1ok222k_3" ON storage.objects;
 
 -- SELECT: Only if user can see the record in the database
+DROP POLICY IF EXISTS "Storage select policy" ON storage.objects;
 CREATE POLICY "Storage select policy" ON storage.objects 
 FOR SELECT TO authenticated 
 USING (
@@ -29,11 +30,13 @@ USING (
 );
 
 -- INSERT: Only if user is authenticated and uploading to the right bucket
+DROP POLICY IF EXISTS "Storage insert policy" ON storage.objects;
 CREATE POLICY "Storage insert policy" ON storage.objects 
 FOR INSERT TO authenticated 
 WITH CHECK (bucket_id = 'payment_documents');
 
 -- UPDATE/DELETE: Only Admins or Owner
+DROP POLICY IF EXISTS "Storage manage policy" ON storage.objects;
 CREATE POLICY "Storage manage policy" ON storage.objects 
 FOR ALL TO authenticated 
 USING (
@@ -59,8 +62,7 @@ DROP POLICY IF EXISTS "Users can update their documents" ON public.payment_docum
 DROP POLICY IF EXISTS "Admins can update any document" ON public.payment_documents;
 DROP POLICY IF EXISTS "Users can delete their uploaded documents" ON public.payment_documents;
 DROP POLICY IF EXISTS "Admins can delete any payment document" ON public.payment_documents;
-DROP POLICY IF EXISTS "Users can delete their own uploaded documents or admins can del" ON public.payment_documents;
-
+DROP POLICY IF EXISTS "Payment documents select policy" ON public.payment_documents;
 CREATE POLICY "Payment documents select policy" ON public.payment_documents 
 FOR SELECT TO authenticated 
 USING (
@@ -72,10 +74,12 @@ USING (
     uploaded_by = (SELECT auth.uid())
 );
 
+DROP POLICY IF EXISTS "Payment documents insert policy" ON public.payment_documents;
 CREATE POLICY "Payment documents insert policy" ON public.payment_documents 
 FOR INSERT TO authenticated 
 WITH CHECK (has_role('admin') OR has_role('lead'));
 
+DROP POLICY IF EXISTS "Payment documents manage policy" ON public.payment_documents;
 CREATE POLICY "Payment documents manage policy" ON public.payment_documents 
 FOR ALL TO authenticated 
 USING (has_role('admin') OR uploaded_by = (SELECT auth.uid()));

@@ -10,9 +10,9 @@ DROP POLICY IF EXISTS "Super admins can update system settings" ON system_settin
 DROP POLICY IF EXISTS "System settings select" ON system_settings;
 DROP POLICY IF EXISTS "System settings update" ON system_settings;
 DROP POLICY IF EXISTS "System settings select policy" ON system_settings;
-DROP POLICY IF EXISTS "System settings update policy" ON system_settings;
-
+DROP POLICY IF EXISTS "System settings select policy" ON system_settings;
 CREATE POLICY "System settings select policy" ON system_settings FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "System settings update policy" ON system_settings;
 CREATE POLICY "System settings update policy" ON system_settings FOR UPDATE TO authenticated USING ((SELECT has_role('admin')) OR (SELECT has_role('super_admin')));
 
 
@@ -22,8 +22,7 @@ CREATE POLICY "System settings update policy" ON system_settings FOR UPDATE TO a
 DROP POLICY IF EXISTS "Only admins can view overtime requests" ON overtime_requests;
 DROP POLICY IF EXISTS "Overtime requests select policy" ON overtime_requests;
 DROP POLICY IF EXISTS "Only admins can manage overtime requests" ON overtime_requests;
-DROP POLICY IF EXISTS "Overtime requests manage policy" ON overtime_requests;
-
+DROP POLICY IF EXISTS "Overtime requests select policy" ON overtime_requests;
 CREATE POLICY "Overtime requests select policy" ON overtime_requests 
 FOR SELECT TO authenticated 
 USING (
@@ -36,8 +35,11 @@ USING (
     ))
 );
 
+DROP POLICY IF EXISTS "Overtime requests insert policy" ON overtime_requests;
 CREATE POLICY "Overtime requests insert policy" ON overtime_requests FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Overtime requests update policy" ON overtime_requests;
 CREATE POLICY "Overtime requests update policy" ON overtime_requests FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Overtime requests delete policy" ON overtime_requests;
 CREATE POLICY "Overtime requests delete policy" ON overtime_requests FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 
@@ -51,11 +53,13 @@ DROP POLICY IF EXISTS "Pending users insert policy" ON pending_users;
 DROP POLICY IF EXISTS "Pending users select policy" ON pending_users;
 DROP POLICY IF EXISTS "Pending users manage policy" ON pending_users;
 DROP POLICY IF EXISTS "Pending users update policy" ON pending_users;
-DROP POLICY IF EXISTS "Pending users delete policy" ON pending_users;
-
+DROP POLICY IF EXISTS "Pending users select policy" ON pending_users;
 CREATE POLICY "Pending users select policy" ON pending_users FOR SELECT TO authenticated USING ((SELECT has_role('admin')) OR (SELECT has_role('super_admin')));
+DROP POLICY IF EXISTS "Pending users insert policy" ON pending_users;
 CREATE POLICY "Pending users insert policy" ON pending_users FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Pending users update policy" ON pending_users;
 CREATE POLICY "Pending users update policy" ON pending_users FOR UPDATE TO authenticated USING ((SELECT has_role('admin')) OR (SELECT has_role('super_admin')));
+DROP POLICY IF EXISTS "Pending users delete policy" ON pending_users;
 CREATE POLICY "Pending users delete policy" ON pending_users FOR DELETE TO authenticated USING ((SELECT has_role('admin')) OR (SELECT has_role('super_admin')));
 
 
@@ -76,11 +80,13 @@ DROP POLICY IF EXISTS "Starlink payments admin delete" ON starlink_payments;
 DROP POLICY IF EXISTS "Starlink payments manage policy" ON starlink_payments;
 DROP POLICY IF EXISTS "Starlink payments insert policy" ON starlink_payments;
 DROP POLICY IF EXISTS "Starlink payments update policy" ON starlink_payments;
-DROP POLICY IF EXISTS "Starlink payments delete policy" ON starlink_payments;
-
+DROP POLICY IF EXISTS "Starlink payments select policy" ON starlink_payments;
 CREATE POLICY "Starlink payments select policy" ON starlink_payments FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Starlink payments insert policy" ON starlink_payments;
 CREATE POLICY "Starlink payments insert policy" ON starlink_payments FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Starlink payments update policy" ON starlink_payments;
 CREATE POLICY "Starlink payments update policy" ON starlink_payments FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Starlink payments delete policy" ON starlink_payments;
 CREATE POLICY "Starlink payments delete policy" ON starlink_payments FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: task_updates
@@ -89,8 +95,7 @@ DROP POLICY IF EXISTS "Admins can view all task updates" ON task_updates;
 DROP POLICY IF EXISTS "Manager see team task updates" ON task_updates;
 DROP POLICY IF EXISTS "Users see own task updates" ON task_updates;
 DROP POLICY IF EXISTS "Task updates select policy" ON task_updates;
-DROP POLICY IF EXISTS "Task updates insert policy" ON task_updates;
-
+DROP POLICY IF EXISTS "Task updates select policy" ON task_updates;
 CREATE POLICY "Task updates select policy" ON task_updates 
 FOR SELECT TO authenticated 
 USING (
@@ -103,6 +108,7 @@ USING (
     ))
 );
 
+DROP POLICY IF EXISTS "Task updates insert policy" ON task_updates;
 CREATE POLICY "Task updates insert policy" ON task_updates 
 FOR INSERT TO authenticated 
 WITH CHECK (user_id = (SELECT auth.uid()));
@@ -125,11 +131,13 @@ DROP POLICY IF EXISTS "Admins manage firmware tasks" ON firmware_tasks;
 DROP POLICY IF EXISTS "Firmware tasks select policy" ON firmware_tasks;
 DROP POLICY IF EXISTS "Firmware tasks insert policy" ON firmware_tasks;
 DROP POLICY IF EXISTS "Firmware tasks update policy" ON firmware_tasks;
-DROP POLICY IF EXISTS "Firmware tasks delete policy" ON firmware_tasks;
-
+DROP POLICY IF EXISTS "Firmware tasks select policy" ON firmware_tasks;
 CREATE POLICY "Firmware tasks select policy" ON firmware_tasks FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Firmware tasks insert policy" ON firmware_tasks;
 CREATE POLICY "Firmware tasks insert policy" ON firmware_tasks FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Firmware tasks update policy" ON firmware_tasks;
 CREATE POLICY "Firmware tasks update policy" ON firmware_tasks FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Firmware tasks delete policy" ON firmware_tasks;
 CREATE POLICY "Firmware tasks delete policy" ON firmware_tasks FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: firmware_updates
@@ -137,11 +145,13 @@ DROP POLICY IF EXISTS "Admins manage firmware updates" ON firmware_updates;
 DROP POLICY IF EXISTS "Firmware updates select policy" ON firmware_updates;
 DROP POLICY IF EXISTS "Firmware updates insert policy" ON firmware_updates;
 DROP POLICY IF EXISTS "Firmware updates update policy" ON firmware_updates;
-DROP POLICY IF EXISTS "Firmware updates delete policy" ON firmware_updates;
-
+DROP POLICY IF EXISTS "Firmware updates select policy" ON firmware_updates;
 CREATE POLICY "Firmware updates select policy" ON firmware_updates FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Firmware updates insert policy" ON firmware_updates;
 CREATE POLICY "Firmware updates insert policy" ON firmware_updates FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Firmware updates update policy" ON firmware_updates;
 CREATE POLICY "Firmware updates update policy" ON firmware_updates FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Firmware updates delete policy" ON firmware_updates;
 CREATE POLICY "Firmware updates delete policy" ON firmware_updates FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: remote_tasks
@@ -152,11 +162,13 @@ DROP POLICY IF EXISTS "Remote tasks update policy" ON remote_tasks;
 DROP POLICY IF EXISTS "Remote tasks delete policy" ON remote_tasks;
 DROP POLICY IF EXISTS "Remote tasks admin insert" ON remote_tasks;
 DROP POLICY IF EXISTS "Remote tasks admin update" ON remote_tasks;
-DROP POLICY IF EXISTS "Remote tasks admin delete" ON remote_tasks;
-
+DROP POLICY IF EXISTS "Remote tasks select policy" ON remote_tasks;
 CREATE POLICY "Remote tasks select policy" ON remote_tasks FOR SELECT TO authenticated USING ((SELECT has_role('staff')) OR (SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Remote tasks insert policy" ON remote_tasks;
 CREATE POLICY "Remote tasks insert policy" ON remote_tasks FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Remote tasks update policy" ON remote_tasks;
 CREATE POLICY "Remote tasks update policy" ON remote_tasks FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Remote tasks delete policy" ON remote_tasks;
 CREATE POLICY "Remote tasks delete policy" ON remote_tasks FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: meter_readings
@@ -165,11 +177,13 @@ DROP POLICY IF EXISTS "Staff read meter_readings" ON meter_readings;
 DROP POLICY IF EXISTS "Meter readings select policy" ON meter_readings;
 DROP POLICY IF EXISTS "Meter readings insert policy" ON meter_readings;
 DROP POLICY IF EXISTS "Meter readings update policy" ON meter_readings;
-DROP POLICY IF EXISTS "Meter readings delete policy" ON meter_readings;
-
+DROP POLICY IF EXISTS "Meter readings select policy" ON meter_readings;
 CREATE POLICY "Meter readings select policy" ON meter_readings FOR SELECT TO authenticated USING ((SELECT has_role('staff')) OR (SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Meter readings insert policy" ON meter_readings;
 CREATE POLICY "Meter readings insert policy" ON meter_readings FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Meter readings update policy" ON meter_readings;
 CREATE POLICY "Meter readings update policy" ON meter_readings FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Meter readings delete policy" ON meter_readings;
 CREATE POLICY "Meter readings delete policy" ON meter_readings FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: gprs_status
@@ -178,11 +192,13 @@ DROP POLICY IF EXISTS "Staff read gprs_status" ON gprs_status;
 DROP POLICY IF EXISTS "GPRS status select policy" ON gprs_status;
 DROP POLICY IF EXISTS "GPRS status insert policy" ON gprs_status;
 DROP POLICY IF EXISTS "GPRS status update policy" ON gprs_status;
-DROP POLICY IF EXISTS "GPRS status delete policy" ON gprs_status;
-
+DROP POLICY IF EXISTS "GPRS status select policy" ON gprs_status;
 CREATE POLICY "GPRS status select policy" ON gprs_status FOR SELECT TO authenticated USING ((SELECT has_role('staff')) OR (SELECT has_role('admin')));
+DROP POLICY IF EXISTS "GPRS status insert policy" ON gprs_status;
 CREATE POLICY "GPRS status insert policy" ON gprs_status FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "GPRS status update policy" ON gprs_status;
 CREATE POLICY "GPRS status update policy" ON gprs_status FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "GPRS status delete policy" ON gprs_status;
 CREATE POLICY "GPRS status delete policy" ON gprs_status FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: event_notifications
@@ -193,12 +209,15 @@ DROP POLICY IF EXISTS "Events select policy" ON event_notifications;
 DROP POLICY IF EXISTS "Events insert policy" ON event_notifications;
 DROP POLICY IF EXISTS "Events update policy" ON event_notifications;
 DROP POLICY IF EXISTS "Events delete policy" ON event_notifications;
-DROP POLICY IF EXISTS "Events staff acknowledge" ON event_notifications;
-
+DROP POLICY IF EXISTS "Events select policy" ON event_notifications;
 CREATE POLICY "Events select policy" ON event_notifications FOR SELECT TO authenticated USING ((SELECT has_role('staff')) OR (SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Events insert policy" ON event_notifications;
 CREATE POLICY "Events insert policy" ON event_notifications FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Events update policy" ON event_notifications;
 CREATE POLICY "Events update policy" ON event_notifications FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Events delete policy" ON event_notifications;
 CREATE POLICY "Events delete policy" ON event_notifications FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Events staff acknowledge" ON event_notifications;
 CREATE POLICY "Events staff acknowledge" ON event_notifications FOR UPDATE TO authenticated USING ((SELECT has_role('staff'))) WITH CHECK (acknowledged = true AND acknowledged_by = (SELECT auth.uid()));
 
 -- Refresh PostgREST schema cache

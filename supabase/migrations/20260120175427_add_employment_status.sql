@@ -3,7 +3,11 @@
 -- ============================================
 
 -- 1. Create employment_status enum type
-CREATE TYPE employment_status AS ENUM ('active', 'suspended', 'terminated', 'on_leave');
+DO $$ BEGIN
+  CREATE TYPE employment_status AS ENUM ('active', 'suspended', 'terminated', 'on_leave');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- 2. Add employment status columns to profiles table
 ALTER TABLE profiles 
@@ -40,6 +44,7 @@ ALTER TABLE employee_suspensions ENABLE ROW LEVEL SECURITY;
 -- 6. RLS Policies for employee_suspensions
 
 -- Admins and Super Admins can view all suspensions
+DROP POLICY IF EXISTS "Admins can view all suspensions" ON employee_suspensions;
 CREATE POLICY "Admins can view all suspensions" ON employee_suspensions
   FOR SELECT
   TO authenticated
@@ -52,6 +57,7 @@ CREATE POLICY "Admins can view all suspensions" ON employee_suspensions
   );
 
 -- Department leads can view suspensions in their departments
+DROP POLICY IF EXISTS "Leads can view own department suspensions" ON employee_suspensions;
 CREATE POLICY "Leads can view own department suspensions" ON employee_suspensions
   FOR SELECT
   TO authenticated
@@ -68,12 +74,14 @@ CREATE POLICY "Leads can view own department suspensions" ON employee_suspension
   );
 
 -- Employees can view their own suspensions
+DROP POLICY IF EXISTS "Users can view own suspensions" ON employee_suspensions;
 CREATE POLICY "Users can view own suspensions" ON employee_suspensions
   FOR SELECT
   TO authenticated
   USING (employee_id = auth.uid());
 
 -- Only admins and super_admins can create suspensions
+DROP POLICY IF EXISTS "Admins can create suspensions" ON employee_suspensions;
 CREATE POLICY "Admins can create suspensions" ON employee_suspensions
   FOR INSERT
   TO authenticated
@@ -86,6 +94,7 @@ CREATE POLICY "Admins can create suspensions" ON employee_suspensions
   );
 
 -- Only admins and super_admins can update suspensions (lift them)
+DROP POLICY IF EXISTS "Admins can update suspensions" ON employee_suspensions;
 CREATE POLICY "Admins can update suspensions" ON employee_suspensions
   FOR UPDATE
   TO authenticated
@@ -104,7 +113,7 @@ CREATE POLICY "Admins can update suspensions" ON employee_suspensions
     )
   );
 
--- 7. Create trigger to update updated_at on employee_suspensions
+-- 7. CREATE OR REPLACE TRIGGER to update updated_at on employee_suspensions
 CREATE OR REPLACE FUNCTION update_employee_suspensions_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -113,7 +122,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_employee_suspensions_updated_at
+CREATE OR REPLACE TRIGGER update_employee_suspensions_updated_at
   BEFORE UPDATE ON employee_suspensions
   FOR EACH ROW
   EXECUTE FUNCTION update_employee_suspensions_updated_at();

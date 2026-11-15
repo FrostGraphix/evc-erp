@@ -50,6 +50,6 @@ $$;
 -- Drop old trigger if it exists, then (re)create.
 DROP TRIGGER IF EXISTS trg_correspondence_records_before_delete ON public.correspondence_records;
 
-CREATE TRIGGER trg_correspondence_records_before_delete
+CREATE OR REPLACE TRIGGER trg_correspondence_records_before_delete
 BEFORE DELETE ON public.correspondence_records
 FOR EACH ROW EXECUTE FUNCTION public.correspondence_before_delete();

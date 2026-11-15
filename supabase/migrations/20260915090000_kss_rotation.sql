@@ -65,7 +65,8 @@ create table if not exists public.kss_rotation_skips (
 alter table public.kss_rotation_skips enable row level security;
 
 -- Read-only for admins; writes go through the service-role API route.
-create policy kss_rotation_skips_select on public.kss_rotation_skips
+DROP POLICY IF EXISTS kss_rotation_skips_select ON public.kss_rotation_skips;
+CREATE POLICY kss_rotation_skips_select ON public.kss_rotation_skips
   for select to authenticated
   using (
     exists (
@@ -99,7 +100,8 @@ insert into public.kss_heads_up_log (meeting_week, meeting_year, department, att
 values (37, 2026, 'Stakeholder Engagement', 0, now(), now(), 0, 'held_for_preview')
 on conflict (meeting_week, meeting_year) do nothing;
 
-create policy kss_heads_up_log_select on public.kss_heads_up_log
+DROP POLICY IF EXISTS kss_heads_up_log_select ON public.kss_heads_up_log;
+CREATE POLICY kss_heads_up_log_select ON public.kss_heads_up_log
   for select to authenticated
   using (
     exists (
@@ -217,8 +219,8 @@ grant execute on function public.kss_department_for_week(integer, integer) to au
 -- only; presenters can be added later from Reports > KSS as before).
 insert into public.kss_weekly_roster (meeting_week, meeting_year, department, notes, is_active, created_by)
 values
-  (36, 2026, 'Quality Assurance', 'Jul-Sep 2026 KSS framework', true, '1aeae0c5-ef2f-4790-be14-d0e696be01af'),
-  (37, 2026, 'Stakeholder Engagement', 'Jul-Sep 2026 KSS framework', true, '1aeae0c5-ef2f-4790-be14-d0e696be01af')
+  (36, 2026, 'Quality Assurance', 'Jul-Sep 2026 KSS framework', true, COALESCE((SELECT id FROM public.profiles WHERE id = '1aeae0c5-ef2f-4790-be14-d0e696be01af'), (SELECT id FROM public.profiles LIMIT 1))),
+  (37, 2026, 'Stakeholder Engagement', 'Jul-Sep 2026 KSS framework', true, COALESCE((SELECT id FROM public.profiles WHERE id = '1aeae0c5-ef2f-4790-be14-d0e696be01af'), (SELECT id FROM public.profiles LIMIT 1)))
 on conflict (meeting_week, meeting_year) do nothing;
 
 -- ---------------------------------------------------------------------------

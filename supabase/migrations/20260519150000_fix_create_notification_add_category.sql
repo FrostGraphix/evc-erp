@@ -2,8 +2,8 @@
 -- causing a NOT NULL violation that was silently caught by callers.
 -- Fix: include category in the INSERT, ensure a safe default exists.
 
-ALTER TABLE public.notifications
-  ALTER COLUMN category SET DEFAULT 'system';
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS category text DEFAULT 'system';
+ALTER TABLE public.notifications ALTER COLUMN category SET DEFAULT 'system';
 
 CREATE OR REPLACE FUNCTION public.create_notification(
     p_user_id uuid,

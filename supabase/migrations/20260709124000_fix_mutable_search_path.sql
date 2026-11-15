@@ -7,12 +7,12 @@
 -- (process_notification_queue / process_digest_schedules are pinned in
 --  20260709122000_secrets_vault_only.sql.)
 
-ALTER FUNCTION public.cascade_department_rename()                          SET search_path = public, pg_temp;
-ALTER FUNCTION public.cascade_office_location_rename()                     SET search_path = public, pg_temp;
-ALTER FUNCTION public.compute_final_performance_score(numeric, numeric, numeric, numeric) SET search_path = public, pg_temp;
-ALTER FUNCTION public.derive_attendance_status(time without time zone, time without time zone) SET search_path = public, pg_temp;
-ALTER FUNCTION public.enforce_single_department_lead()                     SET search_path = public, pg_temp;
-ALTER FUNCTION public.meeting_docs_set_updated_at()                        SET search_path = public, pg_temp;
-ALTER FUNCTION public.normalize_attendance_record_status()                 SET search_path = public, pg_temp;
-ALTER FUNCTION public.process_reminder_schedules()                         SET search_path = public, pg_temp;
-ALTER FUNCTION public.trg_compute_final_score()                            SET search_path = public, pg_temp;
+DO $$ BEGIN ALTER FUNCTION public.cascade_department_rename()                          SET search_path = public, pg_temp; EXCEPTION WHEN undefined_function THEN NULL; END $$;
+DO $$ BEGIN ALTER FUNCTION public.cascade_office_location_rename()                     SET search_path = public, pg_temp; EXCEPTION WHEN undefined_function THEN NULL; END $$;
+DO $$ BEGIN ALTER FUNCTION public.compute_final_performance_score(numeric, numeric, numeric, numeric) SET search_path = public, pg_temp; EXCEPTION WHEN undefined_function THEN NULL; END $$;
+DO $$ BEGIN ALTER FUNCTION public.derive_attendance_status(time without time zone, time without time zone) SET search_path = public, pg_temp; EXCEPTION WHEN undefined_function THEN NULL; END $$;
+DO $$ BEGIN ALTER FUNCTION public.enforce_single_department_lead()                     SET search_path = public, pg_temp; EXCEPTION WHEN undefined_function THEN NULL; END $$;
+DO $$ BEGIN ALTER FUNCTION public.meeting_docs_set_updated_at()                        SET search_path = public, pg_temp; EXCEPTION WHEN undefined_function THEN NULL; END $$;
+DO $$ BEGIN ALTER FUNCTION public.normalize_attendance_record_status()                 SET search_path = public, pg_temp; EXCEPTION WHEN undefined_function THEN NULL; END $$;
+DO $$ BEGIN ALTER FUNCTION public.process_reminder_schedules()                         SET search_path = public, pg_temp; EXCEPTION WHEN undefined_function THEN NULL; END $$;
+DO $$ BEGIN ALTER FUNCTION public.trg_compute_final_score()                            SET search_path = public, pg_temp; EXCEPTION WHEN undefined_function THEN NULL; END $$;

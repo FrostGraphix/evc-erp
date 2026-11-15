@@ -304,13 +304,13 @@ end;
 $function$;
 
 drop trigger if exists trg_kss_weekly_roster_updated_at on public.kss_weekly_roster;
-create trigger trg_kss_weekly_roster_updated_at
+CREATE OR REPLACE TRIGGER trg_kss_weekly_roster_updated_at
 before update on public.kss_weekly_roster
 for each row
 execute function public.meeting_docs_set_updated_at();
 
 drop trigger if exists trg_meeting_week_documents_updated_at on public.meeting_week_documents;
-create trigger trg_meeting_week_documents_updated_at
+CREATE OR REPLACE TRIGGER trg_meeting_week_documents_updated_at
 before update on public.meeting_week_documents
 for each row
 execute function public.meeting_docs_set_updated_at();
@@ -341,8 +341,8 @@ BEGIN
       AND tablename = 'objects'
       AND policyname = 'Meeting documents read'
   ) THEN
-    CREATE POLICY "Meeting documents read"
-    ON storage.objects
+    DROP POLICY IF EXISTS "Meeting documents read" ON storage.objects;
+CREATE POLICY "Meeting documents read" ON storage.objects
     FOR SELECT
     TO authenticated
     USING (
@@ -365,8 +365,8 @@ BEGIN
       AND tablename = 'objects'
       AND policyname = 'Meeting documents insert'
   ) THEN
-    CREATE POLICY "Meeting documents insert"
-    ON storage.objects
+    DROP POLICY IF EXISTS "Meeting documents insert" ON storage.objects;
+CREATE POLICY "Meeting documents insert" ON storage.objects
     FOR INSERT
     TO authenticated
     WITH CHECK (
@@ -390,8 +390,8 @@ BEGIN
       AND tablename = 'objects'
       AND policyname = 'Meeting documents update'
   ) THEN
-    CREATE POLICY "Meeting documents update"
-    ON storage.objects
+    DROP POLICY IF EXISTS "Meeting documents update" ON storage.objects;
+CREATE POLICY "Meeting documents update" ON storage.objects
     FOR UPDATE
     TO authenticated
     USING (
@@ -410,8 +410,8 @@ BEGIN
       AND tablename = 'objects'
       AND policyname = 'Meeting documents delete'
   ) THEN
-    CREATE POLICY "Meeting documents delete"
-    ON storage.objects
+    DROP POLICY IF EXISTS "Meeting documents delete" ON storage.objects;
+CREATE POLICY "Meeting documents delete" ON storage.objects
     FOR DELETE
     TO authenticated
     USING (

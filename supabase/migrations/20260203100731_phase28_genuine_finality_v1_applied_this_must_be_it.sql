@@ -11,11 +11,13 @@ DROP POLICY IF EXISTS "Anyone can view office locations" ON office_locations;
 DROP POLICY IF EXISTS "Office locations select policy" ON office_locations;
 DROP POLICY IF EXISTS "Office locations insert policy" ON office_locations;
 DROP POLICY IF EXISTS "Office locations update policy" ON office_locations;
-DROP POLICY IF EXISTS "Office locations delete policy" ON office_locations;
-
+DROP POLICY IF EXISTS "Office locations select policy" ON office_locations;
 CREATE POLICY "Office locations select policy" ON office_locations FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Office locations insert policy" ON office_locations;
 CREATE POLICY "Office locations insert policy" ON office_locations FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Office locations update policy" ON office_locations;
 CREATE POLICY "Office locations update policy" ON office_locations FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Office locations delete policy" ON office_locations;
 CREATE POLICY "Office locations delete policy" ON office_locations FOR DELETE TO authenticated USING ((SELECT has_role('super_admin')));
 
 
@@ -31,8 +33,11 @@ DROP POLICY IF EXISTS "System settings update policy" ON system_settings;
 DROP POLICY IF EXISTS "System settings delete policy" ON system_settings;
 -- "System settings select policy" exists from Phase 21
 
+DROP POLICY IF EXISTS "System settings insert policy" ON system_settings;
 CREATE POLICY "System settings insert policy" ON system_settings FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('super_admin')));
+DROP POLICY IF EXISTS "System settings update policy" ON system_settings;
 CREATE POLICY "System settings update policy" ON system_settings FOR UPDATE TO authenticated USING ((SELECT has_role('admin')) OR (SELECT has_role('super_admin')));
+DROP POLICY IF EXISTS "System settings delete policy" ON system_settings;
 CREATE POLICY "System settings delete policy" ON system_settings FOR DELETE TO authenticated USING ((SELECT has_role('super_admin')));
 
 

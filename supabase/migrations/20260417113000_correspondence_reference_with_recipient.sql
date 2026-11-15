@@ -1,3 +1,17 @@
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN (
+    SELECT oid::regprocedure AS func_sig
+    FROM pg_proc
+    WHERE proname = 'generate_correspondence_reference'
+      AND pronamespace = 'public'::regnamespace
+  ) LOOP
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_sig || ' CASCADE';
+  END LOOP;
+END $$;
+
 -- Align outgoing correspondence reference format with business rule:
 -- ACOB/{DEPT_CODE}/{RECIPIENT_CODE}/{YEAR}/{NNN}
 

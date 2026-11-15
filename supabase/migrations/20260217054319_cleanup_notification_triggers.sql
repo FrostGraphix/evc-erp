@@ -35,7 +35,7 @@ END;
 $function$;
 
 -- 4. Create the trigger
-CREATE TRIGGER on_notification_created
+CREATE OR REPLACE TRIGGER on_notification_created
   AFTER INSERT ON notifications
   FOR EACH ROW
   EXECUTE FUNCTION trigger_email_notification();;

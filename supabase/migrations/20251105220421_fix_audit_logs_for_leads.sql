@@ -8,6 +8,7 @@
 DROP POLICY IF EXISTS "super_admin/admin can view all audit logs" ON audit_logs;
 DROP POLICY IF EXISTS "Leads can view their department audit logs" ON audit_logs;
 -- Create new policy: Super admin and admin can view all audit logs
+DROP POLICY IF EXISTS "super_admin/admin can view all audit logs" ON audit_logs;
 CREATE POLICY "super_admin/admin can view all audit logs" ON audit_logs FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM profiles
@@ -16,6 +17,7 @@ CREATE POLICY "super_admin/admin can view all audit logs" ON audit_logs FOR SELE
   )
 );
 -- Create new policy: Leads can view audit logs for their department users
+DROP POLICY IF EXISTS "Leads can view their department audit logs" ON audit_logs;
 CREATE POLICY "Leads can view their department audit logs" ON audit_logs FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM profiles p

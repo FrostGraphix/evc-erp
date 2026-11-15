@@ -191,8 +191,8 @@ create policy "Leads and admins can insert weekly reports"
     and public.weekly_report_can_mutate(week_number, year)
   );
 
-create policy "Leads and admins can update weekly reports"
-  on public.weekly_reports
+DROP POLICY IF EXISTS "Leads and admins can update weekly reports" ON public.weekly_reports;
+CREATE POLICY "Leads and admins can update weekly reports" ON public.weekly_reports
   for update
   to authenticated
   using (
@@ -226,8 +226,8 @@ create policy "Leads and admins can update weekly reports"
     and public.weekly_report_can_mutate(week_number, year)
   );
 
-create policy "Only admins can delete weekly reports"
-  on public.weekly_reports
+DROP POLICY IF EXISTS "Only admins can delete weekly reports" ON public.weekly_reports;
+CREATE POLICY "Only admins can delete weekly reports" ON public.weekly_reports
   for delete
   to authenticated
   using (

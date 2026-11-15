@@ -62,14 +62,14 @@ DROP POLICY IF EXISTS "Manage own daily report tasks" ON public.daily_report_tas
 -- ---- daily_reports ----
 
 -- Employees can see their own reports
-CREATE POLICY "Users can view own daily reports"
-  ON public.daily_reports FOR SELECT
+DROP POLICY IF EXISTS "Users can view own daily reports" ON public.daily_reports;
+CREATE POLICY "Users can view own daily reports" ON public.daily_reports FOR SELECT
   TO authenticated
   USING ((SELECT auth.uid()) = user_id);
 
 -- Department leads can view their department's reports
-CREATE POLICY "Department leads can view department daily reports"
-  ON public.daily_reports FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view department daily reports" ON public.daily_reports;
+CREATE POLICY "Department leads can view department daily reports" ON public.daily_reports FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -83,8 +83,8 @@ CREATE POLICY "Department leads can view department daily reports"
   );
 
 -- Admins can view all reports
-CREATE POLICY "Admins can view all daily reports"
-  ON public.daily_reports FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all daily reports" ON public.daily_reports;
+CREATE POLICY "Admins can view all daily reports" ON public.daily_reports FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -95,21 +95,21 @@ CREATE POLICY "Admins can view all daily reports"
   );
 
 -- Employees can create their own reports
-CREATE POLICY "Users can create own daily reports"
-  ON public.daily_reports FOR INSERT
+DROP POLICY IF EXISTS "Users can create own daily reports" ON public.daily_reports;
+CREATE POLICY "Users can create own daily reports" ON public.daily_reports FOR INSERT
   TO authenticated
   WITH CHECK ((SELECT auth.uid()) = user_id);
 
 -- Employees can edit their own reports until they have been acknowledged
-CREATE POLICY "Users can update own unacknowledged daily reports"
-  ON public.daily_reports FOR UPDATE
+DROP POLICY IF EXISTS "Users can update own unacknowledged daily reports" ON public.daily_reports;
+CREATE POLICY "Users can update own unacknowledged daily reports" ON public.daily_reports FOR UPDATE
   TO authenticated
   USING ((SELECT auth.uid()) = user_id AND acknowledged_at IS NULL)
   WITH CHECK ((SELECT auth.uid()) = user_id);
 
 -- Admins / department leads can acknowledge reports they can see
-CREATE POLICY "Admins and leads can acknowledge daily reports"
-  ON public.daily_reports FOR UPDATE
+DROP POLICY IF EXISTS "Admins and leads can acknowledge daily reports" ON public.daily_reports;
+CREATE POLICY "Admins and leads can acknowledge daily reports" ON public.daily_reports FOR UPDATE
   TO authenticated
   USING (
     EXISTS (
@@ -124,16 +124,16 @@ CREATE POLICY "Admins and leads can acknowledge daily reports"
   );
 
 -- Employees can delete their own reports
-CREATE POLICY "Users can delete own daily reports"
-  ON public.daily_reports FOR DELETE
+DROP POLICY IF EXISTS "Users can delete own daily reports" ON public.daily_reports;
+CREATE POLICY "Users can delete own daily reports" ON public.daily_reports FOR DELETE
   TO authenticated
   USING ((SELECT auth.uid()) = user_id);
 
 -- ---- daily_report_tasks ----
 -- Visibility / mutation follows the parent report.
 
-CREATE POLICY "View daily report tasks via parent"
-  ON public.daily_report_tasks FOR SELECT
+DROP POLICY IF EXISTS "View daily report tasks via parent" ON public.daily_report_tasks;
+CREATE POLICY "View daily report tasks via parent" ON public.daily_report_tasks FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -154,8 +154,8 @@ CREATE POLICY "View daily report tasks via parent"
     )
   );
 
-CREATE POLICY "Manage own daily report tasks"
-  ON public.daily_report_tasks FOR ALL
+DROP POLICY IF EXISTS "Manage own daily report tasks" ON public.daily_report_tasks;
+CREATE POLICY "Manage own daily report tasks" ON public.daily_report_tasks FOR ALL
   TO authenticated
   USING (
     EXISTS (

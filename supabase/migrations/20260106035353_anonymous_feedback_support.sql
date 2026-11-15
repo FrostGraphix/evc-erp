@@ -14,6 +14,7 @@ ALTER COLUMN user_id DROP NOT NULL;
 DROP POLICY IF EXISTS "Users can insert own feedback" ON feedback;
 
 -- Create new insert policy that allows inserting with null user_id
+DROP POLICY IF EXISTS "Users can insert feedback" ON feedback;
 CREATE POLICY "Users can insert feedback" ON feedback
   FOR INSERT
   WITH CHECK (
@@ -28,11 +29,13 @@ DROP POLICY IF EXISTS "Users can view own feedback" ON feedback;
 DROP POLICY IF EXISTS "Admins can view all feedback" ON feedback;
 
 -- Users can see their own feedback
+DROP POLICY IF EXISTS "Users can view own feedback" ON feedback;
 CREATE POLICY "Users can view own feedback" ON feedback
   FOR SELECT
   USING (user_id = auth.uid());
 
 -- Admins can see all feedback (including anonymous)
+DROP POLICY IF EXISTS "Admins can view all feedback" ON feedback;
 CREATE POLICY "Admins can view all feedback" ON feedback
   FOR SELECT
   USING (

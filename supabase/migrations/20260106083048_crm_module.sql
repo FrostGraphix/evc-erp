@@ -228,22 +228,22 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS update_crm_contacts_updated_at ON crm_contacts;
-CREATE TRIGGER update_crm_contacts_updated_at
+CREATE OR REPLACE TRIGGER update_crm_contacts_updated_at
   BEFORE UPDATE ON crm_contacts
   FOR EACH ROW EXECUTE FUNCTION update_crm_updated_at();
 
 DROP TRIGGER IF EXISTS update_crm_opportunities_updated_at ON crm_opportunities;
-CREATE TRIGGER update_crm_opportunities_updated_at
+CREATE OR REPLACE TRIGGER update_crm_opportunities_updated_at
   BEFORE UPDATE ON crm_opportunities
   FOR EACH ROW EXECUTE FUNCTION update_crm_updated_at();
 
 DROP TRIGGER IF EXISTS update_crm_activities_updated_at ON crm_activities;
-CREATE TRIGGER update_crm_activities_updated_at
+CREATE OR REPLACE TRIGGER update_crm_activities_updated_at
   BEFORE UPDATE ON crm_activities
   FOR EACH ROW EXECUTE FUNCTION update_crm_updated_at();
 
 DROP TRIGGER IF EXISTS update_crm_pipelines_updated_at ON crm_pipelines;
-CREATE TRIGGER update_crm_pipelines_updated_at
+CREATE OR REPLACE TRIGGER update_crm_pipelines_updated_at
   BEFORE UPDATE ON crm_pipelines
   FOR EACH ROW EXECUTE FUNCTION update_crm_updated_at();
 
@@ -278,9 +278,11 @@ ALTER TABLE crm_tags ENABLE ROW LEVEL SECURITY;
 -- ============================================
 -- RLS Policies - Pipelines
 -- ============================================
+DROP POLICY IF EXISTS "Pipelines viewable by all authenticated" ON crm_pipelines;
 CREATE POLICY "Pipelines viewable by all authenticated" ON crm_pipelines
   FOR SELECT TO authenticated USING (TRUE);
 
+DROP POLICY IF EXISTS "Admins can insert pipelines" ON crm_pipelines;
 CREATE POLICY "Admins can insert pipelines" ON crm_pipelines
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -291,6 +293,7 @@ CREATE POLICY "Admins can insert pipelines" ON crm_pipelines
     )
   );
 
+DROP POLICY IF EXISTS "Admins can update pipelines" ON crm_pipelines;
 CREATE POLICY "Admins can update pipelines" ON crm_pipelines
   FOR UPDATE TO authenticated
   USING (
@@ -301,6 +304,7 @@ CREATE POLICY "Admins can update pipelines" ON crm_pipelines
     )
   );
 
+DROP POLICY IF EXISTS "Admins can delete pipelines" ON crm_pipelines;
 CREATE POLICY "Admins can delete pipelines" ON crm_pipelines
   FOR DELETE TO authenticated
   USING (
@@ -314,6 +318,7 @@ CREATE POLICY "Admins can delete pipelines" ON crm_pipelines
 -- ============================================
 -- RLS Policies - Contacts
 -- ============================================
+DROP POLICY IF EXISTS "Admins view all contacts" ON crm_contacts;
 CREATE POLICY "Admins view all contacts" ON crm_contacts
   FOR SELECT TO authenticated
   USING (
@@ -325,6 +330,7 @@ CREATE POLICY "Admins view all contacts" ON crm_contacts
     OR assigned_to = auth.uid()
   );
 
+DROP POLICY IF EXISTS "Staff can create contacts" ON crm_contacts;
 CREATE POLICY "Staff can create contacts" ON crm_contacts
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -335,6 +341,7 @@ CREATE POLICY "Staff can create contacts" ON crm_contacts
     )
   );
 
+DROP POLICY IF EXISTS "Users can update own contacts" ON crm_contacts;
 CREATE POLICY "Users can update own contacts" ON crm_contacts
   FOR UPDATE TO authenticated
   USING (
@@ -347,6 +354,7 @@ CREATE POLICY "Users can update own contacts" ON crm_contacts
     )
   );
 
+DROP POLICY IF EXISTS "Admins can delete contacts" ON crm_contacts;
 CREATE POLICY "Admins can delete contacts" ON crm_contacts
   FOR DELETE TO authenticated
   USING (
@@ -360,6 +368,7 @@ CREATE POLICY "Admins can delete contacts" ON crm_contacts
 -- ============================================
 -- RLS Policies - Opportunities
 -- ============================================
+DROP POLICY IF EXISTS "View opportunities" ON crm_opportunities;
 CREATE POLICY "View opportunities" ON crm_opportunities
   FOR SELECT TO authenticated
   USING (
@@ -371,6 +380,7 @@ CREATE POLICY "View opportunities" ON crm_opportunities
     OR assigned_to = auth.uid()
   );
 
+DROP POLICY IF EXISTS "Staff can create opportunities" ON crm_opportunities;
 CREATE POLICY "Staff can create opportunities" ON crm_opportunities
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -381,6 +391,7 @@ CREATE POLICY "Staff can create opportunities" ON crm_opportunities
     )
   );
 
+DROP POLICY IF EXISTS "Users can update own opportunities" ON crm_opportunities;
 CREATE POLICY "Users can update own opportunities" ON crm_opportunities
   FOR UPDATE TO authenticated
   USING (
@@ -393,6 +404,7 @@ CREATE POLICY "Users can update own opportunities" ON crm_opportunities
     )
   );
 
+DROP POLICY IF EXISTS "Admins can delete opportunities" ON crm_opportunities;
 CREATE POLICY "Admins can delete opportunities" ON crm_opportunities
   FOR DELETE TO authenticated
   USING (
@@ -406,6 +418,7 @@ CREATE POLICY "Admins can delete opportunities" ON crm_opportunities
 -- ============================================
 -- RLS Policies - Activities
 -- ============================================
+DROP POLICY IF EXISTS "View activities" ON crm_activities;
 CREATE POLICY "View activities" ON crm_activities
   FOR SELECT TO authenticated
   USING (
@@ -418,6 +431,7 @@ CREATE POLICY "View activities" ON crm_activities
     OR created_by = auth.uid()
   );
 
+DROP POLICY IF EXISTS "Staff can create activities" ON crm_activities;
 CREATE POLICY "Staff can create activities" ON crm_activities
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -428,6 +442,7 @@ CREATE POLICY "Staff can create activities" ON crm_activities
     )
   );
 
+DROP POLICY IF EXISTS "Users can update own activities" ON crm_activities;
 CREATE POLICY "Users can update own activities" ON crm_activities
   FOR UPDATE TO authenticated
   USING (
@@ -440,6 +455,7 @@ CREATE POLICY "Users can update own activities" ON crm_activities
     )
   );
 
+DROP POLICY IF EXISTS "Users can delete own activities" ON crm_activities;
 CREATE POLICY "Users can delete own activities" ON crm_activities
   FOR DELETE TO authenticated
   USING (
@@ -454,9 +470,11 @@ CREATE POLICY "Users can delete own activities" ON crm_activities
 -- ============================================
 -- RLS Policies - Tags
 -- ============================================
+DROP POLICY IF EXISTS "Tags viewable by all" ON crm_tags;
 CREATE POLICY "Tags viewable by all" ON crm_tags
   FOR SELECT TO authenticated USING (TRUE);
 
+DROP POLICY IF EXISTS "Admins can insert tags" ON crm_tags;
 CREATE POLICY "Admins can insert tags" ON crm_tags
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -467,6 +485,7 @@ CREATE POLICY "Admins can insert tags" ON crm_tags
     )
   );
 
+DROP POLICY IF EXISTS "Admins can update tags" ON crm_tags;
 CREATE POLICY "Admins can update tags" ON crm_tags
   FOR UPDATE TO authenticated
   USING (
@@ -477,6 +496,7 @@ CREATE POLICY "Admins can update tags" ON crm_tags
     )
   );
 
+DROP POLICY IF EXISTS "Admins can delete tags" ON crm_tags;
 CREATE POLICY "Admins can delete tags" ON crm_tags
   FOR DELETE TO authenticated
   USING (
@@ -511,7 +531,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS crm_contact_audit_trigger ON crm_contacts;
-CREATE TRIGGER crm_contact_audit_trigger
+CREATE OR REPLACE TRIGGER crm_contact_audit_trigger
   AFTER INSERT OR UPDATE OR DELETE ON crm_contacts
   FOR EACH ROW EXECUTE FUNCTION log_crm_contact_audit();
 
@@ -536,7 +556,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS crm_opportunity_audit_trigger ON crm_opportunities;
-CREATE TRIGGER crm_opportunity_audit_trigger
+CREATE OR REPLACE TRIGGER crm_opportunity_audit_trigger
   AFTER INSERT OR UPDATE OR DELETE ON crm_opportunities
   FOR EACH ROW EXECUTE FUNCTION log_crm_opportunity_audit();
 

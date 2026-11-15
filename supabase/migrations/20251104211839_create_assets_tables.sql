@@ -57,7 +57,9 @@ ALTER TABLE assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE asset_assignments ENABLE ROW LEVEL SECURITY;
 
 -- Assets policies
+DROP POLICY IF EXISTS "Users can view all assets" ON assets;
 CREATE POLICY "Users can view all assets" ON assets FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Only super_admin/admin can create assets" ON assets;
 CREATE POLICY "Only super_admin/admin can create assets" ON assets FOR INSERT WITH CHECK (
   EXISTS (
     SELECT 1 FROM profiles
@@ -65,6 +67,7 @@ CREATE POLICY "Only super_admin/admin can create assets" ON assets FOR INSERT WI
     AND (profiles.role IN ('super_admin', 'admin'))
   )
 );
+DROP POLICY IF EXISTS "Only super_admin/admin can update assets" ON assets;
 CREATE POLICY "Only super_admin/admin can update assets" ON assets FOR UPDATE USING (
   EXISTS (
     SELECT 1 FROM profiles
@@ -72,6 +75,7 @@ CREATE POLICY "Only super_admin/admin can update assets" ON assets FOR UPDATE US
     AND (profiles.role IN ('super_admin', 'admin'))
   )
 );
+DROP POLICY IF EXISTS "Only super_admin/admin can delete assets" ON assets;
 CREATE POLICY "Only super_admin/admin can delete assets" ON assets FOR DELETE USING (
   EXISTS (
     SELECT 1 FROM profiles
@@ -81,6 +85,7 @@ CREATE POLICY "Only super_admin/admin can delete assets" ON assets FOR DELETE US
 );
 
 -- Asset assignments policies
+DROP POLICY IF EXISTS "Users can view their own asset assignments" ON asset_assignments;
 CREATE POLICY "Users can view their own asset assignments" ON asset_assignments FOR SELECT USING (
   assigned_to = auth.uid() OR
   EXISTS (
@@ -89,6 +94,7 @@ CREATE POLICY "Users can view their own asset assignments" ON asset_assignments 
     AND (profiles.role IN ('super_admin', 'admin', 'lead'))
   )
 );
+DROP POLICY IF EXISTS "Only super_admin/admin can create asset assignments" ON asset_assignments;
 CREATE POLICY "Only super_admin/admin can create asset assignments" ON asset_assignments FOR INSERT WITH CHECK (
   EXISTS (
     SELECT 1 FROM profiles
@@ -96,6 +102,7 @@ CREATE POLICY "Only super_admin/admin can create asset assignments" ON asset_ass
     AND (profiles.role IN ('super_admin', 'admin'))
   )
 );
+DROP POLICY IF EXISTS "Only super_admin/admin can update asset assignments" ON asset_assignments;
 CREATE POLICY "Only super_admin/admin can update asset assignments" ON asset_assignments FOR UPDATE USING (
   EXISTS (
     SELECT 1 FROM profiles
@@ -108,7 +115,7 @@ CREATE POLICY "Only super_admin/admin can update asset assignments" ON asset_ass
 -- Triggers for Updated At
 -- ============================================
 
-CREATE TRIGGER update_assets_updated_at BEFORE UPDATE ON assets
+CREATE OR REPLACE TRIGGER update_assets_updated_at BEFORE UPDATE ON assets
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================

@@ -36,12 +36,12 @@ ALTER TABLE task_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE task_user_completion ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for task_assignments
-CREATE POLICY "Users can view their own task assignments"
-  ON task_assignments FOR SELECT
+DROP POLICY IF EXISTS "Users can view their own task assignments" ON task_assignments;
+CREATE POLICY "Users can view their own task assignments" ON task_assignments FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Admins can view all task assignments"
-  ON task_assignments FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all task assignments" ON task_assignments;
+CREATE POLICY "Admins can view all task assignments" ON task_assignments FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM profiles
@@ -49,8 +49,8 @@ CREATE POLICY "Admins can view all task assignments"
     )
   );
 
-CREATE POLICY "Department leads can view assignments for their departments"
-  ON task_assignments FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view assignments for their departments" ON task_assignments;
+CREATE POLICY "Department leads can view assignments for their departments" ON task_assignments FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM tasks t
@@ -60,8 +60,8 @@ CREATE POLICY "Department leads can view assignments for their departments"
     )
   );
 
-CREATE POLICY "Admins can manage task assignments"
-  ON task_assignments FOR ALL
+DROP POLICY IF EXISTS "Admins can manage task assignments" ON task_assignments;
+CREATE POLICY "Admins can manage task assignments" ON task_assignments FOR ALL
   USING (
     EXISTS (
       SELECT 1 FROM profiles
@@ -70,16 +70,16 @@ CREATE POLICY "Admins can manage task assignments"
   );
 
 -- RLS Policies for task_user_completion
-CREATE POLICY "Users can view their own task completions"
-  ON task_user_completion FOR SELECT
+DROP POLICY IF EXISTS "Users can view their own task completions" ON task_user_completion;
+CREATE POLICY "Users can view their own task completions" ON task_user_completion FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can mark their own tasks as complete"
-  ON task_user_completion FOR INSERT
+DROP POLICY IF EXISTS "Users can mark their own tasks as complete" ON task_user_completion;
+CREATE POLICY "Users can mark their own tasks as complete" ON task_user_completion FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Admins can view all task completions"
-  ON task_user_completion FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all task completions" ON task_user_completion;
+CREATE POLICY "Admins can view all task completions" ON task_user_completion FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM profiles
@@ -87,8 +87,8 @@ CREATE POLICY "Admins can view all task completions"
     )
   );
 
-CREATE POLICY "Department leads can view completions for their department tasks"
-  ON task_user_completion FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view completions for their department tasks" ON task_user_completion;
+CREATE POLICY "Department leads can view completions for their department tasks" ON task_user_completion FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM tasks t
@@ -138,7 +138,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger to update task status when user completes
-CREATE TRIGGER trigger_update_task_status_on_completion
+CREATE OR REPLACE TRIGGER trigger_update_task_status_on_completion
 AFTER INSERT ON task_user_completion
 FOR EACH ROW
 EXECUTE FUNCTION update_task_status_from_completions();

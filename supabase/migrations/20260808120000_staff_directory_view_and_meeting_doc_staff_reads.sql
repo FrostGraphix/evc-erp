@@ -30,6 +30,7 @@
 -- ---------------------------------------------------------------------------
 -- 1. Staff-readable directory view
 -- ---------------------------------------------------------------------------
+DROP VIEW IF EXISTS public.staff_directory CASCADE;
 CREATE OR REPLACE VIEW public.staff_directory AS
 SELECT
   id,

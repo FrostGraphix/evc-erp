@@ -19,39 +19,61 @@ ALTER TABLE public.profiles
 DROP INDEX IF EXISTS public.unique_lead_per_department;
 
 -- 4) Move role columns to text first to avoid enum cross-cast issues.
-ALTER TABLE public.profiles
-  ALTER COLUMN role DROP DEFAULT,
-  ALTER COLUMN role TYPE text
-  USING role::text;
+DO $$ BEGIN
+  ALTER TABLE public.profiles
+    ALTER COLUMN role DROP DEFAULT,
+    ALTER COLUMN role TYPE text
+    USING role::text;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
-ALTER TABLE public.dev_login_logs
-  ALTER COLUMN role DROP DEFAULT,
-  ALTER COLUMN role TYPE text
-  USING role::text;
+DO $$ BEGIN
+  ALTER TABLE public.dev_login_logs
+    ALTER COLUMN role DROP DEFAULT,
+    ALTER COLUMN role TYPE text
+    USING role::text;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- 5) Replace user_role enum without legacy values.
-ALTER TYPE public.user_role RENAME TO user_role_old;
+DO $$ BEGIN
+  ALTER TYPE public.user_role RENAME TO user_role_old;
+EXCEPTION WHEN duplicate_table OR undefined_object THEN NULL;
+END $$;
 
-CREATE TYPE public.user_role AS ENUM (
-  'visitor',
-  'employee',
-  'admin',
-  'super_admin',
-  'developer'
-);
+DO $$ BEGIN
+  CREATE TYPE public.user_role AS ENUM (
+    'visitor',
+    'employee',
+    'admin',
+    'super_admin',
+    'developer'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.profiles
+    ALTER COLUMN role TYPE public.user_role
+    USING role::text;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.dev_login_logs
+    ALTER COLUMN role TYPE public.user_role
+    USING role::text;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.profiles ALTER COLUMN role DROP DEFAULT;
+  DROP TYPE IF EXISTS public.user_role_old CASCADE;
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
 
 ALTER TABLE public.profiles
-  ALTER COLUMN role TYPE public.user_role
-  USING role::public.user_role;
-
-ALTER TABLE public.dev_login_logs
-  ALTER COLUMN role TYPE public.user_role
-  USING role::public.user_role;
-
-DROP TYPE public.user_role_old;
-
-ALTER TABLE public.profiles
-  ALTER COLUMN role SET DEFAULT 'employee'::public.user_role;
+  ALTER COLUMN role SET DEFAULT 'employee'::text;
 
 -- 6) Recreate compatibility view.
 CREATE OR REPLACE VIEW public.dev_login_logs_enriched

@@ -93,7 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_controlled_document_acks_user ON public.controlle
 CREATE INDEX IF NOT EXISTS idx_controlled_document_acks_version ON public.controlled_document_acknowledgements (version_id);
 
 DROP TRIGGER IF EXISTS update_controlled_documents_updated_at ON public.controlled_documents;
-CREATE TRIGGER update_controlled_documents_updated_at
+CREATE OR REPLACE TRIGGER update_controlled_documents_updated_at
   BEFORE UPDATE ON public.controlled_documents
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 

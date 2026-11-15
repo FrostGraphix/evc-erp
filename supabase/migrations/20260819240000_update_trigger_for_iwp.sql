@@ -28,8 +28,8 @@ BEGIN
 END;
 $$;
 
--- 3. Re-create trigger
-CREATE TRIGGER trg_attendance_records_normalize_status
+-- 3. Re-CREATE OR REPLACE TRIGGER
+CREATE OR REPLACE TRIGGER trg_attendance_records_normalize_status
   BEFORE INSERT OR UPDATE OF clock_in, clock_out, status
   ON public.attendance_records
   FOR EACH ROW

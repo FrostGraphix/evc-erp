@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS public.digest_schedules (
 ALTER TABLE public.digest_schedules ENABLE ROW LEVEL SECURITY;
 
 -- Only admins can manage schedules
-CREATE POLICY "Admins can manage digest schedules"
-  ON public.digest_schedules
+DROP POLICY IF EXISTS "Admins can manage digest schedules" ON public.digest_schedules;
+CREATE POLICY "Admins can manage digest schedules" ON public.digest_schedules
   FOR ALL
   USING (
     EXISTS (
@@ -40,6 +40,6 @@ CREATE POLICY "Admins can manage digest schedules"
   );
 
 -- Index for cron job to find due schedules quickly
-CREATE INDEX idx_digest_schedules_active_next ON public.digest_schedules (is_active, next_run_at)
+CREATE INDEX IF NOT EXISTS idx_digest_schedules_active_next ON public.digest_schedules (is_active, next_run_at)
   WHERE is_active = true;
 ;

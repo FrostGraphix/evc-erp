@@ -52,6 +52,12 @@ COMMENT ON COLUMN office_locations.site IS 'Site location (e.g., Head Office, Br
 
 -- =====================================================
 -- 4. MARK DEPRECATED DEVICE FIELDS
+ALTER TABLE profiles 
+  ADD COLUMN IF NOT EXISTS device_allocated TEXT,
+  ADD COLUMN IF NOT EXISTS device_type TEXT,
+  ADD COLUMN IF NOT EXISTS device_model TEXT,
+  ADD COLUMN IF NOT EXISTS devices TEXT;
+
 -- =====================================================
 
 COMMENT ON COLUMN profiles.device_allocated IS 'DEPRECATED: Use assets table instead';

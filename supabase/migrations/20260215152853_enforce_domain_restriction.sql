@@ -13,7 +13,7 @@ $$ LANGUAGE plpgsql;
 -- Note: If we can't trigger on auth.users directly, we can trigger on public.profiles
 -- but auth.users is the root of truth.
 DROP TRIGGER IF EXISTS enforce_email_domain_restriction ON auth.users;
-CREATE TRIGGER enforce_email_domain_restriction
+CREATE OR REPLACE TRIGGER enforce_email_domain_restriction
 BEFORE INSERT OR UPDATE ON auth.users
 FOR EACH ROW
 EXECUTE FUNCTION public.check_email_domain();

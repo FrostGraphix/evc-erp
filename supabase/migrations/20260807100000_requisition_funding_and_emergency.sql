@@ -54,7 +54,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.set_requisition_funding_categories_updated_at() FROM anon, PUBLIC;
 
 DROP TRIGGER IF EXISTS trg_requisition_funding_categories_updated_at ON public.requisition_funding_categories;
-CREATE TRIGGER trg_requisition_funding_categories_updated_at
+CREATE OR REPLACE TRIGGER trg_requisition_funding_categories_updated_at
 BEFORE UPDATE ON public.requisition_funding_categories
 FOR EACH ROW EXECUTE FUNCTION public.set_requisition_funding_categories_updated_at();
 

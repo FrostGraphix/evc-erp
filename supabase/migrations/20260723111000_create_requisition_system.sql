@@ -54,18 +54,18 @@ CREATE INDEX IF NOT EXISTS idx_requisitions_department ON public.requisitions (d
 ALTER TABLE public.requisitions ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
-CREATE POLICY "users_select_requisitions"
-  ON public.requisitions FOR SELECT
+DROP POLICY IF EXISTS "users_select_requisitions" ON public.requisitions;
+CREATE POLICY "users_select_requisitions" ON public.requisitions FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "users_insert_own_requisitions"
-  ON public.requisitions FOR INSERT
+DROP POLICY IF EXISTS "users_insert_own_requisitions" ON public.requisitions;
+CREATE POLICY "users_insert_own_requisitions" ON public.requisitions FOR INSERT
   TO authenticated
   WITH CHECK (user_id = auth.uid());
 
-CREATE POLICY "users_update_requisitions"
-  ON public.requisitions FOR UPDATE
+DROP POLICY IF EXISTS "users_update_requisitions" ON public.requisitions;
+CREATE POLICY "users_update_requisitions" ON public.requisitions FOR UPDATE
   TO authenticated
   USING (true);
 
@@ -82,7 +82,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_requisitions_updated_at ON public.requisitions;
-CREATE TRIGGER trg_requisitions_updated_at BEFORE UPDATE ON public.requisitions
+CREATE OR REPLACE TRIGGER trg_requisitions_updated_at BEFORE UPDATE ON public.requisitions
 FOR EACH ROW EXECUTE FUNCTION public.set_requisitions_updated_at();
 
 -- Storage bucket for requisition documents / receipts
@@ -96,12 +96,12 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-CREATE POLICY "Authenticated users can upload requisition documents"
-ON storage.objects FOR INSERT
+DROP POLICY IF EXISTS "Authenticated users can upload requisition documents" ON storage.objects;
+CREATE POLICY "Authenticated users can upload requisition documents" ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (bucket_id = 'requisition_documents');
 
-CREATE POLICY "Users can view requisition documents"
-ON storage.objects FOR SELECT
+DROP POLICY IF EXISTS "Users can view requisition documents" ON storage.objects;
+CREATE POLICY "Users can view requisition documents" ON storage.objects FOR SELECT
 TO authenticated
 USING (bucket_id = 'requisition_documents');

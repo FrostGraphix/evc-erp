@@ -57,7 +57,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.tasks_guard_self_rating() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS tasks_guard_self_rating ON public.tasks;
-CREATE TRIGGER tasks_guard_self_rating
+CREATE OR REPLACE TRIGGER tasks_guard_self_rating
   BEFORE INSERT OR UPDATE OF rating, rated_by, assigned_to ON public.tasks
   FOR EACH ROW
   EXECUTE FUNCTION public.tasks_guard_self_rating();

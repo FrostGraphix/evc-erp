@@ -17,6 +17,7 @@
 DROP POLICY IF EXISTS "Users can view all profiles" ON profiles;
 DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
 -- Create new policy: Leads can only see staff in their lead departments
+DROP POLICY IF EXISTS "Leads can view staff in their departments" ON profiles;
 CREATE POLICY "Leads can view staff in their departments" ON profiles FOR SELECT USING (
   -- Users can always see their own profile
   id = auth.uid() OR
@@ -41,6 +42,7 @@ CREATE POLICY "Leads can view staff in their departments" ON profiles FOR SELECT
 -- Drop existing policies
 DROP POLICY IF EXISTS "Users can view all devices" ON devices;
 -- Create new policy: Leads can only see devices for their department
+DROP POLICY IF EXISTS "Users can view devices based on role" ON devices;
 CREATE POLICY "Users can view devices based on role" ON devices FOR SELECT USING (
   -- Super admin and admin can see all devices
   EXISTS (
@@ -73,6 +75,7 @@ CREATE POLICY "Users can view devices based on role" ON devices FOR SELECT USING
 -- Drop existing policies
 DROP POLICY IF EXISTS "Users can view their own device assignments" ON device_assignments;
 -- Create new policy: Leads can see assignments for their department staff
+DROP POLICY IF EXISTS "Users can view device assignments based on role" ON device_assignments;
 CREATE POLICY "Users can view device assignments based on role" ON device_assignments FOR SELECT USING (
   -- Users can see their own assignments
   assigned_to = auth.uid() OR
@@ -103,6 +106,7 @@ BEGIN
   END IF;
 END $$;
 -- Create new policy: Leads can only see assets for their department
+DROP POLICY IF EXISTS "Users can view assets based on role" ON assets;
 CREATE POLICY "Users can view assets based on role" ON assets FOR SELECT USING (
   -- Super admin and admin can see all assets
   EXISTS (
@@ -146,6 +150,7 @@ BEGIN
   END IF;
 END $$;
 -- Create new policy: Leads can see assignments for their department staff
+DROP POLICY IF EXISTS "Users can view asset assignments based on role" ON asset_assignments;
 CREATE POLICY "Users can view asset assignments based on role" ON asset_assignments FOR SELECT USING (
   -- Users can see their own assignments
   assigned_to = auth.uid() OR
@@ -163,10 +168,10 @@ CREATE POLICY "Users can view asset assignments based on role" ON asset_assignme
     AND p.role = 'lead'
     AND (
       -- Individual assignment: check if assigned user is in lead's department
-      (assigned_to IS NOT NULL AND assigned_user.department = ANY(p.lead_departments))
+      (asset_assignments.assigned_to IS NOT NULL AND assigned_user.department = ANY(p.lead_departments))
       OR
       -- Department assignment: check if department matches
-      (department IS NOT NULL AND department = ANY(p.lead_departments))
+      (asset_assignments.department IS NOT NULL AND asset_assignments.department = ANY(p.lead_departments))
     )
   )
 );
@@ -177,6 +182,7 @@ CREATE POLICY "Users can view asset assignments based on role" ON asset_assignme
 -- Drop existing policy
 DROP POLICY IF EXISTS "Users can view task updates for their tasks" ON task_updates;
 -- Create new policy: Leads can see updates for department tasks
+DROP POLICY IF EXISTS "Users can view task updates based on role" ON task_updates;
 CREATE POLICY "Users can view task updates based on role" ON task_updates FOR SELECT USING (
   -- Users can see updates for their own tasks
   EXISTS (
@@ -203,12 +209,25 @@ CREATE POLICY "Users can view task updates based on role" ON task_updates FOR SE
 -- Ensure Feedback Table Has RLS (if not already enabled)
 -- ============================================
 
+CREATE TABLE IF NOT EXISTS public.feedback (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id),
+  feedback_type text,
+  title text,
+  description text,
+  status text DEFAULT 'open',
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  is_anonymous boolean DEFAULT false
+);
+
 ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
 -- Drop existing policies if they exist
 DROP POLICY IF EXISTS "Users can view all feedback" ON feedback;
 DROP POLICY IF EXISTS "Users can view their own feedback" ON feedback;
 DROP POLICY IF EXISTS "Only admins can view feedback" ON feedback;
 -- Create policy: Super admin and admin can view all feedback, leads can view their department feedback
+DROP POLICY IF EXISTS "Admins and leads can view feedback" ON feedback;
 CREATE POLICY "Admins and leads can view feedback" ON feedback FOR SELECT USING (
   -- Super admin and admin can see all feedback
   EXISTS (
@@ -228,8 +247,10 @@ CREATE POLICY "Admins and leads can view feedback" ON feedback FOR SELECT USING 
   user_id = auth.uid()
 );
 -- Users can still create their own feedback
+DROP POLICY IF EXISTS "Users can create their own feedback" ON feedback;
 CREATE POLICY "Users can create their own feedback" ON feedback FOR INSERT WITH CHECK (user_id = auth.uid());
 -- Users can update their own feedback
+DROP POLICY IF EXISTS "Users can update their own feedback" ON feedback;
 CREATE POLICY "Users can update their own feedback" ON feedback FOR UPDATE USING (user_id = auth.uid());
 -- ============================================
 -- Update Audit Logs Policies
@@ -239,6 +260,7 @@ CREATE POLICY "Users can update their own feedback" ON feedback FOR UPDATE USING
 DROP POLICY IF EXISTS "super_admin/admin can view all audit logs" ON audit_logs;
 DROP POLICY IF EXISTS "Leads can view their department audit logs" ON audit_logs;
 -- Create new policy: Super admin and admin can view all audit logs
+DROP POLICY IF EXISTS "super_admin/admin can view all audit logs" ON audit_logs;
 CREATE POLICY "super_admin/admin can view all audit logs" ON audit_logs FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM profiles
@@ -247,6 +269,7 @@ CREATE POLICY "super_admin/admin can view all audit logs" ON audit_logs FOR SELE
   )
 );
 -- Create new policy: Leads can view audit logs for their department users
+DROP POLICY IF EXISTS "Leads can view their department audit logs" ON audit_logs;
 CREATE POLICY "Leads can view their department audit logs" ON audit_logs FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM profiles p

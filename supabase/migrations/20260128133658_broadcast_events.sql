@@ -47,7 +47,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Create the trigger
 DROP TRIGGER IF EXISTS tr_broadcast_event_notification ON public.event_notifications;
-CREATE TRIGGER tr_broadcast_event_notification
+CREATE OR REPLACE TRIGGER tr_broadcast_event_notification
 AFTER INSERT ON public.event_notifications
 FOR EACH ROW
 EXECUTE FUNCTION public.broadcast_event_notification();

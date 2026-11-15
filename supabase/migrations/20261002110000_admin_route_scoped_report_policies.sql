@@ -81,7 +81,7 @@ DECLARE
   sql text;
   -- Deparsed form of: lower(trim(p.role::text)) = 'admin' AND (p.admin_domains IS NULL OR 'reports' = ANY (p.admin_domains))
   domain_clause constant text :=
-    '\(\(lower\(TRIM\(BOTH FROM \(p\.role\)::text\)\) = ''admin''::text\) AND \(\(p\.admin_domains IS NULL\) OR \(''reports''::text = ANY \(p\.admin_domains\)\)\)\)';
+    '\(\(lower\(TRIM\(BOTH FROM (\(p\.role\)::text|p\.role)\)\) = ''admin''::text\) AND \(\(p\.admin_domains IS NULL\) OR \(''reports''::text = ANY \(p\.admin_domains\)\)\)\)';
 BEGIN
   FOR pol IN
     SELECT tablename, policyname, qual, with_check

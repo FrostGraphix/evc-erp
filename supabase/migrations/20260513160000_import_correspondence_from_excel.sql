@@ -14,8 +14,7 @@
 -- ============================================================
 
 -- Step 1: disable trigger so we can insert with explicit reference numbers
-ALTER TABLE public.correspondence_records
-  DISABLE TRIGGER trg_correspondence_records_before_insert;
+DO $$ BEGIN ALTER TABLE public.correspondence_records DISABLE TRIGGER trg_correspondence_records_before_insert; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 
 -- Step 2: purge all existing test/placeholder data
 TRUNCATE TABLE public.correspondence_events   CASCADE;
@@ -30,8 +29,12 @@ TRUNCATE TABLE public.correspondence_counters;
 
 DO $$
 DECLARE
-  v_surajo UUID := 'f16cd078-5324-4837-a011-50c57f9a32d5';
+  v_surajo UUID;
 BEGIN
+  SELECT id INTO v_surajo FROM auth.users ORDER BY created_at ASC LIMIT 1;
+  IF v_surajo IS NULL THEN
+    RETURN;
+  END IF;
 
   -- ── MRS ─────────────────────────────────────────────────────────────────────
   INSERT INTO public.correspondence_records
@@ -368,8 +371,7 @@ BEGIN
 END $$;
 
 -- Step 4: re-enable trigger
-ALTER TABLE public.correspondence_records
-  ENABLE TRIGGER trg_correspondence_records_before_insert;
+DO $$ BEGIN ALTER TABLE public.correspondence_records ENABLE TRIGGER trg_correspondence_records_before_insert; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 
 -- Step 5: seed counters so next auto-generated reference continues correctly
 INSERT INTO public.correspondence_counters (counter_key, year, last_number, updated_at)

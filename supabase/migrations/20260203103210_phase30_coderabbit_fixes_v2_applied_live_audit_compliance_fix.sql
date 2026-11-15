@@ -11,14 +11,16 @@ DROP POLICY IF EXISTS "User roles select (self or admin)" ON user_roles;
 DROP POLICY IF EXISTS "User roles admin write" ON user_roles;
 DROP POLICY IF EXISTS "User roles insert policy" ON user_roles;
 DROP POLICY IF EXISTS "User roles update policy" ON user_roles;
-DROP POLICY IF EXISTS "User roles delete policy" ON user_roles;
-
+DROP POLICY IF EXISTS "User roles select (self or admin)" ON user_roles;
 CREATE POLICY "User roles select (self or admin)" ON user_roles 
 FOR SELECT TO authenticated 
 USING (user_id = (SELECT auth.uid()) OR (SELECT has_role('admin')) OR (SELECT has_role('super_admin')));
 
+DROP POLICY IF EXISTS "User roles insert policy" ON user_roles;
 CREATE POLICY "User roles insert policy" ON user_roles FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')) OR (SELECT has_role('super_admin')));
+DROP POLICY IF EXISTS "User roles update policy" ON user_roles;
 CREATE POLICY "User roles update policy" ON user_roles FOR UPDATE TO authenticated USING ((SELECT has_role('admin')) OR (SELECT has_role('super_admin')));
+DROP POLICY IF EXISTS "User roles delete policy" ON user_roles;
 CREATE POLICY "User roles delete policy" ON user_roles FOR DELETE TO authenticated USING ((SELECT has_role('admin')) OR (SELECT has_role('super_admin')));
 
 
@@ -44,10 +46,11 @@ USING (
 DROP POLICY IF EXISTS "Users can manage own timesheets" ON timesheets;
 DROP POLICY IF EXISTS "Timesheets insert policy" ON timesheets;
 DROP POLICY IF EXISTS "Timesheets update policy" ON timesheets;
-DROP POLICY IF EXISTS "Timesheets delete policy" ON timesheets;
-
+DROP POLICY IF EXISTS "Timesheets insert policy" ON timesheets;
 CREATE POLICY "Timesheets insert policy" ON timesheets FOR INSERT TO authenticated WITH CHECK (user_id = (SELECT auth.uid()));
+DROP POLICY IF EXISTS "Timesheets update policy" ON timesheets;
 CREATE POLICY "Timesheets update policy" ON timesheets FOR UPDATE TO authenticated USING (user_id = (SELECT auth.uid()));
+DROP POLICY IF EXISTS "Timesheets delete policy" ON timesheets;
 CREATE POLICY "Timesheets delete policy" ON timesheets FOR DELETE TO authenticated USING (user_id = (SELECT auth.uid()));
 
 
@@ -56,13 +59,13 @@ CREATE POLICY "Timesheets delete policy" ON timesheets FOR DELETE TO authenticat
 -- =====================================================
 DROP POLICY IF EXISTS "Payment documents manage policy" ON public.payment_documents;
 DROP POLICY IF EXISTS "Payment documents update policy" ON public.payment_documents;
-DROP POLICY IF EXISTS "Payment documents delete policy" ON public.payment_documents;
-
+DROP POLICY IF EXISTS "Payment documents update policy" ON public.payment_documents;
 CREATE POLICY "Payment documents update policy" ON public.payment_documents 
 FOR UPDATE TO authenticated 
 USING ((SELECT has_role('admin')) OR uploaded_by = (SELECT auth.uid()))
 WITH CHECK ((SELECT has_role('admin')) OR uploaded_by = (SELECT auth.uid()));
 
+DROP POLICY IF EXISTS "Payment documents delete policy" ON public.payment_documents;
 CREATE POLICY "Payment documents delete policy" ON public.payment_documents 
 FOR DELETE TO authenticated 
 USING ((SELECT has_role('admin')) OR uploaded_by = (SELECT auth.uid()));

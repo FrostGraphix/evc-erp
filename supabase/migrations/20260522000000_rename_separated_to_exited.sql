@@ -36,6 +36,7 @@ COMMENT ON COLUMN public.profiles.employment_status IS
 
 -- Recreate the employee_directory view with updated filter so exited employees are excluded.
 -- The previous version filtered on the legacy separated value; after the rename the value is exited.
+DROP VIEW IF EXISTS public.employee_directory CASCADE;
 CREATE OR REPLACE VIEW public.employee_directory AS
 SELECT
   id,

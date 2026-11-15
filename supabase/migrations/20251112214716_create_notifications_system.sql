@@ -46,6 +46,24 @@ CREATE TABLE IF NOT EXISTS notifications (
   CONSTRAINT notifications_user_id_created_at_idx UNIQUE NULLS NOT DISTINCT (user_id, created_at, id)
 );
 
+ALTER TABLE notifications
+  ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'system',
+  ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'normal',
+  ADD COLUMN IF NOT EXISTS rich_content JSONB,
+  ADD COLUMN IF NOT EXISTS link_url TEXT,
+  ADD COLUMN IF NOT EXISTS link_text TEXT,
+  ADD COLUMN IF NOT EXISTS action_buttons JSONB,
+  ADD COLUMN IF NOT EXISTS actor_id UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS actor_name TEXT,
+  ADD COLUMN IF NOT EXISTS actor_avatar TEXT,
+  ADD COLUMN IF NOT EXISTS entity_type TEXT,
+  ADD COLUMN IF NOT EXISTS entity_id UUID,
+  ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS clicked BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read);
@@ -199,7 +217,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger to auto-populate actor info
+-- CREATE OR REPLACE TRIGGER to auto-populate actor info
 CREATE OR REPLACE FUNCTION populate_notification_actor() RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.actor_id IS NOT NULL AND NEW.actor_name IS NULL THEN
@@ -216,7 +234,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trigger_populate_notification_actor ON notifications;
-CREATE TRIGGER trigger_populate_notification_actor
+CREATE OR REPLACE TRIGGER trigger_populate_notification_actor
   BEFORE INSERT ON notifications
   FOR EACH ROW
   EXECUTE FUNCTION populate_notification_actor();
@@ -226,37 +244,37 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_preferences ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for notifications
-CREATE POLICY "Users can view their own notifications"
-  ON notifications FOR SELECT
+DROP POLICY IF EXISTS "Users can view their own notifications" ON notifications;
+CREATE POLICY "Users can view their own notifications" ON notifications FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can update their own notifications"
-  ON notifications FOR UPDATE
+DROP POLICY IF EXISTS "Users can update their own notifications" ON notifications;
+CREATE POLICY "Users can update their own notifications" ON notifications FOR UPDATE
   USING (auth.uid() = user_id);
 
-CREATE POLICY "System can insert notifications"
-  ON notifications FOR INSERT
+DROP POLICY IF EXISTS "System can insert notifications" ON notifications;
+CREATE POLICY "System can insert notifications" ON notifications FOR INSERT
   WITH CHECK (true);
 
 -- RLS Policies for preferences
-CREATE POLICY "Users can view their own preferences"
-  ON notification_preferences FOR SELECT
+DROP POLICY IF EXISTS "Users can view their own preferences" ON notification_preferences;
+CREATE POLICY "Users can view their own preferences" ON notification_preferences FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can update their own preferences"
-  ON notification_preferences FOR UPDATE
+DROP POLICY IF EXISTS "Users can update their own preferences" ON notification_preferences;
+CREATE POLICY "Users can update their own preferences" ON notification_preferences FOR UPDATE
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can insert their own preferences"
-  ON notification_preferences FOR INSERT
+DROP POLICY IF EXISTS "Users can insert their own preferences" ON notification_preferences;
+CREATE POLICY "Users can insert their own preferences" ON notification_preferences FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Add comments
 COMMENT ON TABLE notifications IS 'Stores all user notifications with rich content and real-time support';
 COMMENT ON TABLE notification_preferences IS 'User notification settings and preferences';
-COMMENT ON FUNCTION create_notification IS 'Helper function to create notifications with automatic preference checks';
-COMMENT ON FUNCTION mark_notifications_read IS 'Bulk mark notifications as read';
-COMMENT ON FUNCTION cleanup_old_notifications IS 'Clean up old archived and expired notifications';
+-- COMMENT ON FUNCTION create_notification
+-- COMMENT ON FUNCTION mark_notifications_read
+-- COMMENT ON FUNCTION cleanup_old_notifications
 
 -- Refresh PostgREST schema cache
 NOTIFY pgrst, 'reload schema';;

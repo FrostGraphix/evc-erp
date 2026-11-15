@@ -24,6 +24,7 @@ WHERE description LIKE 'System-generated KPI bucket%'
 --    priority weight, and system-generated flag
 -- ─────────────────────────────────────────────────────────────
 
+DROP VIEW IF EXISTS public.kpi_achievement_summary CASCADE;
 CREATE OR REPLACE VIEW public.kpi_achievement_summary AS
 SELECT
   g.user_id,

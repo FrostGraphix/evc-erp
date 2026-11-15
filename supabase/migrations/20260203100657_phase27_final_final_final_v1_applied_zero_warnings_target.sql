@@ -9,11 +9,13 @@ DROP POLICY IF EXISTS "Only admins can manage offers" ON offers;
 DROP POLICY IF EXISTS "Offers select policy" ON offers;
 DROP POLICY IF EXISTS "Offers insert policy" ON offers;
 DROP POLICY IF EXISTS "Offers update policy" ON offers;
-DROP POLICY IF EXISTS "Offers delete policy" ON offers;
-
+DROP POLICY IF EXISTS "Offers select policy" ON offers;
 CREATE POLICY "Offers select policy" ON offers FOR SELECT TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Offers insert policy" ON offers;
 CREATE POLICY "Offers insert policy" ON offers FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Offers update policy" ON offers;
 CREATE POLICY "Offers update policy" ON offers FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Offers delete policy" ON offers;
 CREATE POLICY "Offers delete policy" ON offers FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 
@@ -25,10 +27,10 @@ DROP POLICY IF EXISTS "Users can view project updates" ON project_updates;
 DROP POLICY IF EXISTS "Project updates select policy" ON project_updates;
 DROP POLICY IF EXISTS "Project updates insert policy" ON project_updates;
 DROP POLICY IF EXISTS "Project updates update policy" ON project_updates;
-DROP POLICY IF EXISTS "Project updates delete policy" ON project_updates;
-
+DROP POLICY IF EXISTS "Project updates select policy" ON project_updates;
 CREATE POLICY "Project updates select policy" ON project_updates FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Project updates insert policy" ON project_updates;
 CREATE POLICY "Project updates insert policy" ON project_updates 
 FOR INSERT TO authenticated 
 WITH CHECK (
@@ -40,6 +42,7 @@ WITH CHECK (
     (SELECT has_role('admin'))
 );
 
+DROP POLICY IF EXISTS "Project updates update policy" ON project_updates;
 CREATE POLICY "Project updates update policy" ON project_updates 
 FOR UPDATE TO authenticated 
 USING (
@@ -51,6 +54,7 @@ USING (
     (SELECT has_role('admin'))
 );
 
+DROP POLICY IF EXISTS "Project updates delete policy" ON project_updates;
 CREATE POLICY "Project updates delete policy" ON project_updates FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 

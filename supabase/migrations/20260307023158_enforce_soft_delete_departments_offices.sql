@@ -31,7 +31,7 @@ end;
 $$;
 
 drop trigger if exists trg_prevent_department_delete_or_invalid_soft_delete on public.departments;
-create trigger trg_prevent_department_delete_or_invalid_soft_delete
+CREATE OR REPLACE TRIGGER trg_prevent_department_delete_or_invalid_soft_delete
 before update or delete on public.departments
 for each row
 execute function public.prevent_department_hard_delete_or_invalid_soft_delete();
@@ -65,7 +65,7 @@ end;
 $$;
 
 drop trigger if exists trg_prevent_office_location_delete_or_invalid_soft_delete on public.office_locations;
-create trigger trg_prevent_office_location_delete_or_invalid_soft_delete
+CREATE OR REPLACE TRIGGER trg_prevent_office_location_delete_or_invalid_soft_delete
 before update or delete on public.office_locations
 for each row
 execute function public.prevent_office_location_hard_delete_or_invalid_soft_delete();;

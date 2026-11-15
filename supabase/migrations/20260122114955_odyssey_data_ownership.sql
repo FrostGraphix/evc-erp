@@ -165,32 +165,41 @@ ALTER TABLE event_notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sync_state ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for meter_readings
+DROP POLICY IF EXISTS "Admin full access to meter_readings" ON meter_readings;
 CREATE POLICY "Admin full access to meter_readings" ON meter_readings FOR ALL USING (has_role('admin'));
+DROP POLICY IF EXISTS "Staff read meter_readings" ON meter_readings;
 CREATE POLICY "Staff read meter_readings" ON meter_readings FOR SELECT USING (has_role('staff'));
 
 -- RLS Policies for gprs_status
+DROP POLICY IF EXISTS "Admin full access to gprs_status" ON gprs_status;
 CREATE POLICY "Admin full access to gprs_status" ON gprs_status FOR ALL USING (has_role('admin'));
+DROP POLICY IF EXISTS "Staff read gprs_status" ON gprs_status;
 CREATE POLICY "Staff read gprs_status" ON gprs_status FOR SELECT USING (has_role('staff'));
 
 -- RLS Policies for event_notifications
+DROP POLICY IF EXISTS "Admin full access to events" ON event_notifications;
 CREATE POLICY "Admin full access to events" ON event_notifications FOR ALL USING (has_role('admin'));
+DROP POLICY IF EXISTS "Staff read events" ON event_notifications;
 CREATE POLICY "Staff read events" ON event_notifications FOR SELECT USING (has_role('staff'));
+DROP POLICY IF EXISTS "Staff acknowledge events" ON event_notifications;
 CREATE POLICY "Staff acknowledge events" ON event_notifications FOR UPDATE 
     USING (has_role('staff'))
     WITH CHECK (acknowledged = true AND acknowledged_by = auth.uid());
 
 -- RLS Policies for sync_state
+DROP POLICY IF EXISTS "Admin full access to sync_state" ON sync_state;
 CREATE POLICY "Admin full access to sync_state" ON sync_state FOR ALL USING (has_role('admin'));
+DROP POLICY IF EXISTS "Staff read sync_state" ON sync_state;
 CREATE POLICY "Staff read sync_state" ON sync_state FOR SELECT USING (has_role('staff'));
 
 -- ============================================
 -- 4. Triggers for Updated Timestamps
 -- ============================================
 
-CREATE TRIGGER update_gprs_status_updated_at BEFORE UPDATE ON gprs_status
+CREATE OR REPLACE TRIGGER update_gprs_status_updated_at BEFORE UPDATE ON gprs_status
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_sync_state_updated_at BEFORE UPDATE ON sync_state
+CREATE OR REPLACE TRIGGER update_sync_state_updated_at BEFORE UPDATE ON sync_state
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================

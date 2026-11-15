@@ -11,10 +11,8 @@
 DROP POLICY IF EXISTS "Users can view action items for their department" ON public.action_items;
 DROP POLICY IF EXISTS "Users can update own dept action items" ON public.action_items;
 DROP POLICY IF EXISTS "Users can delete action items" ON public.action_items;
-DROP POLICY IF EXISTS "Users can insert action items" ON public.action_items;
-
-CREATE POLICY "Users can view action items for their department"
-ON public.action_items
+DROP POLICY IF EXISTS "Users can view action items for their department" ON public.action_items;
+CREATE POLICY "Users can view action items for their department" ON public.action_items
 FOR SELECT
 TO authenticated
 USING (
@@ -29,8 +27,8 @@ USING (
   )
 );
 
-CREATE POLICY "Users can insert action items"
-ON public.action_items
+DROP POLICY IF EXISTS "Users can insert action items" ON public.action_items;
+CREATE POLICY "Users can insert action items" ON public.action_items
 FOR INSERT
 TO authenticated
 WITH CHECK (
@@ -60,8 +58,8 @@ WITH CHECK (
   )
 );
 
-CREATE POLICY "Users can update own dept action items"
-ON public.action_items
+DROP POLICY IF EXISTS "Users can update own dept action items" ON public.action_items;
+CREATE POLICY "Users can update own dept action items" ON public.action_items
 FOR UPDATE
 TO authenticated
 USING (
@@ -117,8 +115,8 @@ WITH CHECK (
   )
 );
 
-CREATE POLICY "Users can delete action items"
-ON public.action_items
+DROP POLICY IF EXISTS "Users can delete action items" ON public.action_items;
+CREATE POLICY "Users can delete action items" ON public.action_items
 FOR DELETE
 TO authenticated
 USING (
@@ -152,10 +150,8 @@ USING (
 -- weekly_reports policies
 -- -------------------------
 DROP POLICY IF EXISTS "Leads and admins can update weekly reports" ON public.weekly_reports;
-DROP POLICY IF EXISTS "Only admins can delete weekly reports" ON public.weekly_reports;
-
-CREATE POLICY "Leads and admins can update weekly reports"
-ON public.weekly_reports
+DROP POLICY IF EXISTS "Leads and admins can update weekly reports" ON public.weekly_reports;
+CREATE POLICY "Leads and admins can update weekly reports" ON public.weekly_reports
 FOR UPDATE
 TO authenticated
 USING (
@@ -212,8 +208,8 @@ WITH CHECK (
   )
 );
 
-CREATE POLICY "Only admins can delete weekly reports"
-ON public.weekly_reports
+DROP POLICY IF EXISTS "Only admins can delete weekly reports" ON public.weekly_reports;
+CREATE POLICY "Only admins can delete weekly reports" ON public.weekly_reports
 FOR DELETE
 TO authenticated
 USING (

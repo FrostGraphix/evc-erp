@@ -181,6 +181,7 @@ $$;
 COMMENT ON FUNCTION public.atomic_complete_user_approval IS
   'Atomically upserts the approved employee profile and removes the pending_users record in a single transaction.';
 
+DROP VIEW IF EXISTS public.employee_directory CASCADE;
 CREATE OR REPLACE VIEW public.employee_directory AS
 SELECT
   id,
@@ -206,6 +207,7 @@ SELECT
 FROM public.profiles
 WHERE employment_status::text NOT IN ('exited');
 
+DROP VIEW IF EXISTS public.profiles_public CASCADE;
 CREATE OR REPLACE VIEW public.profiles_public AS
 SELECT
   id,

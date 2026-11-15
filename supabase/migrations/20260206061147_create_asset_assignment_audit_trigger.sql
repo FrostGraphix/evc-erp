@@ -112,8 +112,8 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Create trigger for asset assignments
-CREATE TRIGGER audit_asset_assignment_changes
+-- CREATE OR REPLACE TRIGGER for asset assignments
+CREATE OR REPLACE TRIGGER audit_asset_assignment_changes
     AFTER INSERT OR UPDATE OR DELETE ON asset_assignments
     FOR EACH ROW
     EXECUTE FUNCTION audit_asset_assignment_changes();;

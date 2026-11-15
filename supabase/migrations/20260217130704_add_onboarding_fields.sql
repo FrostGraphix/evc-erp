@@ -20,10 +20,12 @@ FOR INSERT TO anon
 WITH CHECK (true);
 
 -- Allow ADMINs to SELECT/DELETE (already likely exists, but ensuring)
+DROP POLICY IF EXISTS "Enable read for authenticated users only" ON public.pending_users;
 CREATE POLICY "Enable read for authenticated users only" ON public.pending_users
 FOR SELECT TO authenticated
 USING (true);
 
+DROP POLICY IF EXISTS "Enable delete for authenticated users only" ON public.pending_users;
 CREATE POLICY "Enable delete for authenticated users only" ON public.pending_users
 FOR DELETE TO authenticated
 USING (true);

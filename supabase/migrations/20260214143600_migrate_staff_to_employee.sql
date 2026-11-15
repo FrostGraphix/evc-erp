@@ -9,10 +9,10 @@ ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'employee';
 
 -- 2. Update existing profiles
 UPDATE profiles 
-SET role = 'employee'::user_role 
+SET role = 'employee'::text 
 WHERE role::text = 'staff';
 
 -- 3. Update the default value for future inserts
 ALTER TABLE profiles 
 ALTER COLUMN role 
-SET DEFAULT 'employee'::user_role;
+SET DEFAULT 'employee'::text;

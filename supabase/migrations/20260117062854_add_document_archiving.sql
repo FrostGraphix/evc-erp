@@ -19,8 +19,8 @@ BEGIN
         WHERE tablename = 'payment_documents' 
         AND policyname = 'Users can update their documents'
     ) THEN
-        CREATE POLICY "Users can update their documents"
-            ON payment_documents FOR UPDATE
+        DROP POLICY IF EXISTS "Users can update their documents" ON payment_documents;
+CREATE POLICY "Users can update their documents" ON payment_documents FOR UPDATE
             USING (uploaded_by = auth.uid());
     END IF;
 END $$;
@@ -33,8 +33,8 @@ BEGIN
         WHERE tablename = 'payment_documents' 
         AND policyname = 'Admins can update any document'
     ) THEN
-        CREATE POLICY "Admins can update any document"
-            ON payment_documents FOR UPDATE
+        DROP POLICY IF EXISTS "Admins can update any document" ON payment_documents;
+CREATE POLICY "Admins can update any document" ON payment_documents FOR UPDATE
             USING (
                 EXISTS (
                     SELECT 1 FROM profiles

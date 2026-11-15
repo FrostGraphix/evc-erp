@@ -21,14 +21,14 @@ DROP POLICY IF EXISTS "Only admins can manage shifts" ON shifts;
 -- =====================================================
 
 -- Users can view their own attendance records
-CREATE POLICY "Users can view own attendance"
-  ON attendance_records FOR SELECT
+DROP POLICY IF EXISTS "Users can view own attendance" ON attendance_records;
+CREATE POLICY "Users can view own attendance" ON attendance_records FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
 
 -- Department leads can view department attendance
-CREATE POLICY "Department leads can view department attendance"
-  ON attendance_records FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view department attendance" ON attendance_records;
+CREATE POLICY "Department leads can view department attendance" ON attendance_records FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -42,8 +42,8 @@ CREATE POLICY "Department leads can view department attendance"
   );
 
 -- Admins can view all attendance records
-CREATE POLICY "Admins can view all attendance"
-  ON attendance_records FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all attendance" ON attendance_records;
+CREATE POLICY "Admins can view all attendance" ON attendance_records FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -54,21 +54,21 @@ CREATE POLICY "Admins can view all attendance"
   );
 
 -- Users can create their own attendance records (clock in)
-CREATE POLICY "Users can clock in"
-  ON attendance_records FOR INSERT
+DROP POLICY IF EXISTS "Users can clock in" ON attendance_records;
+CREATE POLICY "Users can clock in" ON attendance_records FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
 -- Users can update their own attendance records (clock out)
-CREATE POLICY "Users can clock out"
-  ON attendance_records FOR UPDATE
+DROP POLICY IF EXISTS "Users can clock out" ON attendance_records;
+CREATE POLICY "Users can clock out" ON attendance_records FOR UPDATE
   TO authenticated
   USING (auth.uid() = user_id AND clock_out IS NULL)
   WITH CHECK (auth.uid() = user_id);
 
 -- Only admins can delete attendance records
-CREATE POLICY "Admins can delete attendance"
-  ON attendance_records FOR DELETE
+DROP POLICY IF EXISTS "Admins can delete attendance" ON attendance_records;
+CREATE POLICY "Admins can delete attendance" ON attendance_records FOR DELETE
   TO authenticated
   USING (
     EXISTS (
@@ -83,14 +83,14 @@ CREATE POLICY "Admins can delete attendance"
 -- =====================================================
 
 -- Users can view their own timesheets
-CREATE POLICY "Users can view own timesheets"
-  ON timesheets FOR SELECT
+DROP POLICY IF EXISTS "Users can view own timesheets" ON timesheets;
+CREATE POLICY "Users can view own timesheets" ON timesheets FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
 
 -- Department leads can view department timesheets
-CREATE POLICY "Department leads can view department timesheets"
-  ON timesheets FOR SELECT
+DROP POLICY IF EXISTS "Department leads can view department timesheets" ON timesheets;
+CREATE POLICY "Department leads can view department timesheets" ON timesheets FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -104,8 +104,8 @@ CREATE POLICY "Department leads can view department timesheets"
   );
 
 -- Admins can view all timesheets
-CREATE POLICY "Admins can view all timesheets"
-  ON timesheets FOR SELECT
+DROP POLICY IF EXISTS "Admins can view all timesheets" ON timesheets;
+CREATE POLICY "Admins can view all timesheets" ON timesheets FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -116,8 +116,8 @@ CREATE POLICY "Admins can view all timesheets"
   );
 
 -- Users can create/update their own timesheets
-CREATE POLICY "Users can manage own timesheets"
-  ON timesheets FOR ALL
+DROP POLICY IF EXISTS "Users can manage own timesheets" ON timesheets;
+CREATE POLICY "Users can manage own timesheets" ON timesheets FOR ALL
   TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
@@ -127,14 +127,14 @@ CREATE POLICY "Users can manage own timesheets"
 -- =====================================================
 
 -- All authenticated users can view shifts
-CREATE POLICY "All users can view shifts"
-  ON shifts FOR SELECT
+DROP POLICY IF EXISTS "All users can view shifts" ON shifts;
+CREATE POLICY "All users can view shifts" ON shifts FOR SELECT
   TO authenticated
   USING (true);
 
 -- Only admins can manage shifts
-CREATE POLICY "Only admins can manage shifts"
-  ON shifts FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage shifts" ON shifts;
+CREATE POLICY "Only admins can manage shifts" ON shifts FOR ALL
   TO authenticated
   USING (
     EXISTS (

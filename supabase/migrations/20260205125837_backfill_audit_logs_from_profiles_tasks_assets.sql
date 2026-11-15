@@ -1,3 +1,10 @@
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id);
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS asset_name TEXT;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS asset_type TEXT;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS serial_number TEXT;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS status TEXT;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS department TEXT;
+
 -- Backfill audit_logs from profiles (user creation history)
 INSERT INTO audit_logs (user_id, operation, table_name, record_id, metadata, status, created_at)
 SELECT 

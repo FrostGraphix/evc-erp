@@ -9,16 +9,26 @@ CREATE TABLE IF NOT EXISTS roles (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+DO $do$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'roles_name_key'
+  ) THEN
+    ALTER TABLE roles ADD CONSTRAINT roles_name_key UNIQUE (name);
+  END IF;
+END $do$;
+
 -- Turn on RLS
 ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
 
 -- Create policies
 -- Everyone can view roles (needed for UI to show roles to admins/managers, and potentially for permission checks)
+DROP POLICY IF EXISTS "Authenticated users can view roles" ON roles;
 CREATE POLICY "Authenticated users can view roles" ON roles
   FOR SELECT TO authenticated
   USING (true);
 
 -- Only admins/super_admins can manage roles
+DROP POLICY IF EXISTS "Admins can manage roles" ON roles;
 CREATE POLICY "Admins can manage roles" ON roles
   FOR ALL TO authenticated
   USING (
@@ -44,5 +54,5 @@ ON CONFLICT (name) DO UPDATE SET
 
 -- Function to update timestamp
 DROP TRIGGER IF EXISTS update_roles_updated_at ON roles;
-CREATE TRIGGER update_roles_updated_at BEFORE UPDATE ON roles
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();;
+CREATE OR REPLACE TRIGGER update_roles_updated_at BEFORE UPDATE ON roles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

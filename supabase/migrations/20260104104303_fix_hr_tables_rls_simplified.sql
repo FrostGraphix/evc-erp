@@ -6,8 +6,8 @@
 -- RECRUITMENT TABLES (Admin-only)
 -- =====================================================
 
-CREATE POLICY "Only admins can view applications"
-  ON applications FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view applications" ON applications;
+CREATE POLICY "Only admins can view applications" ON applications FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -17,8 +17,8 @@ CREATE POLICY "Only admins can view applications"
     )
   );
 
-CREATE POLICY "Only admins can manage applications"
-  ON applications FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage applications" ON applications;
+CREATE POLICY "Only admins can manage applications" ON applications FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -28,8 +28,8 @@ CREATE POLICY "Only admins can manage applications"
     )
   );
 
-CREATE POLICY "Only admins can view interviews"
-  ON interviews FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view interviews" ON interviews;
+CREATE POLICY "Only admins can view interviews" ON interviews FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -39,8 +39,8 @@ CREATE POLICY "Only admins can view interviews"
     )
   );
 
-CREATE POLICY "Only admins can manage interviews"
-  ON interviews FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage interviews" ON interviews;
+CREATE POLICY "Only admins can manage interviews" ON interviews FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -50,8 +50,8 @@ CREATE POLICY "Only admins can manage interviews"
     )
   );
 
-CREATE POLICY "Only admins can view offers"
-  ON offers FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view offers" ON offers;
+CREATE POLICY "Only admins can view offers" ON offers FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -61,8 +61,8 @@ CREATE POLICY "Only admins can view offers"
     )
   );
 
-CREATE POLICY "Only admins can manage offers"
-  ON offers FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage offers" ON offers;
+CREATE POLICY "Only admins can manage offers" ON offers FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -72,13 +72,13 @@ CREATE POLICY "Only admins can manage offers"
     )
   );
 
-CREATE POLICY "All authenticated users can view job postings"
-  ON job_postings FOR SELECT
+DROP POLICY IF EXISTS "All authenticated users can view job postings" ON job_postings;
+CREATE POLICY "All authenticated users can view job postings" ON job_postings FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Only admins can manage job postings"
-  ON job_postings FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage job postings" ON job_postings;
+CREATE POLICY "Only admins can manage job postings" ON job_postings FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -92,8 +92,8 @@ CREATE POLICY "Only admins can manage job postings"
 -- LEAVE MANAGEMENT TABLES (Admin-only for now)
 -- =====================================================
 
-CREATE POLICY "Only admins can view leave requests"
-  ON leave_requests FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view leave requests" ON leave_requests;
+CREATE POLICY "Only admins can view leave requests" ON leave_requests FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -103,8 +103,8 @@ CREATE POLICY "Only admins can view leave requests"
     )
   );
 
-CREATE POLICY "Only admins can manage leave requests"
-  ON leave_requests FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage leave requests" ON leave_requests;
+CREATE POLICY "Only admins can manage leave requests" ON leave_requests FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -114,8 +114,8 @@ CREATE POLICY "Only admins can manage leave requests"
     )
   );
 
-CREATE POLICY "Only admins can view leave approvals"
-  ON leave_approvals FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view leave approvals" ON leave_approvals;
+CREATE POLICY "Only admins can view leave approvals" ON leave_approvals FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -125,8 +125,8 @@ CREATE POLICY "Only admins can view leave approvals"
     )
   );
 
-CREATE POLICY "Only admins can manage leave approvals"
-  ON leave_approvals FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage leave approvals" ON leave_approvals;
+CREATE POLICY "Only admins can manage leave approvals" ON leave_approvals FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -136,8 +136,8 @@ CREATE POLICY "Only admins can manage leave approvals"
     )
   );
 
-CREATE POLICY "Only admins can view leave balances"
-  ON leave_balances FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view leave balances" ON leave_balances;
+CREATE POLICY "Only admins can view leave balances" ON leave_balances FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -147,8 +147,8 @@ CREATE POLICY "Only admins can view leave balances"
     )
   );
 
-CREATE POLICY "Only admins can manage leave balances"
-  ON leave_balances FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage leave balances" ON leave_balances;
+CREATE POLICY "Only admins can manage leave balances" ON leave_balances FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -162,8 +162,8 @@ CREATE POLICY "Only admins can manage leave balances"
 -- PAYROLL TABLES (Admin-only)
 -- =====================================================
 
-CREATE POLICY "Only admins can view employee salaries"
-  ON employee_salaries FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view employee salaries" ON employee_salaries;
+CREATE POLICY "Only admins can view employee salaries" ON employee_salaries FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -173,8 +173,8 @@ CREATE POLICY "Only admins can view employee salaries"
     )
   );
 
-CREATE POLICY "Only admins can manage employee salaries"
-  ON employee_salaries FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage employee salaries" ON employee_salaries;
+CREATE POLICY "Only admins can manage employee salaries" ON employee_salaries FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -184,13 +184,13 @@ CREATE POLICY "Only admins can manage employee salaries"
     )
   );
 
-CREATE POLICY "All authenticated users can view salary components"
-  ON salary_components FOR SELECT
+DROP POLICY IF EXISTS "All authenticated users can view salary components" ON salary_components;
+CREATE POLICY "All authenticated users can view salary components" ON salary_components FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Only admins can manage salary components"
-  ON salary_components FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage salary components" ON salary_components;
+CREATE POLICY "Only admins can manage salary components" ON salary_components FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -200,13 +200,13 @@ CREATE POLICY "Only admins can manage salary components"
     )
   );
 
-CREATE POLICY "All authenticated users can view salary structures"
-  ON salary_structures FOR SELECT
+DROP POLICY IF EXISTS "All authenticated users can view salary structures" ON salary_structures;
+CREATE POLICY "All authenticated users can view salary structures" ON salary_structures FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Only admins can manage salary structures"
-  ON salary_structures FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage salary structures" ON salary_structures;
+CREATE POLICY "Only admins can manage salary structures" ON salary_structures FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -216,13 +216,13 @@ CREATE POLICY "Only admins can manage salary structures"
     )
   );
 
-CREATE POLICY "All authenticated users can view payroll periods"
-  ON payroll_periods FOR SELECT
+DROP POLICY IF EXISTS "All authenticated users can view payroll periods" ON payroll_periods;
+CREATE POLICY "All authenticated users can view payroll periods" ON payroll_periods FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Only admins can manage payroll periods"
-  ON payroll_periods FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage payroll periods" ON payroll_periods;
+CREATE POLICY "Only admins can manage payroll periods" ON payroll_periods FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -232,8 +232,8 @@ CREATE POLICY "Only admins can manage payroll periods"
     )
   );
 
-CREATE POLICY "Only admins can view payroll entries"
-  ON payroll_entries FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view payroll entries" ON payroll_entries;
+CREATE POLICY "Only admins can view payroll entries" ON payroll_entries FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -243,8 +243,8 @@ CREATE POLICY "Only admins can view payroll entries"
     )
   );
 
-CREATE POLICY "Only admins can manage payroll entries"
-  ON payroll_entries FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage payroll entries" ON payroll_entries;
+CREATE POLICY "Only admins can manage payroll entries" ON payroll_entries FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -254,8 +254,8 @@ CREATE POLICY "Only admins can manage payroll entries"
     )
   );
 
-CREATE POLICY "Only admins can view payslips"
-  ON payslips FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view payslips" ON payslips;
+CREATE POLICY "Only admins can view payslips" ON payslips FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -265,8 +265,8 @@ CREATE POLICY "Only admins can view payslips"
     )
   );
 
-CREATE POLICY "Only admins can manage payslips"
-  ON payslips FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage payslips" ON payslips;
+CREATE POLICY "Only admins can manage payslips" ON payslips FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -280,8 +280,8 @@ CREATE POLICY "Only admins can manage payslips"
 -- PERFORMANCE MANAGEMENT TABLES (Admin-only)
 -- =====================================================
 
-CREATE POLICY "Only admins can view performance reviews"
-  ON performance_reviews FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view performance reviews" ON performance_reviews;
+CREATE POLICY "Only admins can view performance reviews" ON performance_reviews FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -291,8 +291,8 @@ CREATE POLICY "Only admins can view performance reviews"
     )
   );
 
-CREATE POLICY "Only admins can manage performance reviews"
-  ON performance_reviews FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage performance reviews" ON performance_reviews;
+CREATE POLICY "Only admins can manage performance reviews" ON performance_reviews FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -302,8 +302,8 @@ CREATE POLICY "Only admins can manage performance reviews"
     )
   );
 
-CREATE POLICY "Only admins can view performance ratings"
-  ON performance_ratings FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view performance ratings" ON performance_ratings;
+CREATE POLICY "Only admins can view performance ratings" ON performance_ratings FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -313,8 +313,8 @@ CREATE POLICY "Only admins can view performance ratings"
     )
   );
 
-CREATE POLICY "Only admins can manage performance ratings"
-  ON performance_ratings FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage performance ratings" ON performance_ratings;
+CREATE POLICY "Only admins can manage performance ratings" ON performance_ratings FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -324,13 +324,13 @@ CREATE POLICY "Only admins can manage performance ratings"
     )
   );
 
-CREATE POLICY "All authenticated users can view review cycles"
-  ON review_cycles FOR SELECT
+DROP POLICY IF EXISTS "All authenticated users can view review cycles" ON review_cycles;
+CREATE POLICY "All authenticated users can view review cycles" ON review_cycles FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Only admins can manage review cycles"
-  ON review_cycles FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage review cycles" ON review_cycles;
+CREATE POLICY "Only admins can manage review cycles" ON review_cycles FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -340,8 +340,8 @@ CREATE POLICY "Only admins can manage review cycles"
     )
   );
 
-CREATE POLICY "Only admins can view goals and objectives"
-  ON goals_objectives FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view goals and objectives" ON goals_objectives;
+CREATE POLICY "Only admins can view goals and objectives" ON goals_objectives FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -351,8 +351,8 @@ CREATE POLICY "Only admins can view goals and objectives"
     )
   );
 
-CREATE POLICY "Only admins can manage goals and objectives"
-  ON goals_objectives FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage goals and objectives" ON goals_objectives;
+CREATE POLICY "Only admins can manage goals and objectives" ON goals_objectives FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -366,13 +366,13 @@ CREATE POLICY "Only admins can manage goals and objectives"
 -- TIME TRACKING TABLES (Admin-only)
 -- =====================================================
 
-CREATE POLICY "All authenticated users can view shifts"
-  ON shifts FOR SELECT
+DROP POLICY IF EXISTS "All authenticated users can view shifts" ON shifts;
+CREATE POLICY "All authenticated users can view shifts" ON shifts FOR SELECT
   TO authenticated
   USING (true);
 
-CREATE POLICY "Only admins can manage shifts"
-  ON shifts FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage shifts" ON shifts;
+CREATE POLICY "Only admins can manage shifts" ON shifts FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -382,8 +382,8 @@ CREATE POLICY "Only admins can manage shifts"
     )
   );
 
-CREATE POLICY "Only admins can view timesheets"
-  ON timesheets FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view timesheets" ON timesheets;
+CREATE POLICY "Only admins can view timesheets" ON timesheets FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -393,8 +393,8 @@ CREATE POLICY "Only admins can view timesheets"
     )
   );
 
-CREATE POLICY "Only admins can manage timesheets"
-  ON timesheets FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage timesheets" ON timesheets;
+CREATE POLICY "Only admins can manage timesheets" ON timesheets FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -404,8 +404,8 @@ CREATE POLICY "Only admins can manage timesheets"
     )
   );
 
-CREATE POLICY "Only admins can view overtime requests"
-  ON overtime_requests FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view overtime requests" ON overtime_requests;
+CREATE POLICY "Only admins can view overtime requests" ON overtime_requests FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -415,8 +415,8 @@ CREATE POLICY "Only admins can view overtime requests"
     )
   );
 
-CREATE POLICY "Only admins can manage overtime requests"
-  ON overtime_requests FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage overtime requests" ON overtime_requests;
+CREATE POLICY "Only admins can manage overtime requests" ON overtime_requests FOR ALL
   TO authenticated
   USING (
     EXISTS (
@@ -426,8 +426,8 @@ CREATE POLICY "Only admins can manage overtime requests"
     )
   );
 
-CREATE POLICY "Only admins can view attendance records"
-  ON attendance_records FOR SELECT
+DROP POLICY IF EXISTS "Only admins can view attendance records" ON attendance_records;
+CREATE POLICY "Only admins can view attendance records" ON attendance_records FOR SELECT
   TO authenticated
   USING (
     EXISTS (
@@ -437,8 +437,8 @@ CREATE POLICY "Only admins can view attendance records"
     )
   );
 
-CREATE POLICY "Only admins can manage attendance records"
-  ON attendance_records FOR ALL
+DROP POLICY IF EXISTS "Only admins can manage attendance records" ON attendance_records;
+CREATE POLICY "Only admins can manage attendance records" ON attendance_records FOR ALL
   TO authenticated
   USING (
     EXISTS (

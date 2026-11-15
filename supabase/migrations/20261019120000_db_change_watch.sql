@@ -75,12 +75,12 @@ end;
 $$;
 
 drop trigger if exists db_change_log_no_edit on public.db_change_log;
-create trigger db_change_log_no_edit
+CREATE OR REPLACE TRIGGER db_change_log_no_edit
   before update or delete on public.db_change_log
   for each row execute function public.db_change_log_append_only();
 
 drop trigger if exists db_change_log_no_truncate on public.db_change_log;
-create trigger db_change_log_no_truncate
+CREATE OR REPLACE TRIGGER db_change_log_no_truncate
   before truncate on public.db_change_log
   for each statement execute function public.db_change_log_append_only();
 
@@ -197,7 +197,7 @@ begin
     if to_regclass('public.' || t) is not null then
       execute format('drop trigger if exists zz_db_change_watch on public.%I', t);
       execute format(
-        'create trigger zz_db_change_watch after insert or update or delete on public.%I '
+        'CREATE OR REPLACE TRIGGER zz_db_change_watch after insert or update or delete on public.%I '
         'for each row execute function public.log_db_change()', t);
     end if;
   end loop;

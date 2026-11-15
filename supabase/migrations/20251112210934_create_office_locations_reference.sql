@@ -1,3 +1,6 @@
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS office_location TEXT;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS assignment_type TEXT;
+
 
 -- Create a reference table for standardized office locations
 -- This will help maintain consistency across assets and profiles
@@ -43,7 +46,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trigger_update_office_locations_updated_at ON office_locations;
-CREATE TRIGGER trigger_update_office_locations_updated_at
+CREATE OR REPLACE TRIGGER trigger_update_office_locations_updated_at
   BEFORE UPDATE ON office_locations
   FOR EACH ROW
   EXECUTE FUNCTION update_office_locations_updated_at();

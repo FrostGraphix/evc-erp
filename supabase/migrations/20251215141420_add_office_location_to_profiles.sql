@@ -2,6 +2,16 @@
 ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS office_location TEXT;
 
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'profiles' AND column_name = 'office_location' AND data_type = 'USER-DEFINED'
+  ) THEN
+    ALTER TABLE profiles ALTER COLUMN office_location DROP DEFAULT;
+    ALTER TABLE profiles ALTER COLUMN office_location TYPE TEXT USING office_location::TEXT;
+  END IF;
+END $$;
+
 -- Add check constraint to match office locations from assets
 ALTER TABLE profiles
 DROP CONSTRAINT IF EXISTS profiles_office_location_check;
@@ -28,5 +38,5 @@ CHECK (
   )
 );
 
--- Create index for faster queries
-CREATE INDEX IF NOT EXISTS idx_profiles_office_location ON profiles(office_location);;
+-- CREATE INDEX IF NOT EXISTS for faster queries
+CREATE INDEX IF NOT EXISTS idx_profiles_office_location ON profiles(office_location);

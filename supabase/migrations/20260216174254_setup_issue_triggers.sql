@@ -55,7 +55,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS on_asset_issue_created ON public.asset_issues;
-CREATE TRIGGER on_asset_issue_created
+CREATE OR REPLACE TRIGGER on_asset_issue_created
 AFTER INSERT ON public.asset_issues
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_new_asset_issue();
@@ -116,7 +116,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS on_asset_issue_updated ON public.asset_issues;
-CREATE TRIGGER on_asset_issue_updated
+CREATE OR REPLACE TRIGGER on_asset_issue_updated
 AFTER UPDATE ON public.asset_issues
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_asset_issue_resolution();

@@ -18,10 +18,8 @@ DROP POLICY IF EXISTS "Users can update action items" ON public.action_items;
 DROP POLICY IF EXISTS "Users can update own dept action items" ON public.action_items;
 DROP POLICY IF EXISTS "Leads and admins can update department action items" ON public.action_items;
 DROP POLICY IF EXISTS "Users can delete action items" ON public.action_items;
-DROP POLICY IF EXISTS "Only admins can delete action items" ON public.action_items;
-
-CREATE POLICY "Users can view action items for their department"
-  ON public.action_items FOR SELECT
+DROP POLICY IF EXISTS "Users can view action items for their department" ON public.action_items;
+CREATE POLICY "Users can view action items for their department" ON public.action_items FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM public.profiles p
@@ -34,8 +32,8 @@ CREATE POLICY "Users can view action items for their department"
     )
   );
 
-CREATE POLICY "Leads and admins can update department action items"
-  ON public.action_items FOR UPDATE
+DROP POLICY IF EXISTS "Leads and admins can update department action items" ON public.action_items;
+CREATE POLICY "Leads and admins can update department action items" ON public.action_items FOR UPDATE
   USING (
     auth.uid() = assigned_by
     OR EXISTS (
@@ -59,8 +57,8 @@ CREATE POLICY "Leads and admins can update department action items"
     )
   );
 
-CREATE POLICY "Only admins can delete action items"
-  ON public.action_items FOR DELETE
+DROP POLICY IF EXISTS "Only admins can delete action items" ON public.action_items;
+CREATE POLICY "Only admins can delete action items" ON public.action_items FOR DELETE
   USING (
     EXISTS (
       SELECT 1 FROM public.profiles p
@@ -73,10 +71,8 @@ CREATE POLICY "Only admins can delete action items"
 DROP POLICY IF EXISTS "Leads can manage their own reports" ON public.weekly_reports;
 DROP POLICY IF EXISTS "Leads and admins can update weekly reports" ON public.weekly_reports;
 DROP POLICY IF EXISTS "Only admins can delete weekly reports" ON public.weekly_reports;
-DROP POLICY IF EXISTS "Leads and admins can insert weekly reports" ON public.weekly_reports;
-
-CREATE POLICY "Leads and admins can update weekly reports"
-  ON public.weekly_reports FOR UPDATE
+DROP POLICY IF EXISTS "Leads and admins can update weekly reports" ON public.weekly_reports;
+CREATE POLICY "Leads and admins can update weekly reports" ON public.weekly_reports FOR UPDATE
   USING (
     auth.uid() = user_id
     OR EXISTS (
@@ -100,8 +96,8 @@ CREATE POLICY "Leads and admins can update weekly reports"
     )
   );
 
-CREATE POLICY "Leads and admins can insert weekly reports"
-  ON public.weekly_reports FOR INSERT
+DROP POLICY IF EXISTS "Leads and admins can insert weekly reports" ON public.weekly_reports;
+CREATE POLICY "Leads and admins can insert weekly reports" ON public.weekly_reports FOR INSERT
   WITH CHECK (
     auth.uid() = user_id
     OR EXISTS (
@@ -114,8 +110,8 @@ CREATE POLICY "Leads and admins can insert weekly reports"
     )
   );
 
-CREATE POLICY "Only admins can delete weekly reports"
-  ON public.weekly_reports FOR DELETE
+DROP POLICY IF EXISTS "Only admins can delete weekly reports" ON public.weekly_reports;
+CREATE POLICY "Only admins can delete weekly reports" ON public.weekly_reports FOR DELETE
   USING (
     EXISTS (
       SELECT 1 FROM public.profiles p

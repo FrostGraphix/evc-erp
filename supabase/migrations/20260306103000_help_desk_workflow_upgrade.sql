@@ -16,7 +16,7 @@ create table if not exists public.help_desk_categories (
   updated_at timestamptz not null default now()
 );
 
-create trigger trg_help_desk_categories_updated_at
+CREATE OR REPLACE TRIGGER trg_help_desk_categories_updated_at
 before update on public.help_desk_categories
 for each row execute function public.help_desk_set_updated_at();
 

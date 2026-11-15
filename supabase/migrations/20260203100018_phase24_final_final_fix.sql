@@ -12,11 +12,11 @@ DROP POLICY IF EXISTS "Interviews view policy" ON interviews;
 -- "Interviews select policy" exists
 
 -- Table: leave_requests (InitPlan on delete)
-DROP POLICY IF EXISTS "Admins can delete leave requests" ON leave_requests;
+DROP POLICY IF EXISTS "Leave requests delete policy" ON leave_requests;
 CREATE POLICY "Leave requests delete policy" ON leave_requests FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: project_members
-DROP POLICY IF EXISTS "Users can view project members" ON project_members;
+DROP POLICY IF EXISTS "Project members select policy" ON project_members;
 CREATE POLICY "Project members select policy" ON project_members FOR SELECT TO authenticated USING (true);
 
 

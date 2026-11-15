@@ -8,8 +8,8 @@ CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created_at ON idempotency_keys (
 
 ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "service role can manage idempotency keys"
-ON idempotency_keys
+DROP POLICY IF EXISTS "service role can manage idempotency keys" ON idempotency_keys;
+CREATE POLICY "service role can manage idempotency keys" ON idempotency_keys
 FOR ALL
 USING (auth.role() = 'service_role')
 WITH CHECK (auth.role() = 'service_role');

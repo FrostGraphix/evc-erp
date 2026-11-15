@@ -10,6 +10,9 @@ where goal.user_id = profile.id
 create index if not exists goals_objectives_department_idx
   on public.goals_objectives (department);
 
+alter table public.cbt_questions
+  add column if not exists review_cycle_id uuid references public.review_cycles(id) on delete cascade;
+
 create table if not exists public.cbt_questions (
   id uuid primary key default gen_random_uuid(),
   review_cycle_id uuid references public.review_cycles(id) on delete cascade,
@@ -28,6 +31,9 @@ create table if not exists public.cbt_questions (
 
 create index if not exists cbt_questions_review_cycle_idx
   on public.cbt_questions (review_cycle_id, created_at desc);
+
+alter table public.cbt_attempts
+  add column if not exists review_cycle_id uuid references public.review_cycles(id) on delete set null;
 
 create table if not exists public.cbt_attempts (
   id uuid primary key default gen_random_uuid(),
@@ -48,5 +54,5 @@ create table if not exists public.cbt_attempts (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists cbt_attempts_profile_cycle_idx
-  on public.cbt_attempts (profile_id, review_cycle_id, created_at desc);
+create index if not exists cbt_attempts_cycle_profile_idx
+  on public.cbt_attempts (review_cycle_id, profile_id, created_at desc);

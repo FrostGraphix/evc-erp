@@ -16,7 +16,7 @@ begin
   limit 1;
 
   if target_q2_cycle_id is null then
-    raise exception 'Q2 2026 performance review cycle not found';
+    return;
   end if;
 
   select id

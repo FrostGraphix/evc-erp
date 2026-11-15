@@ -95,11 +95,11 @@ begin
 end;
 $$ language plpgsql;
 
-create trigger trg_help_desk_tickets_updated_at
+CREATE OR REPLACE TRIGGER trg_help_desk_tickets_updated_at
 before update on public.help_desk_tickets
 for each row execute function public.help_desk_set_updated_at();
 
-create trigger trg_help_desk_approvals_updated_at
+CREATE OR REPLACE TRIGGER trg_help_desk_approvals_updated_at
 before update on public.help_desk_approvals
 for each row execute function public.help_desk_set_updated_at();
 
@@ -134,7 +134,7 @@ begin
 end;
 $$;
 
-create trigger trg_help_desk_before_insert
+CREATE OR REPLACE TRIGGER trg_help_desk_before_insert
 before insert on public.help_desk_tickets
 for each row execute function public.help_desk_before_insert();
 
@@ -180,8 +180,8 @@ as $$
 $$;
 
 -- Tickets policies
-create policy "help_desk_tickets_select"
-on public.help_desk_tickets
+DROP POLICY IF EXISTS "help_desk_tickets_select" ON public.help_desk_tickets;
+CREATE POLICY "help_desk_tickets_select" ON public.help_desk_tickets
 for select
 using (
   requester_id = auth.uid()
@@ -191,8 +191,8 @@ using (
   or public.help_desk_is_lead_for_department(service_department)
 );
 
-create policy "help_desk_tickets_insert"
-on public.help_desk_tickets
+DROP POLICY IF EXISTS "help_desk_tickets_insert" ON public.help_desk_tickets;
+CREATE POLICY "help_desk_tickets_insert" ON public.help_desk_tickets
 for insert
 with check (
   auth.uid() is not null
@@ -200,8 +200,8 @@ with check (
   and requester_id = auth.uid()
 );
 
-create policy "help_desk_tickets_update"
-on public.help_desk_tickets
+DROP POLICY IF EXISTS "help_desk_tickets_update" ON public.help_desk_tickets;
+CREATE POLICY "help_desk_tickets_update" ON public.help_desk_tickets
 for update
 using (
   assigned_to = auth.uid()
@@ -217,8 +217,8 @@ with check (
 );
 
 -- Approvals policies
-create policy "help_desk_approvals_select"
-on public.help_desk_approvals
+DROP POLICY IF EXISTS "help_desk_approvals_select" ON public.help_desk_approvals;
+CREATE POLICY "help_desk_approvals_select" ON public.help_desk_approvals
 for select
 using (
   exists (
@@ -234,8 +234,8 @@ using (
   )
 );
 
-create policy "help_desk_approvals_insert"
-on public.help_desk_approvals
+DROP POLICY IF EXISTS "help_desk_approvals_insert" ON public.help_desk_approvals;
+CREATE POLICY "help_desk_approvals_insert" ON public.help_desk_approvals
 for insert
 with check (
   public.help_desk_is_admin()
@@ -247,8 +247,8 @@ with check (
   )
 );
 
-create policy "help_desk_approvals_update"
-on public.help_desk_approvals
+DROP POLICY IF EXISTS "help_desk_approvals_update" ON public.help_desk_approvals;
+CREATE POLICY "help_desk_approvals_update" ON public.help_desk_approvals
 for update
 using (
   approver_id = auth.uid()
@@ -260,8 +260,8 @@ with check (
 );
 
 -- Comments policies
-create policy "help_desk_comments_select"
-on public.help_desk_comments
+DROP POLICY IF EXISTS "help_desk_comments_select" ON public.help_desk_comments;
+CREATE POLICY "help_desk_comments_select" ON public.help_desk_comments
 for select
 using (
   exists (
@@ -277,8 +277,8 @@ using (
   )
 );
 
-create policy "help_desk_comments_insert"
-on public.help_desk_comments
+DROP POLICY IF EXISTS "help_desk_comments_insert" ON public.help_desk_comments;
+CREATE POLICY "help_desk_comments_insert" ON public.help_desk_comments
 for insert
 with check (
   author_id = auth.uid()
@@ -296,8 +296,8 @@ with check (
 );
 
 -- Events policies
-create policy "help_desk_events_select"
-on public.help_desk_events
+DROP POLICY IF EXISTS "help_desk_events_select" ON public.help_desk_events;
+CREATE POLICY "help_desk_events_select" ON public.help_desk_events
 for select
 using (
   exists (
@@ -313,8 +313,8 @@ using (
   )
 );
 
-create policy "help_desk_events_insert"
-on public.help_desk_events
+DROP POLICY IF EXISTS "help_desk_events_insert" ON public.help_desk_events;
+CREATE POLICY "help_desk_events_insert" ON public.help_desk_events
 for insert
 with check (
   actor_id = auth.uid()

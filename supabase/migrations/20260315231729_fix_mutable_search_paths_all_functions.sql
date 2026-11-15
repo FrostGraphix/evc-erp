@@ -175,12 +175,12 @@ RETURNS boolean LANGUAGE sql STABLE SET search_path = public, pg_temp AS $$
   );
 $$;
 
-CREATE OR REPLACE FUNCTION public.extract_serial_number(asset_code text)
+CREATE OR REPLACE FUNCTION public.extract_serial_number(asset_number text)
 RETURNS text LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
 DECLARE v_serial text;
 BEGIN
-  v_serial := split_part(asset_code, '/', 5);
-  IF v_serial = '' THEN v_serial := split_part(asset_code, '-', 3); END IF;
+  v_serial := split_part(asset_number, '/', 5);
+  IF v_serial = '' THEN v_serial := split_part(asset_number, '-', 3); END IF;
   IF v_serial ~ '^[0-9]+$' THEN RETURN v_serial; ELSE RETURN NULL; END IF;
 END; $$;
 

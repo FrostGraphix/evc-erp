@@ -5,8 +5,7 @@
 
 DROP POLICY IF EXISTS "Departments update policy" ON "public"."departments";
 DROP POLICY IF EXISTS "Departments insert policy" ON "public"."departments";
-DROP POLICY IF EXISTS "Departments delete policy" ON "public"."departments";
-
+DROP POLICY IF EXISTS "Departments update policy" ON "public"."departments";
 CREATE POLICY "Departments update policy" ON "public"."departments"
   FOR UPDATE TO "authenticated"
   USING (
@@ -14,6 +13,7 @@ CREATE POLICY "Departments update policy" ON "public"."departments"
     OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'developer'
   );
 
+DROP POLICY IF EXISTS "Departments insert policy" ON "public"."departments";
 CREATE POLICY "Departments insert policy" ON "public"."departments"
   FOR INSERT TO "authenticated"
   WITH CHECK (
@@ -21,6 +21,7 @@ CREATE POLICY "Departments insert policy" ON "public"."departments"
     OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'developer'
   );
 
+DROP POLICY IF EXISTS "Departments delete policy" ON "public"."departments";
 CREATE POLICY "Departments delete policy" ON "public"."departments"
   FOR DELETE TO "authenticated"
   USING (

@@ -10,39 +10,39 @@ DROP TRIGGER IF EXISTS audit_asset_assignments_changes ON asset_assignments;
 DROP TRIGGER IF EXISTS audit_tasks_changes ON tasks;
 
 -- Step 2: Recreate triggers using the unified audit_log_changes function
-CREATE TRIGGER audit_leave_requests_changes
+CREATE OR REPLACE TRIGGER audit_leave_requests_changes
   AFTER INSERT OR UPDATE OR DELETE ON leave_requests
   FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
-CREATE TRIGGER audit_leave_approvals_changes
+CREATE OR REPLACE TRIGGER audit_leave_approvals_changes
   AFTER INSERT OR UPDATE OR DELETE ON leave_approvals
   FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
-CREATE TRIGGER audit_attendance_records_changes
+CREATE OR REPLACE TRIGGER audit_attendance_records_changes
   AFTER INSERT OR UPDATE OR DELETE ON attendance_records
   FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
-CREATE TRIGGER audit_performance_reviews_changes
+CREATE OR REPLACE TRIGGER audit_performance_reviews_changes
   AFTER INSERT OR UPDATE OR DELETE ON performance_reviews
   FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
-CREATE TRIGGER audit_goals_objectives_changes
+CREATE OR REPLACE TRIGGER audit_goals_objectives_changes
   AFTER INSERT OR UPDATE OR DELETE ON goals_objectives
   FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
-CREATE TRIGGER audit_profiles_changes
+CREATE OR REPLACE TRIGGER audit_profiles_changes
   AFTER INSERT OR UPDATE OR DELETE ON profiles
   FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
-CREATE TRIGGER audit_assets_changes
+CREATE OR REPLACE TRIGGER audit_assets_changes
   AFTER INSERT OR UPDATE OR DELETE ON assets
   FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
-CREATE TRIGGER audit_asset_assignments_changes
+CREATE OR REPLACE TRIGGER audit_asset_assignments_changes
   AFTER INSERT OR UPDATE OR DELETE ON asset_assignments
   FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
-CREATE TRIGGER audit_tasks_changes
+CREATE OR REPLACE TRIGGER audit_tasks_changes
   AFTER INSERT OR UPDATE OR DELETE ON tasks
   FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 

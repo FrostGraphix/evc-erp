@@ -2,7 +2,7 @@
 -- Enforce by limiting lead_departments array to max 1 element
 ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS check_lead_has_departments;
 ALTER TABLE public.profiles ADD CONSTRAINT check_lead_has_departments CHECK (
-  (role <> 'lead'::user_role) 
+  (role <> 'lead'::text) 
   OR (
     lead_departments IS NOT NULL 
     AND array_length(lead_departments, 1) = 1
@@ -22,7 +22,7 @@ $$;
 
 -- Unique index: no two profiles can lead the same department
 DROP INDEX IF EXISTS unique_lead_per_department;
-CREATE UNIQUE INDEX unique_lead_per_department 
+CREATE UNIQUE INDEX IF NOT EXISTS unique_lead_per_department 
 ON public.profiles (public.lead_department_name(profiles))
 WHERE role = 'lead' AND lead_departments IS NOT NULL AND array_length(lead_departments, 1) = 1;
 
@@ -34,7 +34,7 @@ BEGIN
     SELECT 1 FROM pg_indexes 
     WHERE tablename = 'departments' AND indexname = 'unique_department_head'
   ) THEN
-    CREATE UNIQUE INDEX unique_department_head ON public.departments (department_head_id) 
+    CREATE UNIQUE INDEX IF NOT EXISTS unique_department_head ON public.departments (department_head_id) 
     WHERE department_head_id IS NOT NULL;
   END IF;
 END;

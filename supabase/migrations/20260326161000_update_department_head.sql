@@ -3,4 +3,5 @@
 
 UPDATE public.departments
 SET department_head_id = '55320e85-8bec-49c8-9115-f92f591aa5f6'
-WHERE name = 'Business, Growth and Innovation';
+WHERE name = 'Business, Growth and Innovation'
+  AND EXISTS (SELECT 1 FROM public.profiles WHERE id = '55320e85-8bec-49c8-9115-f92f591aa5f6');

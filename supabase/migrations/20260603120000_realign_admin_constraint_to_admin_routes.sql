@@ -8,7 +8,7 @@ ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS check_profiles_admin_requi
 
 ALTER TABLE public.profiles
   ADD CONSTRAINT check_profiles_admin_requires_routes
-  CHECK (role <> 'admin'::user_role OR COALESCE(array_length(admin_routes, 1), 0) > 0) NOT VALID;
+  CHECK (role <> 'admin'::text OR COALESCE(array_length(admin_routes, 1), 0) > 0) NOT VALID;
 
 -- Extend the admin_routes allowlist to include the newly grantable routes
 -- (PMS, Settings, Audit Logs). Keep in sync with GRANTABLE_ADMIN_ROUTES in

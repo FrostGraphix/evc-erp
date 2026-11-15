@@ -51,7 +51,7 @@ $$;
 -- ============================================================
 DROP TRIGGER IF EXISTS send_email_on_notification_insert ON public.notifications;
 
-CREATE TRIGGER send_email_on_notification_insert
+CREATE OR REPLACE TRIGGER send_email_on_notification_insert
   AFTER INSERT ON public.notifications
   FOR EACH ROW
   EXECUTE FUNCTION public.notify_email_on_notification_insert();;

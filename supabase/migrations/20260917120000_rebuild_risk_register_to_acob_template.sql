@@ -66,11 +66,11 @@ CREATE TABLE public.risk_register (
   CONSTRAINT risk_register_continuous_has_no_date CHECK (timeline_type = 'by_date' OR target_date IS NULL)
 );
 
-CREATE INDEX idx_risk_register_department ON public.risk_register(department);
-CREATE INDEX idx_risk_register_status ON public.risk_register(status);
-CREATE INDEX idx_risk_register_control_owner_id ON public.risk_register(control_owner_id);
-CREATE INDEX idx_risk_register_supporting_departments ON public.risk_register USING GIN (supporting_departments);
-CREATE INDEX idx_risk_register_control_owner_departments ON public.risk_register USING GIN (control_owner_departments);
+CREATE INDEX IF NOT EXISTS idx_risk_register_department ON public.risk_register(department);
+CREATE INDEX IF NOT EXISTS idx_risk_register_status ON public.risk_register(status);
+CREATE INDEX IF NOT EXISTS idx_risk_register_control_owner_id ON public.risk_register(control_owner_id);
+CREATE INDEX IF NOT EXISTS idx_risk_register_supporting_departments ON public.risk_register USING GIN (supporting_departments);
+CREATE INDEX IF NOT EXISTS idx_risk_register_control_owner_departments ON public.risk_register USING GIN (control_owner_departments);
 
 -- ---------------------------------------------------------------------------
 -- Bookkeeping trigger: S/N per department, audit columns, closed_at.
@@ -118,7 +118,7 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.risk_register_before_write() FROM anon, authenticated, PUBLIC;
 
-CREATE TRIGGER tr_risk_register_before_write
+CREATE OR REPLACE TRIGGER tr_risk_register_before_write
   BEFORE INSERT OR UPDATE ON public.risk_register
   FOR EACH ROW EXECUTE FUNCTION public.risk_register_before_write();
 
@@ -132,8 +132,8 @@ CREATE TRIGGER tr_risk_register_before_write
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.risk_register ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "risk_register_select"
-ON public.risk_register FOR SELECT TO authenticated
+DROP POLICY IF EXISTS "risk_register_select" ON public.risk_register;
+CREATE POLICY "risk_register_select" ON public.risk_register FOR SELECT TO authenticated
 USING (
   public.is_admin_like()
   OR control_owner_id = auth.uid()
@@ -148,15 +148,15 @@ USING (
   )
 );
 
-CREATE POLICY "risk_register_insert"
-ON public.risk_register FOR INSERT TO authenticated
+DROP POLICY IF EXISTS "risk_register_insert" ON public.risk_register;
+CREATE POLICY "risk_register_insert" ON public.risk_register FOR INSERT TO authenticated
 WITH CHECK (
   public.is_admin_like()
   OR department = ANY (public.current_user_lead_departments())
 );
 
-CREATE POLICY "risk_register_update"
-ON public.risk_register FOR UPDATE TO authenticated
+DROP POLICY IF EXISTS "risk_register_update" ON public.risk_register;
+CREATE POLICY "risk_register_update" ON public.risk_register FOR UPDATE TO authenticated
 USING (
   public.is_admin_like()
   OR department = ANY (public.current_user_lead_departments())
@@ -168,8 +168,8 @@ WITH CHECK (
   OR control_owner_id = auth.uid()
 );
 
-CREATE POLICY "risk_register_delete"
-ON public.risk_register FOR DELETE TO authenticated
+DROP POLICY IF EXISTS "risk_register_delete" ON public.risk_register;
+CREATE POLICY "risk_register_delete" ON public.risk_register FOR DELETE TO authenticated
 USING (public.is_admin_like());
 
 REVOKE ALL ON public.risk_register FROM anon, PUBLIC;

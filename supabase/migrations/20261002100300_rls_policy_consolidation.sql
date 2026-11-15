@@ -18,7 +18,7 @@ BEGIN;
 
 -- 1. action_items: correct UPDATE + single INSERT --------------------------------
 DROP POLICY IF EXISTS "Users can update own dept action items" ON public.action_items;
-DROP POLICY IF EXISTS "Users can update their own action items or admins/leads" ON public.action_items;
+DROP POLICY IF EXISTS action_items_update ON public.action_items;
 CREATE POLICY action_items_update ON public.action_items
   FOR UPDATE TO authenticated
   USING (

@@ -52,16 +52,14 @@ revoke execute on function public.next_employee_number() from authenticated;
 revoke execute on function public.next_employee_number() from public;
 
 -- ---- Finding 6: weekly_reports (submitted reports were anon-readable) ----
-drop policy if exists "Everyone can view submitted reports" on public.weekly_reports;
-create policy "Authenticated can view submitted reports"
-on public.weekly_reports for select to authenticated
+DROP POLICY IF EXISTS "Authenticated can view submitted reports" ON public.weekly_reports;
+CREATE POLICY "Authenticated can view submitted reports" ON public.weekly_reports for select to authenticated
 using (status = 'submitted' or auth.uid() = user_id);
 revoke all on public.weekly_reports from anon;
 
 -- ---- Finding 7: crm_pipelines (active pipeline readable by anon) ----
 -- Match the other crm_* tables: staff/admin only, authenticated.
-drop policy if exists "Users can view active pipelines" on public.crm_pipelines;
-create policy "Staff can view pipelines"
-on public.crm_pipelines for select to authenticated
+DROP POLICY IF EXISTS "Staff can view pipelines" ON public.crm_pipelines;
+CREATE POLICY "Staff can view pipelines" ON public.crm_pipelines for select to authenticated
 using (has_role('staff') or has_role('admin'));
 revoke all on public.crm_pipelines from anon;

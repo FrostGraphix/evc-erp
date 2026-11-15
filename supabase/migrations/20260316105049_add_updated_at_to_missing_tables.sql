@@ -59,7 +59,10 @@ BEGIN
   -- 2. All other tables: column + backfill + trigger
   -- -----------------------------------------------------------------------
   FOREACH tbl IN ARRAY normal_tables LOOP
-    IF NOT EXISTS (
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = tbl
+    ) AND NOT EXISTS (
       SELECT 1 FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = tbl AND column_name = 'updated_at'
     ) THEN
@@ -88,7 +91,7 @@ BEGIN
       ) THEN
         EXECUTE format(
           $sql$
-            CREATE TRIGGER set_%1$s_updated_at
+            CREATE OR REPLACE TRIGGER set_%1$s_updated_at
             BEFORE UPDATE ON public.%1$I
             FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()
           $sql$,

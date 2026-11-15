@@ -37,7 +37,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS trg_enforce_single_department_lead ON profiles;
 
-CREATE TRIGGER trg_enforce_single_department_lead
+CREATE OR REPLACE TRIGGER trg_enforce_single_department_lead
   AFTER INSERT OR UPDATE OF is_department_lead, lead_departments
   ON profiles
   FOR EACH ROW

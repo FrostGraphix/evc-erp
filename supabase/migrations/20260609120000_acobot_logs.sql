@@ -48,6 +48,7 @@ GRANT SELECT, INSERT ON TABLE public.acobot_logs TO authenticated;
 GRANT ALL ON TABLE public.acobot_logs TO service_role;
 
 -- Enriched read surface — fills in person/department from profiles at read time.
+DROP VIEW IF EXISTS public.acobot_logs_enriched CASCADE;
 CREATE OR REPLACE VIEW public.acobot_logs_enriched
 WITH (security_invoker = true) AS
 SELECT

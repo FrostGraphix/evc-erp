@@ -131,8 +131,8 @@ CREATE TABLE public.requisition_number_counters (
 
 ALTER TABLE public.requisition_number_counters ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.requisition_number_counters FROM anon, authenticated;
-CREATE POLICY requisition_number_counters_no_client_access
-  ON public.requisition_number_counters FOR ALL TO authenticated USING (false) WITH CHECK (false);
+DROP POLICY IF EXISTS requisition_number_counters_no_client_access ON public.requisition_number_counters;
+CREATE POLICY requisition_number_counters_no_client_access ON public.requisition_number_counters FOR ALL TO authenticated USING (false) WITH CHECK (false);
 
 CREATE OR REPLACE FUNCTION public.assign_requisition_number()
 RETURNS trigger
@@ -163,7 +163,7 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.assign_requisition_number() FROM anon, authenticated, PUBLIC;
 
-CREATE TRIGGER trg_requisitions_assign_number
+CREATE OR REPLACE TRIGGER trg_requisitions_assign_number
   BEFORE INSERT ON public.requisitions
   FOR EACH ROW EXECUTE FUNCTION public.assign_requisition_number();
 
@@ -186,7 +186,7 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.guard_requisition_immutable_fields() FROM anon, authenticated, PUBLIC;
 
-CREATE TRIGGER trg_requisitions_guard_immutable
+CREATE OR REPLACE TRIGGER trg_requisitions_guard_immutable
   BEFORE UPDATE ON public.requisitions
   FOR EACH ROW EXECUTE FUNCTION public.guard_requisition_immutable_fields();
 
@@ -220,11 +220,11 @@ CREATE TABLE public.requisition_stages (
   UNIQUE (requisition_id, position)
 );
 
-CREATE INDEX idx_requisition_stages_requisition ON public.requisition_stages (requisition_id);
-CREATE INDEX idx_requisition_stages_pending_assignee
+CREATE INDEX IF NOT EXISTS idx_requisition_stages_requisition ON public.requisition_stages (requisition_id);
+CREATE INDEX IF NOT EXISTS idx_requisition_stages_pending_assignee
   ON public.requisition_stages (assignee_id) WHERE state = 'pending';
 
-CREATE TRIGGER trg_requisition_stages_updated_at
+CREATE OR REPLACE TRIGGER trg_requisition_stages_updated_at
   BEFORE UPDATE ON public.requisition_stages
   FOR EACH ROW EXECUTE FUNCTION public.set_requisitions_updated_at();
 
@@ -247,7 +247,7 @@ CREATE TABLE public.requisition_amount_changes (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_requisition_amount_changes_requisition ON public.requisition_amount_changes (requisition_id);
+CREATE INDEX IF NOT EXISTS idx_requisition_amount_changes_requisition ON public.requisition_amount_changes (requisition_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Payments (Processed By). Several may add up to the approved amount.
@@ -267,7 +267,7 @@ CREATE TABLE public.requisition_payments (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_requisition_payments_requisition ON public.requisition_payments (requisition_id);
+CREATE INDEX IF NOT EXISTS idx_requisition_payments_requisition ON public.requisition_payments (requisition_id);
 
 -- Staff allowed to record payments. The Accounts lead is always allowed too.
 CREATE TABLE public.requisition_payment_processors (
@@ -294,7 +294,7 @@ CREATE TABLE public.approval_signing_credentials (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TRIGGER trg_approval_signing_credentials_updated_at
+CREATE OR REPLACE TRIGGER trg_approval_signing_credentials_updated_at
   BEFORE UPDATE ON public.approval_signing_credentials
   FOR EACH ROW EXECUTE FUNCTION public.set_requisitions_updated_at();
 
@@ -309,7 +309,7 @@ CREATE TABLE public.approval_pin_reset_codes (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_approval_pin_reset_codes_user ON public.approval_pin_reset_codes (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_approval_pin_reset_codes_user ON public.approval_pin_reset_codes (user_id, created_at DESC);
 
 -- Records one PIN check atomically, so parallel wrong guesses cannot slip past
 -- the lockout. Reaching the limit locks the PIN and restarts the count.
@@ -399,39 +399,37 @@ GRANT EXECUTE ON FUNCTION public.can_view_requisition(uuid) TO authenticated, se
 
 DROP POLICY IF EXISTS users_select_requisitions ON public.requisitions;
 DROP POLICY IF EXISTS users_update_requisitions ON public.requisitions;
-DROP POLICY IF EXISTS users_insert_own_requisitions ON public.requisitions;
-
-CREATE POLICY requisitions_select_party
-  ON public.requisitions FOR SELECT TO authenticated
+DROP POLICY IF EXISTS requisitions_select_party ON public.requisitions;
+CREATE POLICY requisitions_select_party ON public.requisitions FOR SELECT TO authenticated
   USING (public.can_view_requisition(id));
 
 ALTER TABLE public.requisition_stages ENABLE ROW LEVEL SECURITY;
-CREATE POLICY requisition_stages_select_party
-  ON public.requisition_stages FOR SELECT TO authenticated
+DROP POLICY IF EXISTS requisition_stages_select_party ON public.requisition_stages;
+CREATE POLICY requisition_stages_select_party ON public.requisition_stages FOR SELECT TO authenticated
   USING (public.can_view_requisition(requisition_id));
 
 ALTER TABLE public.requisition_amount_changes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY requisition_amount_changes_select_party
-  ON public.requisition_amount_changes FOR SELECT TO authenticated
+DROP POLICY IF EXISTS requisition_amount_changes_select_party ON public.requisition_amount_changes;
+CREATE POLICY requisition_amount_changes_select_party ON public.requisition_amount_changes FOR SELECT TO authenticated
   USING (public.can_view_requisition(requisition_id));
 
 ALTER TABLE public.requisition_payments ENABLE ROW LEVEL SECURITY;
-CREATE POLICY requisition_payments_select_party
-  ON public.requisition_payments FOR SELECT TO authenticated
+DROP POLICY IF EXISTS requisition_payments_select_party ON public.requisition_payments;
+CREATE POLICY requisition_payments_select_party ON public.requisition_payments FOR SELECT TO authenticated
   USING (public.can_view_requisition(requisition_id));
 
 ALTER TABLE public.requisition_payment_processors ENABLE ROW LEVEL SECURITY;
-CREATE POLICY requisition_payment_processors_select_signed_in
-  ON public.requisition_payment_processors FOR SELECT TO authenticated
+DROP POLICY IF EXISTS requisition_payment_processors_select_signed_in ON public.requisition_payment_processors;
+CREATE POLICY requisition_payment_processors_select_signed_in ON public.requisition_payment_processors FOR SELECT TO authenticated
   USING ((SELECT auth.uid()) IS NOT NULL);
 
 ALTER TABLE public.approval_signing_credentials ENABLE ROW LEVEL SECURITY;
-CREATE POLICY approval_signing_credentials_no_client_access
-  ON public.approval_signing_credentials FOR ALL TO authenticated USING (false) WITH CHECK (false);
+DROP POLICY IF EXISTS approval_signing_credentials_no_client_access ON public.approval_signing_credentials;
+CREATE POLICY approval_signing_credentials_no_client_access ON public.approval_signing_credentials FOR ALL TO authenticated USING (false) WITH CHECK (false);
 
 ALTER TABLE public.approval_pin_reset_codes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY approval_pin_reset_codes_no_client_access
-  ON public.approval_pin_reset_codes FOR ALL TO authenticated USING (false) WITH CHECK (false);
+DROP POLICY IF EXISTS approval_pin_reset_codes_no_client_access ON public.approval_pin_reset_codes;
+CREATE POLICY approval_pin_reset_codes_no_client_access ON public.approval_pin_reset_codes FOR ALL TO authenticated USING (false) WITH CHECK (false);
 
 REVOKE ALL ON public.requisitions FROM anon;
 REVOKE INSERT, UPDATE, DELETE ON public.requisitions FROM authenticated;
@@ -715,10 +713,8 @@ GRANT EXECUTE ON FUNCTION public.requisition_record_payment(uuid, uuid, numeric,
 UPDATE storage.buckets SET public = false WHERE id = 'requisition_documents';
 
 DROP POLICY IF EXISTS "Users can view requisition documents" ON storage.objects;
-DROP POLICY IF EXISTS "Authenticated users can upload requisition documents" ON storage.objects;
-
-CREATE POLICY "Users upload requisition documents to own folder"
-  ON storage.objects FOR INSERT TO authenticated
+DROP POLICY IF EXISTS "Users upload requisition documents to own folder" ON storage.objects;
+CREATE POLICY "Users upload requisition documents to own folder" ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (
     bucket_id = 'requisition_documents'
     AND (storage.foldername(name))[1] = (SELECT auth.uid())::text

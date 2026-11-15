@@ -122,27 +122,27 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_approval_workflows_updated_at ON public.approval_workflows;
-CREATE TRIGGER trg_approval_workflows_updated_at BEFORE UPDATE ON public.approval_workflows
+CREATE OR REPLACE TRIGGER trg_approval_workflows_updated_at BEFORE UPDATE ON public.approval_workflows
 FOR EACH ROW EXECUTE FUNCTION public.governance_set_updated_at();
 
 DROP TRIGGER IF EXISTS trg_approval_workflow_stages_updated_at ON public.approval_workflow_stages;
-CREATE TRIGGER trg_approval_workflow_stages_updated_at BEFORE UPDATE ON public.approval_workflow_stages
+CREATE OR REPLACE TRIGGER trg_approval_workflow_stages_updated_at BEFORE UPDATE ON public.approval_workflow_stages
 FOR EACH ROW EXECUTE FUNCTION public.governance_set_updated_at();
 
 DROP TRIGGER IF EXISTS trg_approval_role_bindings_updated_at ON public.approval_role_bindings;
-CREATE TRIGGER trg_approval_role_bindings_updated_at BEFORE UPDATE ON public.approval_role_bindings
+CREATE OR REPLACE TRIGGER trg_approval_role_bindings_updated_at BEFORE UPDATE ON public.approval_role_bindings
 FOR EACH ROW EXECUTE FUNCTION public.governance_set_updated_at();
 
 DROP TRIGGER IF EXISTS trg_approval_assignment_overrides_updated_at ON public.approval_assignment_overrides;
-CREATE TRIGGER trg_approval_assignment_overrides_updated_at BEFORE UPDATE ON public.approval_assignment_overrides
+CREATE OR REPLACE TRIGGER trg_approval_assignment_overrides_updated_at BEFORE UPDATE ON public.approval_assignment_overrides
 FOR EACH ROW EXECUTE FUNCTION public.governance_set_updated_at();
 
 DROP TRIGGER IF EXISTS trg_access_paths_updated_at ON public.access_paths;
-CREATE TRIGGER trg_access_paths_updated_at BEFORE UPDATE ON public.access_paths
+CREATE OR REPLACE TRIGGER trg_access_paths_updated_at BEFORE UPDATE ON public.access_paths
 FOR EACH ROW EXECUTE FUNCTION public.governance_set_updated_at();
 
 DROP TRIGGER IF EXISTS trg_access_path_role_rules_updated_at ON public.access_path_role_rules;
-CREATE TRIGGER trg_access_path_role_rules_updated_at BEFORE UPDATE ON public.access_path_role_rules
+CREATE OR REPLACE TRIGGER trg_access_path_role_rules_updated_at BEFORE UPDATE ON public.access_path_role_rules
 FOR EACH ROW EXECUTE FUNCTION public.governance_set_updated_at();
 
 CREATE OR REPLACE FUNCTION public.governance_admin_like()

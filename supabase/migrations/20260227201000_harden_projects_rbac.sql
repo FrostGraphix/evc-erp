@@ -80,10 +80,8 @@ drop policy if exists "Projects management policy" on public.projects;
 drop policy if exists "Projects select scoped" on public.projects;
 drop policy if exists "Projects insert scoped" on public.projects;
 drop policy if exists "Projects update scoped" on public.projects;
-drop policy if exists "Projects delete scoped" on public.projects;
-
-create policy "Projects select scoped"
-on public.projects
+DROP POLICY IF EXISTS "Projects select scoped" ON public.projects;
+CREATE POLICY "Projects select scoped" ON public.projects
 for select
 to authenticated
 using (
@@ -93,8 +91,8 @@ using (
   or public.is_project_member(id, auth.uid())
 );
 
-create policy "Projects insert scoped"
-on public.projects
+DROP POLICY IF EXISTS "Projects insert scoped" ON public.projects;
+CREATE POLICY "Projects insert scoped" ON public.projects
 for insert
 to authenticated
 with check (
@@ -103,8 +101,8 @@ with check (
   or project_manager_id = auth.uid()
 );
 
-create policy "Projects update scoped"
-on public.projects
+DROP POLICY IF EXISTS "Projects update scoped" ON public.projects;
+CREATE POLICY "Projects update scoped" ON public.projects
 for update
 to authenticated
 using (
@@ -114,8 +112,8 @@ with check (
   public.can_manage_project(id)
 );
 
-create policy "Projects delete scoped"
-on public.projects
+DROP POLICY IF EXISTS "Projects delete scoped" ON public.projects;
+CREATE POLICY "Projects delete scoped" ON public.projects
 for delete
 to authenticated
 using (
@@ -125,26 +123,24 @@ using (
 drop policy if exists "Project members select policy" on public.project_members;
 drop policy if exists "Project members insert policy" on public.project_members;
 drop policy if exists "Project members update policy" on public.project_members;
-drop policy if exists "Project members delete policy" on public.project_members;
-
-create policy "Project members select scoped"
-on public.project_members
+DROP POLICY IF EXISTS "Project members select scoped" ON public.project_members;
+CREATE POLICY "Project members select scoped" ON public.project_members
 for select
 to authenticated
 using (
   public.can_manage_project(project_id)
 );
 
-create policy "Project members insert scoped"
-on public.project_members
+DROP POLICY IF EXISTS "Project members insert scoped" ON public.project_members;
+CREATE POLICY "Project members insert scoped" ON public.project_members
 for insert
 to authenticated
 with check (
   public.can_admin_project(project_id)
 );
 
-create policy "Project members update scoped"
-on public.project_members
+DROP POLICY IF EXISTS "Project members update scoped" ON public.project_members;
+CREATE POLICY "Project members update scoped" ON public.project_members
 for update
 to authenticated
 using (
@@ -154,8 +150,8 @@ with check (
   public.can_admin_project(project_id)
 );
 
-create policy "Project members delete scoped"
-on public.project_members
+DROP POLICY IF EXISTS "Project members delete scoped" ON public.project_members;
+CREATE POLICY "Project members delete scoped" ON public.project_members
 for delete
 to authenticated
 using (
@@ -165,26 +161,24 @@ using (
 drop policy if exists "Project items select policy" on public.project_items;
 drop policy if exists "Project items insert policy" on public.project_items;
 drop policy if exists "Project items update policy" on public.project_items;
-drop policy if exists "Project items delete policy" on public.project_items;
-
-create policy "Project items select scoped"
-on public.project_items
+DROP POLICY IF EXISTS "Project items select scoped" ON public.project_items;
+CREATE POLICY "Project items select scoped" ON public.project_items
 for select
 to authenticated
 using (
   public.can_manage_project(project_id)
 );
 
-create policy "Project items insert scoped"
-on public.project_items
+DROP POLICY IF EXISTS "Project items insert scoped" ON public.project_items;
+CREATE POLICY "Project items insert scoped" ON public.project_items
 for insert
 to authenticated
 with check (
   public.can_manage_project(project_id)
 );
 
-create policy "Project items update scoped"
-on public.project_items
+DROP POLICY IF EXISTS "Project items update scoped" ON public.project_items;
+CREATE POLICY "Project items update scoped" ON public.project_items
 for update
 to authenticated
 using (
@@ -194,8 +188,8 @@ with check (
   public.can_manage_project(project_id)
 );
 
-create policy "Project items delete scoped"
-on public.project_items
+DROP POLICY IF EXISTS "Project items delete scoped" ON public.project_items;
+CREATE POLICY "Project items delete scoped" ON public.project_items
 for delete
 to authenticated
 using (

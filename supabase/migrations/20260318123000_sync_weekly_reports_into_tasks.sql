@@ -141,7 +141,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS tr_sync_weekly_report_tasks ON public.weekly_reports;
-CREATE TRIGGER tr_sync_weekly_report_tasks
+CREATE OR REPLACE TRIGGER tr_sync_weekly_report_tasks
 AFTER INSERT OR UPDATE OF department, week_number, year, tasks_new_week, status, user_id
 ON public.weekly_reports
 FOR EACH ROW

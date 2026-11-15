@@ -1,3 +1,5 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+
 -- Create departments table
 CREATE TABLE IF NOT EXISTS public.departments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -8,6 +10,10 @@ CREATE TABLE IF NOT EXISTS public.departments (
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE public.departments
+  ADD COLUMN IF NOT EXISTS department_head_id UUID REFERENCES public.profiles(id),
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 
 -- Add comment
 COMMENT ON TABLE public.departments IS 'Master list of company departments';
@@ -20,7 +26,7 @@ WHERE department IS NOT NULL
 ORDER BY department
 ON CONFLICT (name) DO NOTHING;
 
--- Create index for faster lookups
+-- CREATE INDEX IF NOT EXISTS for faster lookups
 CREATE INDEX IF NOT EXISTS idx_departments_name ON public.departments(name);
 CREATE INDEX IF NOT EXISTS idx_departments_active ON public.departments(is_active);
 
@@ -28,13 +34,13 @@ CREATE INDEX IF NOT EXISTS idx_departments_active ON public.departments(is_activ
 ALTER TABLE public.departments ENABLE ROW LEVEL SECURITY;
 
 -- Create policies
-CREATE POLICY "Allow all users to view departments"
-    ON public.departments FOR SELECT
+DROP POLICY IF EXISTS "Allow all users to view departments" ON public.departments;
+CREATE POLICY "Allow all users to view departments" ON public.departments FOR SELECT
     TO authenticated
     USING (true);
 
-CREATE POLICY "Only admins can insert departments"
-    ON public.departments FOR INSERT
+DROP POLICY IF EXISTS "Only admins can insert departments" ON public.departments;
+CREATE POLICY "Only admins can insert departments" ON public.departments FOR INSERT
     TO authenticated
     WITH CHECK (
         EXISTS (
@@ -44,8 +50,8 @@ CREATE POLICY "Only admins can insert departments"
         )
     );
 
-CREATE POLICY "Only admins can update departments"
-    ON public.departments FOR UPDATE
+DROP POLICY IF EXISTS "Only admins can update departments" ON public.departments;
+CREATE POLICY "Only admins can update departments" ON public.departments FOR UPDATE
     TO authenticated
     USING (
         EXISTS (
@@ -55,8 +61,8 @@ CREATE POLICY "Only admins can update departments"
         )
     );
 
-CREATE POLICY "Only admins can delete departments"
-    ON public.departments FOR DELETE
+DROP POLICY IF EXISTS "Only admins can delete departments" ON public.departments;
+CREATE POLICY "Only admins can delete departments" ON public.departments FOR DELETE
     TO authenticated
     USING (
         EXISTS (
@@ -75,7 +81,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER set_departments_updated_at
+CREATE OR REPLACE TRIGGER set_departments_updated_at
     BEFORE UPDATE ON public.departments
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_departments_updated_at();;

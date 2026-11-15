@@ -30,9 +30,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger to enforce acquisition year order
+-- CREATE OR REPLACE TRIGGER to enforce acquisition year order
 DROP TRIGGER IF EXISTS enforce_acquisition_year_order ON assets;
-CREATE TRIGGER enforce_acquisition_year_order
+CREATE OR REPLACE TRIGGER enforce_acquisition_year_order
   BEFORE INSERT ON assets
   FOR EACH ROW
   EXECUTE FUNCTION check_acquisition_year_order();

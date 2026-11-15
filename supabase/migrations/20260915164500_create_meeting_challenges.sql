@@ -118,7 +118,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS tr_meeting_challenges_updated_at ON public.meeting_challenges;
-CREATE TRIGGER tr_meeting_challenges_updated_at
+CREATE OR REPLACE TRIGGER tr_meeting_challenges_updated_at
   BEFORE UPDATE ON public.meeting_challenges
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_meeting_challenges_updated_at();

@@ -67,14 +67,12 @@ ON CONFLICT (code) DO NOTHING;
 ALTER TABLE public.correspondence_categories ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Authenticated can read correspondence categories" ON public.correspondence_categories;
-DROP POLICY IF EXISTS "Authenticated can insert correspondence categories" ON public.correspondence_categories;
-
-CREATE POLICY "Authenticated can read correspondence categories"
-  ON public.correspondence_categories FOR SELECT
+DROP POLICY IF EXISTS "Authenticated can read correspondence categories" ON public.correspondence_categories;
+CREATE POLICY "Authenticated can read correspondence categories" ON public.correspondence_categories FOR SELECT
   USING (auth.uid() IS NOT NULL);
 
-CREATE POLICY "Authenticated can insert correspondence categories"
-  ON public.correspondence_categories FOR INSERT
+DROP POLICY IF EXISTS "Authenticated can insert correspondence categories" ON public.correspondence_categories;
+CREATE POLICY "Authenticated can insert correspondence categories" ON public.correspondence_categories FOR INSERT
   WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ── Drop old generate_correspondence_reference overloads ─────────────────────

@@ -11,8 +11,7 @@
 DROP POLICY IF EXISTS "Salary structures view policy" ON salary_structures;
 DROP POLICY IF EXISTS "Salary structures admin insert" ON salary_structures;
 DROP POLICY IF EXISTS "Salary structures admin update" ON salary_structures;
-DROP POLICY IF EXISTS "Salary structures admin delete" ON salary_structures;
-
+DROP POLICY IF EXISTS "Salary structures select policy" ON salary_structures;
 CREATE POLICY "Salary structures select policy" ON salary_structures 
 FOR SELECT TO authenticated 
 USING (
@@ -24,6 +23,7 @@ USING (
     )
 );
 
+DROP POLICY IF EXISTS "Salary structures manage policy" ON salary_structures;
 CREATE POLICY "Salary structures manage policy" ON salary_structures 
 FOR ALL TO authenticated 
 USING (has_role('admin'))
@@ -39,8 +39,7 @@ WITH CHECK (has_role('admin'));
 DROP POLICY IF EXISTS "Performance ratings select" ON performance_ratings;
 DROP POLICY IF EXISTS "Performance ratings admin insert" ON performance_ratings;
 DROP POLICY IF EXISTS "Performance ratings admin update" ON performance_ratings;
-DROP POLICY IF EXISTS "Performance ratings admin delete" ON performance_ratings;
-
+DROP POLICY IF EXISTS "Performance ratings select policy" ON performance_ratings;
 CREATE POLICY "Performance ratings select policy" ON performance_ratings 
 FOR SELECT TO authenticated 
 USING (
@@ -58,6 +57,7 @@ USING (
     ))
 );
 
+DROP POLICY IF EXISTS "Performance ratings manage policy" ON performance_ratings;
 CREATE POLICY "Performance ratings manage policy" ON performance_ratings 
 FOR ALL TO authenticated 
 USING (has_role('admin'))
@@ -71,8 +71,7 @@ WITH CHECK (has_role('admin'));
 -- Table: employee_salaries
 -- Problem: Users couldn't see their own basic salary record even though it belongs to them
 DROP POLICY IF EXISTS "Only admins can manage employee salaries" ON employee_salaries;
-DROP POLICY IF EXISTS "Only admins can view employee salaries" ON employee_salaries;
-
+DROP POLICY IF EXISTS "Employee salaries select policy" ON employee_salaries;
 CREATE POLICY "Employee salaries select policy" ON employee_salaries 
 FOR SELECT TO authenticated 
 USING (
@@ -80,6 +79,7 @@ USING (
     has_role('admin')
 );
 
+DROP POLICY IF EXISTS "Employee salaries manage policy" ON employee_salaries;
 CREATE POLICY "Employee salaries manage policy" ON employee_salaries 
 FOR ALL TO authenticated 
 USING (has_role('admin'))

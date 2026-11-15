@@ -29,12 +29,12 @@ CREATE INDEX IF NOT EXISTS idx_attendance_appeals_appeal_date ON public.attendan
 ALTER TABLE public.attendance_appeals ENABLE ROW LEVEL SECURITY;
 
 -- Employees can view and insert their own appeals
-CREATE POLICY "employees_select_own_appeals"
-  ON public.attendance_appeals FOR SELECT
+DROP POLICY IF EXISTS "employees_select_own_appeals" ON public.attendance_appeals;
+CREATE POLICY "employees_select_own_appeals" ON public.attendance_appeals FOR SELECT
   USING (user_id = auth.uid());
 
-CREATE POLICY "employees_insert_own_appeals"
-  ON public.attendance_appeals FOR INSERT
+DROP POLICY IF EXISTS "employees_insert_own_appeals" ON public.attendance_appeals;
+CREATE POLICY "employees_insert_own_appeals" ON public.attendance_appeals FOR INSERT
   WITH CHECK (user_id = auth.uid());
 
 -- Service role handles updates (approvals/rejections via API)

@@ -71,7 +71,7 @@ GRANT EXECUTE ON FUNCTION public.coarsen_lead_feedback_timestamps() TO authentic
 
 DROP TRIGGER IF EXISTS coarsen_lead_feedback_timestamps_before_insert ON public.feedback;
 
-CREATE TRIGGER coarsen_lead_feedback_timestamps_before_insert
+CREATE OR REPLACE TRIGGER coarsen_lead_feedback_timestamps_before_insert
   BEFORE INSERT ON public.feedback
   FOR EACH ROW
   EXECUTE FUNCTION public.coarsen_lead_feedback_timestamps();
@@ -91,14 +91,14 @@ CREATE TRIGGER coarsen_lead_feedback_timestamps_before_insert
 
 DROP TRIGGER IF EXISTS audit_feedback_changes ON public.feedback;
 
-CREATE TRIGGER audit_feedback_changes
+CREATE OR REPLACE TRIGGER audit_feedback_changes
   AFTER UPDATE OR DELETE ON public.feedback
   FOR EACH ROW
   EXECUTE FUNCTION public.audit_log_changes();
 
 DROP TRIGGER IF EXISTS audit_feedback_insert ON public.feedback;
 
-CREATE TRIGGER audit_feedback_insert
+CREATE OR REPLACE TRIGGER audit_feedback_insert
   AFTER INSERT ON public.feedback
   FOR EACH ROW
   WHEN (NEW.target_lead_id IS NULL)

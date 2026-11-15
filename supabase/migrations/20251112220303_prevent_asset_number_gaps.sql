@@ -72,9 +72,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger to enforce sequential deletion
+-- CREATE OR REPLACE TRIGGER to enforce sequential deletion
 DROP TRIGGER IF EXISTS prevent_asset_number_gaps ON assets;
-CREATE TRIGGER prevent_asset_number_gaps
+CREATE OR REPLACE TRIGGER prevent_asset_number_gaps
   BEFORE DELETE ON assets
   FOR EACH ROW
   EXECUTE FUNCTION check_asset_deletion_allowed();

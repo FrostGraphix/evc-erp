@@ -14,10 +14,12 @@ CREATE TABLE IF NOT EXISTS public.kss_results (
 
 ALTER TABLE public.kss_results ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "kss_results_insert" ON public.kss_results;
 CREATE POLICY "kss_results_insert" ON public.kss_results
   FOR INSERT TO authenticated
   WITH CHECK (evaluator_id = auth.uid());
 
+DROP POLICY IF EXISTS "kss_results_select" ON public.kss_results;
 CREATE POLICY "kss_results_select" ON public.kss_results
   FOR SELECT TO authenticated
   USING (
@@ -31,6 +33,7 @@ CREATE POLICY "kss_results_select" ON public.kss_results
     )
   );
 
+DROP POLICY IF EXISTS "kss_results_update" ON public.kss_results;
 CREATE POLICY "kss_results_update" ON public.kss_results
   FOR UPDATE TO authenticated
   USING (evaluator_id = auth.uid());

@@ -15,10 +15,8 @@
 -- lead-scoped via the existing policies, so staff can read the tracker but not
 -- edit anyone's action points.
 
-DROP POLICY IF EXISTS "Users can view action items for their department" ON public.action_items;
-
-CREATE POLICY "Authenticated can view action items"
-ON public.action_items
+DROP POLICY IF EXISTS "Authenticated can view action items" ON public.action_items;
+CREATE POLICY "Authenticated can view action items" ON public.action_items
 FOR SELECT
 TO authenticated
 USING (true);

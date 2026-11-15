@@ -11,8 +11,7 @@
 DROP POLICY IF EXISTS "Admins can view all goals" ON goals_objectives;
 DROP POLICY IF EXISTS "Department leads can view department goals" ON goals_objectives;
 DROP POLICY IF EXISTS "Only admins can view goals and objectives" ON goals_objectives;
-DROP POLICY IF EXISTS "Users can view own goals" ON goals_objectives;
-
+DROP POLICY IF EXISTS "Goals select policy" ON goals_objectives;
 CREATE POLICY "Goals select policy" ON goals_objectives 
 FOR SELECT TO authenticated 
 USING (
@@ -29,8 +28,7 @@ USING (
 -- Consolidate 3 overlapping policies
 DROP POLICY IF EXISTS "Admins can view all leave approvals" ON leave_approvals;
 DROP POLICY IF EXISTS "Department leads can view department approvals" ON leave_approvals;
-DROP POLICY IF EXISTS "Users can view own leave approvals" ON leave_approvals;
-
+DROP POLICY IF EXISTS "Leave approvals select policy" ON leave_approvals;
 CREATE POLICY "Leave approvals select policy" ON leave_approvals 
 FOR SELECT TO authenticated 
 USING (
@@ -47,8 +45,7 @@ USING (
 -- Consolidate 3 overlapping policies
 DROP POLICY IF EXISTS "Admins can view all leave balances" ON leave_balances;
 DROP POLICY IF EXISTS "Department leads can view department balances" ON leave_balances;
-DROP POLICY IF EXISTS "Users can view own leave balances" ON leave_balances;
-
+DROP POLICY IF EXISTS "Leave balances select policy" ON leave_balances;
 CREATE POLICY "Leave balances select policy" ON leave_balances 
 FOR SELECT TO authenticated 
 USING (
@@ -63,7 +60,7 @@ USING (
 
 -- Table: attendance_records
 -- Harden and optimize InitPlan
-DROP POLICY IF EXISTS "Attendance view policy" ON attendance_records;
+DROP POLICY IF EXISTS "Attendance select policy" ON attendance_records;
 CREATE POLICY "Attendance select policy" ON attendance_records 
 FOR SELECT TO authenticated 
 USING (
@@ -78,7 +75,7 @@ USING (
 
 -- Table: timesheets
 -- Harden and optimize InitPlan
-DROP POLICY IF EXISTS "Timesheets view policy" ON timesheets;
+DROP POLICY IF EXISTS "Timesheets select policy" ON timesheets;
 CREATE POLICY "Timesheets select policy" ON timesheets 
 FOR SELECT TO authenticated 
 USING (
@@ -94,13 +91,13 @@ USING (
 -- Table: customers
 -- Merge redundant policies
 DROP POLICY IF EXISTS "Staff can create customers" ON customers;
-DROP POLICY IF EXISTS "Staff create customers" ON customers;
+DROP POLICY IF EXISTS "Customers insert policy" ON customers;
 CREATE POLICY "Customers insert policy" ON customers 
 FOR INSERT TO authenticated 
 WITH CHECK ((SELECT has_role('staff')) OR (SELECT has_role('admin')));
 
 DROP POLICY IF EXISTS "Staff can update customers" ON customers;
-DROP POLICY IF EXISTS "Staff update customers" ON customers;
+DROP POLICY IF EXISTS "Customers update policy" ON customers;
 CREATE POLICY "Customers update policy" ON customers 
 FOR UPDATE TO authenticated 
 USING ((SELECT has_role('staff')) OR (SELECT has_role('admin')));
@@ -108,19 +105,19 @@ USING ((SELECT has_role('staff')) OR (SELECT has_role('admin')));
 -- Table: departments
 -- Merge redundant policies
 DROP POLICY IF EXISTS "Admins can insert departments" ON departments;
-DROP POLICY IF EXISTS "Only admins can insert departments" ON departments;
+DROP POLICY IF EXISTS "Departments insert policy" ON departments;
 CREATE POLICY "Departments insert policy" ON departments 
 FOR INSERT TO authenticated 
 WITH CHECK ((SELECT has_role('admin')));
 
 DROP POLICY IF EXISTS "Admins can update departments" ON departments;
-DROP POLICY IF EXISTS "Only admins can update departments" ON departments;
+DROP POLICY IF EXISTS "Departments update policy" ON departments;
 CREATE POLICY "Departments update policy" ON departments 
 FOR UPDATE TO authenticated 
 USING ((SELECT has_role('admin')));
 
 DROP POLICY IF EXISTS "Admins can delete departments" ON departments;
-DROP POLICY IF EXISTS "Only admins can delete departments" ON departments;
+DROP POLICY IF EXISTS "Departments delete policy" ON departments;
 CREATE POLICY "Departments delete policy" ON departments 
 FOR DELETE TO authenticated 
 USING ((SELECT has_role('admin')));
@@ -132,11 +129,12 @@ USING ((SELECT has_role('admin')));
 
 -- Table: user_roles
 -- Problem: Overlapping 'ALL' policy and inefficient check
-DROP POLICY IF EXISTS "User roles management" ON user_roles;
+DROP POLICY IF EXISTS "User roles select policy" ON user_roles;
 CREATE POLICY "User roles select policy" ON user_roles 
 FOR SELECT TO authenticated 
 USING (user_id = (SELECT auth.uid()) OR (SELECT has_role('admin')));
 
+DROP POLICY IF EXISTS "User roles manage policy" ON user_roles;
 CREATE POLICY "User roles manage policy" ON user_roles 
 FOR ALL TO authenticated 
 USING ((SELECT has_role('admin')))
@@ -160,7 +158,7 @@ USING (
 
 -- Table: leave_types
 DROP POLICY IF EXISTS "All authenticated users can view leave types" ON leave_types;
-DROP POLICY IF EXISTS "All users can view leave types" ON leave_types;
+DROP POLICY IF EXISTS "Leave types select policy" ON leave_types;
 CREATE POLICY "Leave types select policy" ON leave_types 
 FOR SELECT TO authenticated 
 USING (true);
@@ -183,13 +181,13 @@ ALTER POLICY "Asset issues select policy" ON asset_issues USING (
 
 -- Cleanup redundant policies on 'meters' from the list
 DROP POLICY IF EXISTS "Emergency Insert Meters" ON meters;
-DROP POLICY IF EXISTS "Staff create meters" ON meters;
+DROP POLICY IF EXISTS "Meters insert policy" ON meters;
 CREATE POLICY "Meters insert policy" ON meters 
 FOR INSERT TO authenticated 
 WITH CHECK ((SELECT has_role('staff')) OR (SELECT has_role('admin')));
 
 DROP POLICY IF EXISTS "Emergency Update Meters" ON meters;
-DROP POLICY IF EXISTS "Staff update meters" ON meters;
+DROP POLICY IF EXISTS "Meters update policy" ON meters;
 CREATE POLICY "Meters update policy" ON meters 
 FOR UPDATE TO authenticated 
 USING ((SELECT has_role('staff')) OR (SELECT has_role('admin')));

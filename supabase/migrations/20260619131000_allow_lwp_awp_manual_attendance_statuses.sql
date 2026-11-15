@@ -1,5 +1,8 @@
+-- Drop trigger first so it does not block column type alter
+DROP TRIGGER IF EXISTS trg_attendance_records_normalize_status ON public.attendance_records;
+
 -- Alter status column length to 50 to accommodate 'lateness_with_permission' and 'absent_with_permission'
-ALTER TABLE public.attendance_records ALTER COLUMN status TYPE character varying(50);
+ALTER TABLE public.attendance_records ALTER COLUMN status TYPE character varying(50) USING status::text;
 
 -- Update the status normalization trigger function to preserve manual status overrides
 CREATE OR REPLACE FUNCTION public.normalize_attendance_record_status()
@@ -26,9 +29,7 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_attendance_records_normalize_status ON public.attendance_records;
-
-CREATE TRIGGER trg_attendance_records_normalize_status
+CREATE OR REPLACE TRIGGER trg_attendance_records_normalize_status
   BEFORE INSERT OR UPDATE OF clock_in, clock_out, status
   ON public.attendance_records
   FOR EACH ROW

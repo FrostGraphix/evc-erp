@@ -19,13 +19,13 @@ on conflict (year) do nothing;
 alter table public.office_year_config enable row level security;
 
 -- Everyone can read
-create policy "office_year_config_select"
-  on public.office_year_config for select
+DROP POLICY IF EXISTS "office_year_config_select" ON public.office_year_config;
+CREATE POLICY "office_year_config_select" ON public.office_year_config for select
   using (true);
 
 -- Only admins can insert/update
-create policy "office_year_config_admin_modify"
-  on public.office_year_config for all
+DROP POLICY IF EXISTS "office_year_config_admin_modify" ON public.office_year_config;
+CREATE POLICY "office_year_config_admin_modify" ON public.office_year_config for all
   using (public.has_role('admin'))
   with check (public.has_role('admin'));
 

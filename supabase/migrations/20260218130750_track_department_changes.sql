@@ -16,15 +16,15 @@ CREATE TABLE IF NOT EXISTS public.employee_department_history (
 ALTER TABLE public.employee_department_history ENABLE ROW LEVEL SECURITY;
 
 -- Allow authenticated users to read department history
-CREATE POLICY "Profiles select policy" 
-ON public.employee_department_history FOR SELECT 
+DROP POLICY IF EXISTS "Profiles select policy" ON public.employee_department_history;
+CREATE POLICY "Profiles select policy" ON public.employee_department_history FOR SELECT 
 TO authenticated 
 USING (true);
 
 -- Allow admins to insert department history
 -- Borrowing logic from profiles update policy
-CREATE POLICY "Admins can insert department history" 
-ON public.employee_department_history FOR INSERT 
+DROP POLICY IF EXISTS "Admins can insert department history" ON public.employee_department_history;
+CREATE POLICY "Admins can insert department history" ON public.employee_department_history FOR INSERT 
 TO authenticated 
 WITH CHECK (
   EXISTS ( 

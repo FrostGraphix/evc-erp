@@ -33,6 +33,7 @@ GRANT ALL ON system_satisfaction_surveys TO service_role;
 
 -- RLS Policies
 -- Authenticated users can insert their own survey or anonymous survey
+DROP POLICY IF EXISTS "Users can insert satisfaction survey" ON system_satisfaction_surveys;
 CREATE POLICY "Users can insert satisfaction survey" ON system_satisfaction_surveys
   FOR INSERT
   TO authenticated
@@ -42,6 +43,7 @@ CREATE POLICY "Users can insert satisfaction survey" ON system_satisfaction_surv
   );
 
 -- Users can view their own non-anonymous survey, and admins can view all surveys
+DROP POLICY IF EXISTS "Users can view own satisfaction survey" ON system_satisfaction_surveys;
 CREATE POLICY "Users can view own satisfaction survey" ON system_satisfaction_surveys
   FOR SELECT
   TO authenticated
@@ -55,6 +57,7 @@ CREATE POLICY "Users can view own satisfaction survey" ON system_satisfaction_su
   );
 
 -- Users can update their own non-anonymous survey
+DROP POLICY IF EXISTS "Users can update own satisfaction survey" ON system_satisfaction_surveys;
 CREATE POLICY "Users can update own satisfaction survey" ON system_satisfaction_surveys
   FOR UPDATE
   TO authenticated
@@ -71,7 +74,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trigger_system_satisfaction_surveys_updated_at ON system_satisfaction_surveys;
-CREATE TRIGGER trigger_system_satisfaction_surveys_updated_at
+CREATE OR REPLACE TRIGGER trigger_system_satisfaction_surveys_updated_at
   BEFORE UPDATE ON system_satisfaction_surveys
   FOR EACH ROW
   EXECUTE FUNCTION set_system_satisfaction_surveys_updated_at();

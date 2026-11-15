@@ -1,4 +1,7 @@
 
+-- Ensure profiles has department column for policy resolution
+alter table if exists public.profiles add column if not exists department text;
+
 -- Create action_items table
 create table if not exists public.action_items (
     id uuid not null default gen_random_uuid(),
@@ -19,8 +22,8 @@ create table if not exists public.action_items (
 -- Add RLS policies
 alter table public.action_items enable row level security;
 
-create policy "Users can view action items for their department"
-    on public.action_items for select
+DROP POLICY IF EXISTS "Users can view action items for their department" ON public.action_items;
+CREATE POLICY "Users can view action items for their department" ON public.action_items for select
     using (
         exists (
             select 1 from profiles
@@ -32,8 +35,8 @@ create policy "Users can view action items for their department"
         )
     );
 
-create policy "Admins and leads can insert action items"
-    on public.action_items for insert
+DROP POLICY IF EXISTS "Admins and leads can insert action items" ON public.action_items;
+CREATE POLICY "Admins and leads can insert action items" ON public.action_items for insert
     with check (
         exists (
             select 1 from profiles
@@ -42,8 +45,8 @@ create policy "Admins and leads can insert action items"
         )
     );
 
-create policy "Users can update their own action items or admins/leads"
-    on public.action_items for update
+DROP POLICY IF EXISTS "Users can update their own action items or admins/leads" ON public.action_items;
+CREATE POLICY "Users can update their own action items or admins/leads" ON public.action_items for update
     using (
         auth.uid() = assigned_by
         or exists (
@@ -53,8 +56,8 @@ create policy "Users can update their own action items or admins/leads"
         )
     );
 
-create policy "Users can delete action items"
-    on public.action_items for delete
+DROP POLICY IF EXISTS "Users can delete action items" ON public.action_items;
+CREATE POLICY "Users can delete action items" ON public.action_items for delete
     using (
         exists (
             select 1 from profiles
@@ -64,5 +67,5 @@ create policy "Users can delete action items"
     );
 
 -- Add indexes
-create index action_items_week_year_idx on public.action_items(week_number, year);
-create index action_items_department_idx on public.action_items(department);
+CREATE INDEX IF NOT EXISTS action_items_week_year_idx on public.action_items(week_number, year);
+CREATE INDEX IF NOT EXISTS action_items_department_idx on public.action_items(department);

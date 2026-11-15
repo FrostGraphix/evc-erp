@@ -8,7 +8,7 @@ ADD COLUMN IF NOT EXISTS employee_number TEXT;
 ALTER TABLE profiles
 ADD CONSTRAINT profiles_employee_number_key UNIQUE (employee_number);
 
--- Create index for fast lookups
+-- CREATE INDEX IF NOT EXISTS for fast lookups
 CREATE INDEX IF NOT EXISTS idx_profiles_employee_number ON profiles(employee_number);
 
 -- Add comment explaining the format

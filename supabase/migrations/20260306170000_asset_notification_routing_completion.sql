@@ -328,7 +328,7 @@ end;
 $$;
 
 drop trigger if exists trg_assets_status_notifications on public.assets;
-create trigger trg_assets_status_notifications
+CREATE OR REPLACE TRIGGER trg_assets_status_notifications
 after update of status on public.assets
 for each row
 execute function public.handle_asset_status_notifications();

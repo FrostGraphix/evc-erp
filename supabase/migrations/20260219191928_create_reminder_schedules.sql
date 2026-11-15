@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS public.reminder_schedules (
 ALTER TABLE public.reminder_schedules ENABLE ROW LEVEL SECURITY;
 
 -- Allow authenticated users full access for now (consistent with project pattern)
-CREATE POLICY "Allow authenticated users full access on reminder_schedules"
-ON public.reminder_schedules
+DROP POLICY IF EXISTS "Allow authenticated users full access on reminder_schedules" ON public.reminder_schedules;
+CREATE POLICY "Allow authenticated users full access on reminder_schedules" ON public.reminder_schedules
 FOR ALL
 TO authenticated
 USING (true)

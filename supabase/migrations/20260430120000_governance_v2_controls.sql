@@ -1,20 +1,6 @@
 -- Governance v2: expanded modules + structured stage targets + compatibility aliases
 
-DO $$
-BEGIN
-  -- Expand enum values if original enum type exists
-  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'governance_module_code') THEN
-    BEGIN
-      ALTER TYPE public.governance_module_code ADD VALUE IF NOT EXISTS 'pms_goal_setting';
-      ALTER TYPE public.governance_module_code ADD VALUE IF NOT EXISTS 'pms_kpi_scoring';
-      ALTER TYPE public.governance_module_code ADD VALUE IF NOT EXISTS 'pms_review';
-      ALTER TYPE public.governance_module_code ADD VALUE IF NOT EXISTS 'task';
-      ALTER TYPE public.governance_module_code ADD VALUE IF NOT EXISTS 'resource_booking';
-    EXCEPTION WHEN OTHERS THEN
-      NULL;
-    END;
-  END IF;
-END $$;
+-- Enum values already committed previously
 
 ALTER TABLE IF EXISTS public.approval_workflow_stages
   ADD COLUMN IF NOT EXISTS approver_target jsonb NOT NULL DEFAULT '{"target_type":"department_lead"}'::jsonb,

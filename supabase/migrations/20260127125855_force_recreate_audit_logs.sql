@@ -27,6 +27,8 @@ ALTER TABLE public.meters ADD CONSTRAINT meters_meter_id_key UNIQUE (meter_id);
 
 -- RLS
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public insert for sync" ON public.audit_logs;
 CREATE POLICY "Allow public insert for sync" ON public.audit_logs FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow authenticated select" ON public.audit_logs;
 CREATE POLICY "Allow authenticated select" ON public.audit_logs FOR SELECT USING (auth.role() = 'authenticated');
 ;

@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS attendance_sites (
 -- writable only by service role / admins via API.
 ALTER TABLE attendance_sites ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Authenticated users can read active sites"
-  ON attendance_sites FOR SELECT
+DROP POLICY IF EXISTS "Authenticated users can read active sites" ON attendance_sites;
+CREATE POLICY "Authenticated users can read active sites" ON attendance_sites FOR SELECT
   TO authenticated
   USING (is_active = true);
 

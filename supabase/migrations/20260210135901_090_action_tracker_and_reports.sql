@@ -32,7 +32,8 @@ ALTER TABLE weekly_reports ENABLE ROW LEVEL SECURITY;
 -- Everyone can view submitted reports
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Everyone can view submitted reports') THEN
-        CREATE POLICY "Everyone can view submitted reports" ON weekly_reports
+        DROP POLICY IF EXISTS "Everyone can view submitted reports" ON weekly_reports;
+CREATE POLICY "Everyone can view submitted reports" ON weekly_reports
             FOR SELECT USING (status = 'submitted' OR auth.uid() = user_id);
     END IF;
 END $$;
@@ -40,7 +41,8 @@ END $$;
 -- Leads and Admin can manage their own reports
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Leads can manage their own reports') THEN
-        CREATE POLICY "Leads can manage their own reports" ON weekly_reports
+        DROP POLICY IF EXISTS "Leads can manage their own reports" ON weekly_reports;
+CREATE POLICY "Leads can manage their own reports" ON weekly_reports
             FOR ALL USING (
                 auth.uid() = user_id OR 
                 EXISTS (
@@ -62,7 +64,7 @@ $$ language 'plpgsql';
 
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_weekly_reports_updated_at') THEN
-        CREATE TRIGGER update_weekly_reports_updated_at
+        CREATE OR REPLACE TRIGGER update_weekly_reports_updated_at
             BEFORE UPDATE ON weekly_reports
             FOR EACH ROW
             EXECUTE FUNCTION update_updated_at_column();

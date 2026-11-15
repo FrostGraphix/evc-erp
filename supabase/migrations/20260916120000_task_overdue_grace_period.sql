@@ -1,38 +1,30 @@
--- Task expiry: run at WAT midnight, and warn before failing.
+-- Nightly job + app code flag tasks whose deadline has passed: the lead has
+-- a grace period (configured via app_settings or default 24h) to either extend
+-- the deadline or mark the work unable to complete before the task is recorded
+-- as failed.
 --
--- Two problems with the job as scheduled:
---
---   1. It ran at 01:15 UTC = 02:15 WAT. That time means nothing - the nightly
---      jobs are staggered 00:00 / 00:30 / 01:00 / 01:15 UTC purely so they do
---      not land at once, and task expiry got the next free slot. The effect was
---      a silent, undocumented two-hour grace after midnight: work submitted at
---      01:00 survived, the same work at 02:20 was failed, while every screen
---      had already been calling the task overdue since midnight.
---
---   2. It failed a task on the first night past its deadline. `failed` scores
---      zero at full weight and an employee cannot reverse it, but the last
---      reminder went out the previous morning, and the way out - a lead
---      extending the deadline, or closing the task out - needs a human.
---
--- 23:00 UTC is 00:00 WAT the following day, so the job now runs at the moment
--- the deadline day ends and agrees with what the task screens display. The
--- route handles the grace itself: first run past the deadline warns, and the
--- task is failed only after two working days have elapsed - weekends, public
--- holidays and the assignee's own approved leave all excluded.
+-- This migration:
+-- 1. Adds 'task_overdue' to public.notifications.type CHECK so the reminder
+--    inserts do not fail.
+-- 2. Adds tasks.grace_period_ends_at so the UI can show the countdown and the
+--    job knows when to flip the status.
 
-SELECT cron.unschedule(jobname)
-FROM cron.job
-WHERE jobname = 'app-tasks-expire-overdue';
+ALTER TABLE public.tasks
+  ADD COLUMN IF NOT EXISTS grace_period_ends_at timestamptz;
 
-SELECT cron.schedule(
-  'app-tasks-expire-overdue', '0 23 * * *',
-  $job$SELECT public.call_app_endpoint('/api/cron/tasks/expire-overdue', 'GET')$job$
-);
+COMMENT ON COLUMN public.tasks.grace_period_ends_at IS
+  'When the post-deadline grace period expires. NULL while pending/completed/cancelled.';
 
--- The grace-period warning needs its own notification type. Without it the
--- insert fails the CHECK and is swallowed by the caller's try/catch, exactly as
--- happened to 'task_blocked' before 20260821180000 - so the constraint is
--- restated in full here rather than appended to.
+CREATE INDEX IF NOT EXISTS idx_tasks_grace_period_active
+  ON public.tasks (grace_period_ends_at)
+  WHERE grace_period_ends_at IS NOT NULL;
+
+-- Notification types for the project-manager reminders:
+-- deadlines approaching, submitted work waiting on a decision, approved work
+-- still unrated, and projects slipping behind, plus task_overdue.
+--
+-- The constraint is replaced wholesale rather than appended to, so the full
+-- existing list is restated here.
 
 ALTER TABLE public.notifications
 DROP CONSTRAINT IF EXISTS notifications_type_check;
@@ -66,6 +58,14 @@ CHECK (
       -- App notification types
       'task_assigned',
       'task_updated',
+      'task_created',
+      'task_deleted',
+      'task_approved',
+      'task_rejected',
+      'task_review_requested',
+      'department_created',
+      'department_updated',
+      'department_deleted',
       'mention',
       'feedback',
       'approval_request',

@@ -8,11 +8,13 @@ DROP POLICY IF EXISTS "Admin full access to customers" ON customers;
 DROP POLICY IF EXISTS "Customers insert policy" ON customers;
 DROP POLICY IF EXISTS "Customers view policy" ON customers;
 DROP POLICY IF EXISTS "Customers update policy" ON customers;
-DROP POLICY IF EXISTS "Customers delete policy" ON customers;
-
+DROP POLICY IF EXISTS "Customers select policy" ON customers;
 CREATE POLICY "Customers select policy" ON customers FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Customers insert policy" ON customers;
 CREATE POLICY "Customers insert policy" ON customers FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Customers update policy" ON customers;
 CREATE POLICY "Customers update policy" ON customers FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Customers delete policy" ON customers;
 CREATE POLICY "Customers delete policy" ON customers FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 
@@ -25,10 +27,10 @@ DROP POLICY IF EXISTS "Project managers can update items" ON project_items;
 DROP POLICY IF EXISTS "Project items select policy" ON project_items;
 DROP POLICY IF EXISTS "Project items insert policy" ON project_items;
 DROP POLICY IF EXISTS "Project items update policy" ON project_items;
-DROP POLICY IF EXISTS "Project items delete policy" ON project_items;
-
+DROP POLICY IF EXISTS "Project items select policy" ON project_items;
 CREATE POLICY "Project items select policy" ON project_items FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Project items insert policy" ON project_items;
 CREATE POLICY "Project items insert policy" ON project_items 
 FOR INSERT TO authenticated 
 WITH CHECK (
@@ -40,6 +42,7 @@ WITH CHECK (
     (SELECT has_role('admin'))
 );
 
+DROP POLICY IF EXISTS "Project items update policy" ON project_items;
 CREATE POLICY "Project items update policy" ON project_items 
 FOR UPDATE TO authenticated 
 USING (
@@ -51,6 +54,7 @@ USING (
     (SELECT has_role('admin'))
 );
 
+DROP POLICY IF EXISTS "Project items delete policy" ON project_items;
 CREATE POLICY "Project items delete policy" ON project_items 
 FOR DELETE TO authenticated 
 USING ((SELECT has_role('admin')));
@@ -66,12 +70,13 @@ DROP POLICY IF EXISTS "Events select policy" ON event_notifications;
 DROP POLICY IF EXISTS "Events update policy" ON event_notifications;
 DROP POLICY IF EXISTS "Events staff acknowledge" ON event_notifications;
 DROP POLICY IF EXISTS "Events insert policy" ON event_notifications;
-DROP POLICY IF EXISTS "Events delete policy" ON event_notifications;
-
+DROP POLICY IF EXISTS "Events select policy" ON event_notifications;
 CREATE POLICY "Events select policy" ON event_notifications FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Events insert policy" ON event_notifications;
 CREATE POLICY "Events insert policy" ON event_notifications FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
 
+DROP POLICY IF EXISTS "Events update policy" ON event_notifications;
 CREATE POLICY "Events update policy" ON event_notifications 
 FOR UPDATE TO authenticated 
 USING (
@@ -83,6 +88,7 @@ WITH CHECK (
     (acknowledged = true AND acknowledged_by = (SELECT auth.uid()))
 );
 
+DROP POLICY IF EXISTS "Events delete policy" ON event_notifications;
 CREATE POLICY "Events delete policy" ON event_notifications FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 
@@ -92,8 +98,7 @@ CREATE POLICY "Events delete policy" ON event_notifications FOR DELETE TO authen
 DROP POLICY IF EXISTS "Leave balances select policy" ON leave_balances;
 DROP POLICY IF EXISTS "Leave balances insert policy" ON leave_balances;
 DROP POLICY IF EXISTS "Leave balances update policy" ON leave_balances;
-DROP POLICY IF EXISTS "Leave balances delete policy" ON leave_balances;
-
+DROP POLICY IF EXISTS "Leave balances select policy" ON leave_balances;
 CREATE POLICY "Leave balances select policy" ON leave_balances 
 FOR SELECT TO authenticated 
 USING (
@@ -106,8 +111,11 @@ USING (
     ))
 );
 
+DROP POLICY IF EXISTS "Leave balances insert policy" ON leave_balances;
 CREATE POLICY "Leave balances insert policy" ON leave_balances FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Leave balances update policy" ON leave_balances;
 CREATE POLICY "Leave balances update policy" ON leave_balances FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Leave balances delete policy" ON leave_balances;
 CREATE POLICY "Leave balances delete policy" ON leave_balances FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 

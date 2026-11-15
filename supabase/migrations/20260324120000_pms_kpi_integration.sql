@@ -89,7 +89,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_auto_final_score ON public.performance_reviews;
-CREATE TRIGGER trg_auto_final_score
+CREATE OR REPLACE TRIGGER trg_auto_final_score
   BEFORE INSERT OR UPDATE OF kpi_score, cbt_score, attendance_score, behaviour_score
   ON public.performance_reviews
   FOR EACH ROW
@@ -134,8 +134,8 @@ GROUP BY g.id, g.user_id, g.review_cycle_id, g.title, g.approval_status, g.targe
 -- ─────────────────────────────────────────────────────────────
 
 -- Managers/admins can approve or reject goals belonging to their department
-CREATE POLICY "Managers can approve department goals"
-  ON public.goals_objectives FOR UPDATE
+DROP POLICY IF EXISTS "Managers can approve department goals" ON public.goals_objectives;
+CREATE POLICY "Managers can approve department goals" ON public.goals_objectives FOR UPDATE
   TO authenticated
   USING (
     EXISTS (

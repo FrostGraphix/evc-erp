@@ -21,7 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_gms_week_year
   ON public.general_meeting_sessions (meeting_week, meeting_year);
 
 DROP TRIGGER IF EXISTS set_general_meeting_sessions_updated_at ON public.general_meeting_sessions;
-CREATE TRIGGER set_general_meeting_sessions_updated_at
+CREATE OR REPLACE TRIGGER set_general_meeting_sessions_updated_at
   BEFORE UPDATE ON public.general_meeting_sessions
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_gma_meeting_date
   ON public.general_meeting_attendance (meeting_date);
 
 DROP TRIGGER IF EXISTS set_general_meeting_attendance_updated_at ON public.general_meeting_attendance;
-CREATE TRIGGER set_general_meeting_attendance_updated_at
+CREATE OR REPLACE TRIGGER set_general_meeting_attendance_updated_at
   BEFORE UPDATE ON public.general_meeting_attendance
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 

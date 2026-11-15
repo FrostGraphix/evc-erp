@@ -30,18 +30,22 @@ CREATE INDEX IF NOT EXISTS idx_asset_issues_created_at ON asset_issues(created_a
 ALTER TABLE asset_issues ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can view all asset issues
+DROP POLICY IF EXISTS "Users can view all asset issues" ON asset_issues;
 CREATE POLICY "Users can view all asset issues" ON asset_issues
 FOR SELECT USING (true);
 
 -- Policy: Authenticated users can insert asset issues
+DROP POLICY IF EXISTS "Authenticated users can insert asset issues" ON asset_issues;
 CREATE POLICY "Authenticated users can insert asset issues" ON asset_issues
 FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- Policy: Users can update asset issues (mark as resolved)
+DROP POLICY IF EXISTS "Users can update asset issues" ON asset_issues;
 CREATE POLICY "Users can update asset issues" ON asset_issues
 FOR UPDATE USING (auth.role() = 'authenticated');
 
 -- Policy: Only admins can delete asset issues
+DROP POLICY IF EXISTS "Admins can delete asset issues" ON asset_issues;
 CREATE POLICY "Admins can delete asset issues" ON asset_issues
 FOR DELETE USING (
   EXISTS (
@@ -65,7 +69,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger to call the function
-CREATE TRIGGER set_asset_issues_updated_at
+CREATE OR REPLACE TRIGGER set_asset_issues_updated_at
 BEFORE UPDATE ON asset_issues
 FOR EACH ROW
 EXECUTE FUNCTION update_asset_issues_updated_at();

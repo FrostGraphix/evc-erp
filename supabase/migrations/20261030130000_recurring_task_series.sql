@@ -135,7 +135,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.tasks_guard_series_link() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS tasks_guard_series_link ON public.tasks;
-CREATE TRIGGER tasks_guard_series_link
+CREATE OR REPLACE TRIGGER tasks_guard_series_link
   BEFORE UPDATE OF series_id, occurrence_date ON public.tasks
   FOR EACH ROW
   EXECUTE FUNCTION public.tasks_guard_series_link();

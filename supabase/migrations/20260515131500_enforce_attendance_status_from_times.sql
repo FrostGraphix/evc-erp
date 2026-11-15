@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION public.derive_attendance_status(
   p_clock_in time,
   p_clock_out time
 )
-RETURNS text
+RETURNS public.attendance_status
 LANGUAGE plpgsql
 IMMUTABLE
 AS $$
@@ -40,7 +40,7 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   -- Preserve explicit half-day marks.
-  IF NEW.status = 'half_day' THEN
+  IF NEW.status::text = 'half_day' THEN
     RETURN NEW;
   END IF;
 
@@ -50,7 +50,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_attendance_records_normalize_status ON public.attendance_records;
-CREATE TRIGGER trg_attendance_records_normalize_status
+CREATE OR REPLACE TRIGGER trg_attendance_records_normalize_status
 BEFORE INSERT OR UPDATE OF clock_in, clock_out, status
 ON public.attendance_records
 FOR EACH ROW
@@ -59,5 +59,5 @@ EXECUTE FUNCTION public.normalize_attendance_record_status();
 -- Backfill existing rows to repair inconsistent status values.
 UPDATE public.attendance_records
 SET status = public.derive_attendance_status(clock_in, clock_out)
-WHERE status IS DISTINCT FROM public.derive_attendance_status(clock_in, clock_out)
-  AND status IS DISTINCT FROM 'half_day';
+WHERE status::text IS DISTINCT FROM public.derive_attendance_status(clock_in, clock_out)::text
+  AND status::text IS DISTINCT FROM 'half_day';

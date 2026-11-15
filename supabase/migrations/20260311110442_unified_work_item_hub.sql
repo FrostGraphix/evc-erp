@@ -25,7 +25,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_assign_work_item_number ON public.tasks;
-CREATE TRIGGER trg_assign_work_item_number
+CREATE OR REPLACE TRIGGER trg_assign_work_item_number
   BEFORE INSERT ON public.tasks
   FOR EACH ROW
   EXECUTE FUNCTION public.assign_work_item_number();

@@ -99,16 +99,21 @@ set
 where ai.year = 2026;
 
 -- One-time schedules only
-update public.weekly_report_schedules ds
-set
-  meeting_week = case
-    when ds.meeting_week - 2 >= 1 then ds.meeting_week - 2
-    else public.office_weeks_in_year(ds.meeting_year - 1) + (ds.meeting_week - 2)
-  end,
-  meeting_year = case
-    when ds.meeting_week - 2 >= 1 then ds.meeting_year
-    else ds.meeting_year - 1
-  end
-where ds.schedule_type = 'one_time'
-  and ds.meeting_year = 2026
-  and ds.meeting_week is not null;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'weekly_report_schedules') THEN
+    UPDATE public.weekly_report_schedules ds
+    SET
+      meeting_week = CASE
+        WHEN ds.meeting_week - 2 >= 1 THEN ds.meeting_week - 2
+        ELSE public.office_weeks_in_year(ds.meeting_year - 1) + (ds.meeting_week - 2)
+      END,
+      meeting_year = CASE
+        WHEN ds.meeting_week - 2 >= 1 THEN ds.meeting_year
+        ELSE ds.meeting_year - 1
+      END
+    WHERE ds.schedule_type = 'one_time'
+      AND ds.meeting_year = 2026
+      AND ds.meeting_week IS NOT NULL;
+  END IF;
+END $$;

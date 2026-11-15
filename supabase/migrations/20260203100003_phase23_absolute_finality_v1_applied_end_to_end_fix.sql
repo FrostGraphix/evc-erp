@@ -11,11 +11,13 @@ DROP POLICY IF EXISTS "Only admins can manage job postings" ON job_postings;
 DROP POLICY IF EXISTS "Job postings select policy" ON job_postings;
 DROP POLICY IF EXISTS "Job postings insert policy" ON job_postings;
 DROP POLICY IF EXISTS "Job postings update policy" ON job_postings;
-DROP POLICY IF EXISTS "Job postings delete policy" ON job_postings;
-
+DROP POLICY IF EXISTS "Job postings select policy" ON job_postings;
 CREATE POLICY "Job postings select policy" ON job_postings FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Job postings insert policy" ON job_postings;
 CREATE POLICY "Job postings insert policy" ON job_postings FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Job postings update policy" ON job_postings;
 CREATE POLICY "Job postings update policy" ON job_postings FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Job postings delete policy" ON job_postings;
 CREATE POLICY "Job postings delete policy" ON job_postings FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: interviews
@@ -38,10 +40,11 @@ DROP POLICY IF EXISTS "Department leads can view department balances" ON leave_b
 DROP POLICY IF EXISTS "Leave balances manage policy" ON leave_balances;
 DROP POLICY IF EXISTS "Leave balances insert policy" ON leave_balances;
 DROP POLICY IF EXISTS "Leave balances update policy" ON leave_balances;
-DROP POLICY IF EXISTS "Leave balances delete policy" ON leave_balances;
-
+DROP POLICY IF EXISTS "Leave balances insert policy" ON leave_balances;
 CREATE POLICY "Leave balances insert policy" ON leave_balances FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Leave balances update policy" ON leave_balances;
 CREATE POLICY "Leave balances update policy" ON leave_balances FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Leave balances delete policy" ON leave_balances;
 CREATE POLICY "Leave balances delete policy" ON leave_balances FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 -- Table: leave_requests (Remaining InitPlan on INSERT)
@@ -54,10 +57,11 @@ DROP POLICY IF EXISTS "Only admins can manage leave approvals" ON leave_approval
 DROP POLICY IF EXISTS "Leave approvals manage policy" ON leave_approvals;
 DROP POLICY IF EXISTS "Leave approvals insert policy" ON leave_approvals;
 DROP POLICY IF EXISTS "Leave approvals update policy" ON leave_approvals;
-DROP POLICY IF EXISTS "Leave approvals delete policy" ON leave_approvals;
-
+DROP POLICY IF EXISTS "Leave approvals insert policy" ON leave_approvals;
 CREATE POLICY "Leave approvals insert policy" ON leave_approvals FOR INSERT TO authenticated WITH CHECK ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Leave approvals update policy" ON leave_approvals;
 CREATE POLICY "Leave approvals update policy" ON leave_approvals FOR UPDATE TO authenticated USING ((SELECT has_role('admin')));
+DROP POLICY IF EXISTS "Leave approvals delete policy" ON leave_approvals;
 CREATE POLICY "Leave approvals delete policy" ON leave_approvals FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 
 

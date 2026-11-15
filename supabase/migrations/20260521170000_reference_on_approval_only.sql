@@ -112,14 +112,14 @@ end;
 $$;
 
 -- Remove references from records not yet finalized to prevent skipped numbers.
-alter table public.correspondence_records disable trigger trg_correspondence_records_before_update;
+DO $$ BEGIN ALTER TABLE public.correspondence_records DISABLE TRIGGER trg_correspondence_records_before_update; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 
 update public.correspondence_records
 set reference_number = null
 where status not in ('approved', 'sent', 'filed', 'closed')
   and reference_number is not null;
 
-alter table public.correspondence_records enable trigger trg_correspondence_records_before_update;
+DO $$ BEGIN ALTER TABLE public.correspondence_records ENABLE TRIGGER trg_correspondence_records_before_update; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 
 -- Rebuild counters from only finalized records that still carry references.
 delete from public.correspondence_counters;

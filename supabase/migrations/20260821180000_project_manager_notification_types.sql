@@ -58,6 +58,8 @@ CHECK (
   )
 );
 
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS entity_id uuid;
+
 -- The reminder job looks up "have we already told this person about this
 -- task/project recently?" on every run.
 CREATE INDEX IF NOT EXISTS idx_notifications_entity_recent

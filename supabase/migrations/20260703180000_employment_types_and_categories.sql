@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS public.contract_categories (
 ALTER TABLE public.contract_categories ENABLE ROW LEVEL SECURITY;
 
 -- Select policy: authenticated can read
+DROP POLICY IF EXISTS "contract_categories_read_policy" ON public.contract_categories;
 CREATE POLICY "contract_categories_read_policy" ON public.contract_categories
     FOR SELECT TO authenticated USING (true);
 
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS public.employee_number_history (
 ALTER TABLE public.employee_number_history ENABLE ROW LEVEL SECURITY;
 
 -- Select policy: authenticated can read history
+DROP POLICY IF EXISTS "employee_number_history_read_policy" ON public.employee_number_history;
 CREATE POLICY "employee_number_history_read_policy" ON public.employee_number_history
     FOR SELECT TO authenticated USING (true);
 

@@ -95,7 +95,7 @@ REVOKE EXECUTE ON FUNCTION public.help_desk_guard_self_rating() FROM PUBLIC, ano
 GRANT EXECUTE ON FUNCTION public.help_desk_guard_self_rating() TO service_role;
 
 DROP TRIGGER IF EXISTS help_desk_guard_self_rating ON public.help_desk_tickets;
-CREATE TRIGGER help_desk_guard_self_rating
+CREATE OR REPLACE TRIGGER help_desk_guard_self_rating
   BEFORE INSERT OR UPDATE OF rating, rated_by, assigned_to
   ON public.help_desk_tickets
   FOR EACH ROW

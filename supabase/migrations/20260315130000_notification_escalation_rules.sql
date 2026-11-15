@@ -29,5 +29,6 @@ VALUES
 
 ALTER TABLE public.notification_escalation_rules ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "escalation_rules_select" ON public.notification_escalation_rules;
 CREATE POLICY "escalation_rules_select" ON public.notification_escalation_rules
   FOR SELECT TO authenticated USING (true);

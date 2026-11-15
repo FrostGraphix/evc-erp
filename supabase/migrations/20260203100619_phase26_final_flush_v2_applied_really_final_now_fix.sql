@@ -34,8 +34,7 @@ DROP POLICY IF EXISTS "Users can view their own asset issues" ON asset_issues;
 DROP POLICY IF EXISTS "Asset issues select policy" ON asset_issues;
 DROP POLICY IF EXISTS "Asset issues insert policy" ON asset_issues;
 DROP POLICY IF EXISTS "Asset issues update policy" ON asset_issues;
-DROP POLICY IF EXISTS "Asset issues delete policy" ON asset_issues;
-
+DROP POLICY IF EXISTS "Asset issues select policy" ON asset_issues;
 CREATE POLICY "Asset issues select policy" ON asset_issues 
 FOR SELECT TO authenticated 
 USING (
@@ -48,10 +47,12 @@ USING (
     ))
 );
 
+DROP POLICY IF EXISTS "Asset issues insert policy" ON asset_issues;
 CREATE POLICY "Asset issues insert policy" ON asset_issues 
 FOR INSERT TO authenticated 
 WITH CHECK ((SELECT auth.uid()) IS NOT NULL);
 
+DROP POLICY IF EXISTS "Asset issues update policy" ON asset_issues;
 CREATE POLICY "Asset issues update policy" ON asset_issues 
 FOR UPDATE TO authenticated 
 USING (
@@ -59,6 +60,7 @@ USING (
     (SELECT has_role('admin'))
 );
 
+DROP POLICY IF EXISTS "Asset issues delete policy" ON asset_issues;
 CREATE POLICY "Asset issues delete policy" ON asset_issues 
 FOR DELETE TO authenticated USING ((SELECT has_role('admin')));
 

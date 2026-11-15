@@ -14,13 +14,13 @@
 -- All three tables filter out inactive/deleted records at the RLS layer.
 
 -- Confirm departments policy is correct (idempotent re-create)
-DROP POLICY IF EXISTS "Anyone can view active departments" ON public.departments;
+DROP POLICY IF EXISTS "departments_select_active" ON public.departments;
 CREATE POLICY "departments_select_active" ON public.departments
   FOR SELECT TO authenticated
   USING (is_active = TRUE);
 
 -- Confirm office_locations policy is correct (idempotent re-create)
-DROP POLICY IF EXISTS "Office locations select policy" ON public.office_locations;
+DROP POLICY IF EXISTS "office_locations_select_active" ON public.office_locations;
 CREATE POLICY "office_locations_select_active" ON public.office_locations
   FOR SELECT TO authenticated
   USING (is_active = TRUE);

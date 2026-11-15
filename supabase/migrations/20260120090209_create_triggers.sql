@@ -8,16 +8,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_tariffs_updated_at BEFORE UPDATE ON tariffs
+CREATE OR REPLACE TRIGGER update_tariffs_updated_at BEFORE UPDATE ON tariffs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_gateways_updated_at BEFORE UPDATE ON gateways
+CREATE OR REPLACE TRIGGER update_gateways_updated_at BEFORE UPDATE ON gateways
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_customers_updated_at BEFORE UPDATE ON customers
+CREATE OR REPLACE TRIGGER update_customers_updated_at BEFORE UPDATE ON customers
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_meters_updated_at BEFORE UPDATE ON meters
+CREATE OR REPLACE TRIGGER update_meters_updated_at BEFORE UPDATE ON meters
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles
+CREATE OR REPLACE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- User signup trigger
@@ -37,13 +37,13 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Drop trigger if it exists to avoid error on creation
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
-CREATE TRIGGER on_auth_user_created
+CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
   EXECUTE FUNCTION handle_new_user();
 
 -- CRM sync triggers
-CREATE TRIGGER sync_contact_to_customer
+CREATE OR REPLACE TRIGGER sync_contact_to_customer
   AFTER UPDATE ON crm_contacts
   FOR EACH ROW
   WHEN (OLD.contact_name IS DISTINCT FROM NEW.contact_name OR 
@@ -79,7 +79,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE TRIGGER on_token_generated
+CREATE OR REPLACE TRIGGER on_token_generated
   AFTER INSERT ON token_sales
   FOR EACH ROW
   EXECUTE FUNCTION notify_token_generated();
@@ -123,7 +123,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE TRIGGER on_task_status_change
+CREATE OR REPLACE TRIGGER on_task_status_change
   AFTER UPDATE ON remote_tasks
   FOR EACH ROW
   EXECUTE FUNCTION notify_task_completed();

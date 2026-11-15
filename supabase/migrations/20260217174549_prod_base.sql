@@ -1,4 +1,18 @@
-﻿
+
+DO $$ 
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN (
+    SELECT oid::regprocedure AS func_signature 
+    FROM pg_proc 
+    WHERE proname IN ('create_notification', 'extract_serial_number', 'get_upcoming_starlink_payments') 
+      AND pronamespace = 'public'::regnamespace
+  ) LOOP
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_signature || ' CASCADE';
+  END LOOP;
+END $$;
+
 
 
 SET statement_timeout = 0;
@@ -11,6 +25,56 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+ALTER TABLE IF EXISTS "public"."asset_types" ADD COLUMN IF NOT EXISTS "label" "text";
+ALTER TABLE IF EXISTS "public"."asset_types" ADD COLUMN IF NOT EXISTS "code" "text";
+ALTER TABLE IF EXISTS "public"."asset_types" ADD COLUMN IF NOT EXISTS "requires_serial_model" boolean DEFAULT false;
+ALTER TABLE IF EXISTS "public"."asset_types" ADD COLUMN IF NOT EXISTS "created_by" "uuid";
+ALTER TABLE IF EXISTS "public"."assets" ADD COLUMN IF NOT EXISTS "asset_model" "text";
+ALTER TABLE IF EXISTS "public"."assets" ADD COLUMN IF NOT EXISTS "notes" "text";
+ALTER TABLE IF EXISTS "public"."assets" ADD COLUMN IF NOT EXISTS "unique_code" "text";
+ALTER TABLE IF EXISTS "public"."assets" ADD COLUMN IF NOT EXISTS "acquisition_year" integer;
+ALTER TABLE IF EXISTS "public"."customers" ADD COLUMN IF NOT EXISTS "external_id" character varying(50);
+ALTER TABLE IF EXISTS "public"."customers" ADD COLUMN IF NOT EXISTS "kyc_level" character varying(20);
+ALTER TABLE IF EXISTS "public"."customers" ADD COLUMN IF NOT EXISTS "account_balance" numeric(12,2) DEFAULT 0;
+ALTER TABLE IF EXISTS "public"."customers" ADD COLUMN IF NOT EXISTS "certifi_no" "text";
+ALTER TABLE IF EXISTS "public"."customers" ADD COLUMN IF NOT EXISTS "site_id" "text";
+ALTER TABLE IF EXISTS "public"."customers" ADD COLUMN IF NOT EXISTS "certifi_name" character varying(100);
+ALTER TABLE IF EXISTS "public"."department_payments" ADD COLUMN IF NOT EXISTS "invoice_number" "text";
+ALTER TABLE IF EXISTS "public"."department_payments" ADD COLUMN IF NOT EXISTS "site_id" "uuid";
+ALTER TABLE IF EXISTS "public"."department_payments" ADD COLUMN IF NOT EXISTS "site_name" "text";
+ALTER TABLE IF EXISTS "public"."department_payments" ADD COLUMN IF NOT EXISTS "site_state" "text";
+ALTER TABLE IF EXISTS "public"."department_payments" ADD COLUMN IF NOT EXISTS "site_serial_number" "text";
+ALTER TABLE IF EXISTS "public"."event_notifications" ADD COLUMN IF NOT EXISTS "site_id" character varying(50);
+ALTER TABLE IF EXISTS "public"."gprs_tasks" ADD COLUMN IF NOT EXISTS "task_id" character varying(100);
+ALTER TABLE IF EXISTS "public"."gprs_tasks" ADD COLUMN IF NOT EXISTS "meter_id" "uuid";
+ALTER TABLE IF EXISTS "public"."gprs_tasks" ADD COLUMN IF NOT EXISTS "task_type" character varying(50);
+ALTER TABLE IF EXISTS "public"."gprs_tasks" ADD COLUMN IF NOT EXISTS "command_payload" "jsonb";
+ALTER TABLE IF EXISTS "public"."gprs_tasks" ADD COLUMN IF NOT EXISTS "status" character varying(50) DEFAULT 'pending'::character varying;
+ALTER TABLE IF EXISTS "public"."gprs_tasks" ADD COLUMN IF NOT EXISTS "result_payload" "jsonb";
+ALTER TABLE IF EXISTS "public"."gprs_tasks" ADD COLUMN IF NOT EXISTS "executed_at" timestamp with time zone;
+ALTER TABLE IF EXISTS "public"."gprs_tasks" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT "now"();
+ALTER TABLE IF EXISTS "public"."meters" ADD COLUMN IF NOT EXISTS "phase_type" character varying(20);
+ALTER TABLE IF EXISTS "public"."meters" ADD COLUMN IF NOT EXISTS "model_name" character varying(100);
+ALTER TABLE IF EXISTS "public"."meters" ADD COLUMN IF NOT EXISTS "last_communication_at" timestamp with time zone;
+ALTER TABLE IF EXISTS "public"."meters" ADD COLUMN IF NOT EXISTS "site_id" character varying(50);
+ALTER TABLE IF EXISTS "public"."payment_documents" ADD COLUMN IF NOT EXISTS "applicable_date" "date";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "other_names" "text";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "company_role" "text";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "phone_number" "text";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "additional_phone" "text";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "residential_address" "text";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "bank_name" "text";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "bank_account_number" "text";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "bank_account_name" "text";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "date_of_birth" "date";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "employment_date" "date";
+ALTER TABLE IF EXISTS "public"."profiles" ADD COLUMN IF NOT EXISTS "email_notifications" boolean DEFAULT false;
+ALTER TABLE IF EXISTS "public"."tasks" ADD COLUMN IF NOT EXISTS "project_id" "uuid";
+ALTER TABLE IF EXISTS "public"."tasks" ADD COLUMN IF NOT EXISTS "task_start_date" "date";
+ALTER TABLE IF EXISTS "public"."tasks" ADD COLUMN IF NOT EXISTS "task_end_date" "date";
+ALTER TABLE IF EXISTS "public"."token_records" ADD COLUMN IF NOT EXISTS "site_id" character varying(50);
+
 
 
 CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
@@ -61,54 +125,7 @@ CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
 
-
-
-
-
-
-CREATE TYPE "public"."employment_status" AS ENUM (
-    'active',
-    'suspended',
-    'terminated',
-    'on_leave'
-);
-
-
-ALTER TYPE "public"."employment_status" OWNER TO "postgres";
-
-
-CREATE TYPE "public"."gateway_status" AS ENUM (
-    'online',
-    'offline',
-    'maintenance'
-);
-
-
-ALTER TYPE "public"."gateway_status" OWNER TO "postgres";
-
-
-CREATE TYPE "public"."task_priority" AS ENUM (
-    'low',
-    'medium',
-    'high',
-    'critical'
-);
-
-
-ALTER TYPE "public"."task_priority" OWNER TO "postgres";
-
-
-CREATE TYPE "public"."user_role" AS ENUM (
-    'visitor',
-    'employee',
-    'lead',
-    'admin',
-    'super_admin'
-);
-
-
-ALTER TYPE "public"."user_role" OWNER TO "postgres";
-
+-- Core types already created by earlier migrations
 
 CREATE OR REPLACE FUNCTION "public"."assign_asset"("p_asset_id" "uuid", "p_assigned_to" "uuid", "p_assigned_by" "uuid", "p_assignment_notes" "text" DEFAULT NULL::"text") RETURNS "uuid"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -3056,7 +3073,7 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "bank_account_name" "text",
     "date_of_birth" "date",
     "employment_date" "date",
-    "role" "public"."user_role" DEFAULT 'employee'::"public"."user_role",
+    "role" "public"."user_role" DEFAULT 'employee'::text,
     "is_department_lead" boolean DEFAULT false,
     "lead_departments" "text"[] DEFAULT '{}'::"text"[],
     "job_description" "text",
@@ -3071,7 +3088,7 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "termination_reason" "text",
     "employee_number" "text",
     "email_notifications" boolean DEFAULT false,
-    CONSTRAINT "check_lead_has_departments" CHECK ((("role" <> 'lead'::"public"."user_role") OR (("lead_departments" IS NOT NULL) AND ("array_length"("lead_departments", 1) > 0)))),
+    CONSTRAINT "check_lead_has_departments" CHECK ((("role" <> 'lead'::text) OR (("lead_departments" IS NOT NULL) AND ("array_length"("lead_departments", 1) > 0)))),
     CONSTRAINT "profiles_employee_number_format" CHECK ((("employee_number" IS NULL) OR ("employee_number" ~ '^ACOB/[0-9]{4}/[0-9]{3}$'::"text"))),
     CONSTRAINT "profiles_office_location_check" CHECK ((("office_location" IS NULL) OR ("office_location" = ANY (ARRAY['Accounts'::"text", 'Admin & HR'::"text", 'Assistant Executive Director'::"text", 'Business, Growth and Innovation'::"text", 'General Conference Room'::"text", 'IT and Communications'::"text", 'Kitchen'::"text", 'Legal, Regulatory and Compliance'::"text", 'MD Conference Room'::"text", 'MD Office'::"text", 'Operations'::"text", 'Reception'::"text", 'Site'::"text", 'Technical'::"text", 'Technical Extension'::"text"]))))
 );
@@ -3728,553 +3745,993 @@ CREATE TABLE IF NOT EXISTS "public"."weekly_reports" (
 ALTER TABLE "public"."weekly_reports" OWNER TO "postgres";
 
 
-ALTER TABLE ONLY "public"."admin_logs"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."admin_logs"
     ADD CONSTRAINT "admin_logs_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."applications"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."applications"
     ADD CONSTRAINT "applications_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_assignments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_assignments"
     ADD CONSTRAINT "asset_assignments_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_issues"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_issues"
     ADD CONSTRAINT "asset_issues_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_types"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_types"
     ADD CONSTRAINT "asset_types_code_key" UNIQUE ("code");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_types"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_types"
     ADD CONSTRAINT "asset_types_label_key" UNIQUE ("label");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_types"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_types"
     ADD CONSTRAINT "asset_types_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."assets"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."assets"
     ADD CONSTRAINT "assets_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."assets"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."assets"
     ADD CONSTRAINT "assets_serial_number_key" UNIQUE ("serial_number");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."assets"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."assets"
     ADD CONSTRAINT "assets_unique_code_key" UNIQUE ("unique_code");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."attendance_records"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."attendance_records"
     ADD CONSTRAINT "attendance_records_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."attendance_records"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."attendance_records"
     ADD CONSTRAINT "attendance_records_user_id_date_key" UNIQUE ("user_id", "date");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."audit_logs"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."audit_logs"
     ADD CONSTRAINT "audit_logs_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."consumption_data"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."consumption_data"
     ADD CONSTRAINT "consumption_data_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_activities"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_activities"
     ADD CONSTRAINT "crm_activities_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_contacts"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_contacts"
     ADD CONSTRAINT "crm_contacts_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_opportunities"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_opportunities"
     ADD CONSTRAINT "crm_opportunities_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_pipelines"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_pipelines"
     ADD CONSTRAINT "crm_pipelines_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_tags"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_tags"
     ADD CONSTRAINT "crm_tags_name_key" UNIQUE ("name");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_tags"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_tags"
     ADD CONSTRAINT "crm_tags_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."customers"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."customers"
     ADD CONSTRAINT "customers_customer_id_key" UNIQUE ("customer_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."customers"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."customers"
     ADD CONSTRAINT "customers_external_id_key" UNIQUE ("external_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."customers"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."customers"
     ADD CONSTRAINT "customers_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."department_payments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."department_payments"
     ADD CONSTRAINT "department_payments_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."departments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."departments"
     ADD CONSTRAINT "departments_name_key" UNIQUE ("name");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."departments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."departments"
     ADD CONSTRAINT "departments_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."employee_salaries"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."employee_salaries"
     ADD CONSTRAINT "employee_salaries_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."employee_suspensions"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."employee_suspensions"
     ADD CONSTRAINT "employee_suspensions_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."event_notifications"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."event_notifications"
     ADD CONSTRAINT "event_notifications_event_id_key" UNIQUE ("event_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."event_notifications"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."event_notifications"
     ADD CONSTRAINT "event_notifications_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."feedback"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."feedback"
     ADD CONSTRAINT "feedback_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."firmware_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."firmware_tasks"
     ADD CONSTRAINT "firmware_tasks_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."firmware_updates"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."firmware_updates"
     ADD CONSTRAINT "firmware_updates_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."gateways"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."gateways"
     ADD CONSTRAINT "gateways_gateway_id_key" UNIQUE ("gateway_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."gateways"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."gateways"
     ADD CONSTRAINT "gateways_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."goals_objectives"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."goals_objectives"
     ADD CONSTRAINT "goals_objectives_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."gprs_status"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."gprs_status"
     ADD CONSTRAINT "gprs_status_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."gprs_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."gprs_tasks"
     ADD CONSTRAINT "gprs_tasks_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."gprs_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."gprs_tasks"
     ADD CONSTRAINT "gprs_tasks_task_id_key" UNIQUE ("task_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."interviews"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."interviews"
     ADD CONSTRAINT "interviews_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."job_postings"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."job_postings"
     ADD CONSTRAINT "job_postings_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_approvals"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_approvals"
     ADD CONSTRAINT "leave_approvals_leave_request_id_approver_id_approval_level_key" UNIQUE ("leave_request_id", "approver_id", "approval_level");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_approvals"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_approvals"
     ADD CONSTRAINT "leave_approvals_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_balances"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_balances"
     ADD CONSTRAINT "leave_balances_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_balances"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_balances"
     ADD CONSTRAINT "leave_balances_user_id_leave_type_id_year_key" UNIQUE ("user_id", "leave_type_id", "year");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_requests"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_requests"
     ADD CONSTRAINT "leave_requests_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_types"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_types"
     ADD CONSTRAINT "leave_types_code_key" UNIQUE ("code");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_types"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_types"
     ADD CONSTRAINT "leave_types_name_key" UNIQUE ("name");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_types"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_types"
     ADD CONSTRAINT "leave_types_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."meter_readings"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."meter_readings"
     ADD CONSTRAINT "meter_readings_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."meters"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."meters"
     ADD CONSTRAINT "meters_meter_id_key" UNIQUE ("meter_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."meters"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."meters"
     ADD CONSTRAINT "meters_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."notification_preferences"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."notification_preferences"
     ADD CONSTRAINT "notification_preferences_pkey" PRIMARY KEY ("user_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."notifications"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."notifications"
     ADD CONSTRAINT "notifications_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."offers"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."offers"
     ADD CONSTRAINT "offers_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."office_locations"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."office_locations"
     ADD CONSTRAINT "office_locations_name_key" UNIQUE ("name");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."office_locations"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."office_locations"
     ADD CONSTRAINT "office_locations_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."overtime_requests"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."overtime_requests"
     ADD CONSTRAINT "overtime_requests_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payment_categories"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payment_categories"
     ADD CONSTRAINT "payment_categories_name_key" UNIQUE ("name");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payment_categories"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payment_categories"
     ADD CONSTRAINT "payment_categories_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payment_documents"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payment_documents"
     ADD CONSTRAINT "payment_documents_file_path_key" UNIQUE ("file_path");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payment_documents"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payment_documents"
     ADD CONSTRAINT "payment_documents_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payroll_entries"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payroll_entries"
     ADD CONSTRAINT "payroll_entries_payroll_period_id_user_id_key" UNIQUE ("payroll_period_id", "user_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payroll_entries"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payroll_entries"
     ADD CONSTRAINT "payroll_entries_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payroll_periods"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payroll_periods"
     ADD CONSTRAINT "payroll_periods_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payroll_periods"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payroll_periods"
     ADD CONSTRAINT "payroll_periods_start_date_end_date_key" UNIQUE ("start_date", "end_date");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payslips"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payslips"
     ADD CONSTRAINT "payslips_payslip_number_key" UNIQUE ("payslip_number");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payslips"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payslips"
     ADD CONSTRAINT "payslips_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."pending_users"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."pending_users"
     ADD CONSTRAINT "pending_users_email_key" UNIQUE ("email");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."pending_users"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."pending_users"
     ADD CONSTRAINT "pending_users_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."performance_ratings"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."performance_ratings"
     ADD CONSTRAINT "performance_ratings_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."performance_reviews"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."performance_reviews"
     ADD CONSTRAINT "performance_reviews_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."performance_reviews"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."performance_reviews"
     ADD CONSTRAINT "performance_reviews_user_id_review_cycle_id_reviewer_id_key" UNIQUE ("user_id", "review_cycle_id", "reviewer_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."profiles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_employee_number_key" UNIQUE ("employee_number");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."profiles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_items"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_items"
     ADD CONSTRAINT "project_items_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_members"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_members"
     ADD CONSTRAINT "project_members_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_members"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_members"
     ADD CONSTRAINT "project_members_project_id_user_id_is_active_key" UNIQUE ("project_id", "user_id", "is_active");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_updates"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_updates"
     ADD CONSTRAINT "project_updates_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."projects"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."projects"
     ADD CONSTRAINT "projects_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."remote_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."remote_tasks"
     ADD CONSTRAINT "remote_tasks_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."remote_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."remote_tasks"
     ADD CONSTRAINT "remote_tasks_task_id_key" UNIQUE ("task_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."review_cycles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."review_cycles"
     ADD CONSTRAINT "review_cycles_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."roles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."roles"
     ADD CONSTRAINT "roles_name_key" UNIQUE ("name");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."roles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."roles"
     ADD CONSTRAINT "roles_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."salary_components"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."salary_components"
     ADD CONSTRAINT "salary_components_code_key" UNIQUE ("code");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."salary_components"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."salary_components"
     ADD CONSTRAINT "salary_components_name_key" UNIQUE ("name");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."salary_components"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."salary_components"
     ADD CONSTRAINT "salary_components_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."salary_structures"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."salary_structures"
     ADD CONSTRAINT "salary_structures_employee_salary_id_salary_component_id_key" UNIQUE ("employee_salary_id", "salary_component_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."salary_structures"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."salary_structures"
     ADD CONSTRAINT "salary_structures_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."shifts"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."shifts"
     ADD CONSTRAINT "shifts_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_documents"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_documents"
     ADD CONSTRAINT "starlink_documents_file_path_unique" UNIQUE ("file_path");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_documents"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_documents"
     ADD CONSTRAINT "starlink_documents_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_payments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_payments"
     ADD CONSTRAINT "starlink_payments_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_payments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_payments"
     ADD CONSTRAINT "starlink_payments_unique_invoice" UNIQUE ("site_id", "invoice_number");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_sites"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_sites"
     ADD CONSTRAINT "starlink_sites_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_sites"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_sites"
     ADD CONSTRAINT "starlink_sites_serial_number_key" UNIQUE ("serial_number");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."sync_state"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."sync_state"
     ADD CONSTRAINT "sync_state_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."system_settings"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."system_settings"
     ADD CONSTRAINT "system_settings_pkey" PRIMARY KEY ("key");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."tariffs"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."tariffs"
     ADD CONSTRAINT "tariffs_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."tariffs"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."tariffs"
     ADD CONSTRAINT "tariffs_tariff_id_key" UNIQUE ("tariff_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_assignments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_assignments"
     ADD CONSTRAINT "task_assignments_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_assignments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_assignments"
     ADD CONSTRAINT "task_assignments_task_id_user_id_key" UNIQUE ("task_id", "user_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_updates"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_updates"
     ADD CONSTRAINT "task_updates_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_user_completion"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_user_completion"
     ADD CONSTRAINT "task_user_completion_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_user_completion"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_user_completion"
     ADD CONSTRAINT "task_user_completion_task_id_user_id_key" UNIQUE ("task_id", "user_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."tasks"
     ADD CONSTRAINT "tasks_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."timesheets"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."timesheets"
     ADD CONSTRAINT "timesheets_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."timesheets"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."timesheets"
     ADD CONSTRAINT "timesheets_user_id_week_start_date_key" UNIQUE ("user_id", "week_start_date");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."token_records"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."token_records"
     ADD CONSTRAINT "token_records_odyssey_token_id_key" UNIQUE ("odyssey_token_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
@@ -4282,902 +4739,930 @@ COMMENT ON CONSTRAINT "token_records_odyssey_token_id_key" ON "public"."token_re
 
 
 
-ALTER TABLE ONLY "public"."token_records"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."token_records"
     ADD CONSTRAINT "token_records_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."token_sales"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."token_sales"
     ADD CONSTRAINT "token_sales_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."user_documentation"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."user_documentation"
     ADD CONSTRAINT "user_documentation_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."user_roles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."user_roles"
     ADD CONSTRAINT "user_roles_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."user_roles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."user_roles"
     ADD CONSTRAINT "user_roles_user_id_key" UNIQUE ("user_id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."weekly_reports"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."weekly_reports"
     ADD CONSTRAINT "weekly_reports_department_week_number_year_key" UNIQUE ("department", "week_number", "year");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."weekly_reports"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."weekly_reports"
     ADD CONSTRAINT "weekly_reports_pkey" PRIMARY KEY ("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-CREATE INDEX "idx_admin_logs_admin_id" ON "public"."admin_logs" USING "btree" ("admin_id");
+CREATE INDEX IF NOT EXISTS "idx_admin_logs_admin_id" ON "public"."admin_logs" USING "btree" ("admin_id");
 
 
 
-CREATE INDEX "idx_admin_logs_target_user_id" ON "public"."admin_logs" USING "btree" ("target_user_id");
+CREATE INDEX IF NOT EXISTS "idx_admin_logs_target_user_id" ON "public"."admin_logs" USING "btree" ("target_user_id");
 
 
 
-CREATE INDEX "idx_applications_job" ON "public"."applications" USING "btree" ("job_posting_id");
+CREATE INDEX IF NOT EXISTS "idx_applications_job" ON "public"."applications" USING "btree" ("job_posting_id");
 
 
 
-CREATE INDEX "idx_applications_status" ON "public"."applications" USING "btree" ("status");
+CREATE INDEX IF NOT EXISTS "idx_applications_status" ON "public"."applications" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_asset_assignments_asset_id" ON "public"."asset_assignments" USING "btree" ("asset_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_assignments_asset_id" ON "public"."asset_assignments" USING "btree" ("asset_id");
 
 
 
-CREATE INDEX "idx_asset_assignments_assigned_by" ON "public"."asset_assignments" USING "btree" ("assigned_by");
+CREATE INDEX IF NOT EXISTS "idx_asset_assignments_assigned_by" ON "public"."asset_assignments" USING "btree" ("assigned_by");
 
 
 
-CREATE INDEX "idx_asset_assignments_assigned_from" ON "public"."asset_assignments" USING "btree" ("assigned_from");
+CREATE INDEX IF NOT EXISTS "idx_asset_assignments_assigned_from" ON "public"."asset_assignments" USING "btree" ("assigned_from");
 
 
 
-CREATE INDEX "idx_asset_assignments_assigned_to" ON "public"."asset_assignments" USING "btree" ("assigned_to");
+CREATE INDEX IF NOT EXISTS "idx_asset_assignments_assigned_to" ON "public"."asset_assignments" USING "btree" ("assigned_to");
 
 
 
-CREATE INDEX "idx_asset_assignments_department" ON "public"."asset_assignments" USING "btree" ("department");
+CREATE INDEX IF NOT EXISTS "idx_asset_assignments_department" ON "public"."asset_assignments" USING "btree" ("department");
 
 
 
-CREATE INDEX "idx_asset_assignments_is_current" ON "public"."asset_assignments" USING "btree" ("is_current");
+CREATE INDEX IF NOT EXISTS "idx_asset_assignments_is_current" ON "public"."asset_assignments" USING "btree" ("is_current");
 
 
 
-CREATE INDEX "idx_asset_assignments_office_location" ON "public"."asset_assignments" USING "btree" ("office_location");
+CREATE INDEX IF NOT EXISTS "idx_asset_assignments_office_location" ON "public"."asset_assignments" USING "btree" ("office_location");
 
 
 
-CREATE INDEX "idx_asset_issues_asset_id" ON "public"."asset_issues" USING "btree" ("asset_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_issues_asset_id" ON "public"."asset_issues" USING "btree" ("asset_id");
 
 
 
-CREATE INDEX "idx_asset_issues_created_at" ON "public"."asset_issues" USING "btree" ("created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_asset_issues_created_at" ON "public"."asset_issues" USING "btree" ("created_at" DESC);
 
 
 
-CREATE INDEX "idx_asset_issues_created_by" ON "public"."asset_issues" USING "btree" ("created_by");
+CREATE INDEX IF NOT EXISTS "idx_asset_issues_created_by" ON "public"."asset_issues" USING "btree" ("created_by");
 
 
 
-CREATE INDEX "idx_asset_issues_resolved" ON "public"."asset_issues" USING "btree" ("resolved");
+CREATE INDEX IF NOT EXISTS "idx_asset_issues_resolved" ON "public"."asset_issues" USING "btree" ("resolved");
 
 
 
-CREATE INDEX "idx_asset_issues_resolved_by" ON "public"."asset_issues" USING "btree" ("resolved_by");
+CREATE INDEX IF NOT EXISTS "idx_asset_issues_resolved_by" ON "public"."asset_issues" USING "btree" ("resolved_by");
 
 
 
-CREATE INDEX "idx_asset_types_code" ON "public"."asset_types" USING "btree" ("code");
+CREATE INDEX IF NOT EXISTS "idx_asset_types_code" ON "public"."asset_types" USING "btree" ("code");
 
 
 
-CREATE INDEX "idx_asset_types_created_by" ON "public"."asset_types" USING "btree" ("created_by");
+CREATE INDEX IF NOT EXISTS "idx_asset_types_created_by" ON "public"."asset_types" USING "btree" ("created_by");
 
 
 
-CREATE INDEX "idx_asset_types_label" ON "public"."asset_types" USING "btree" ("label");
+CREATE INDEX IF NOT EXISTS "idx_asset_types_label" ON "public"."asset_types" USING "btree" ("label");
 
 
 
-CREATE INDEX "idx_assets_acquisition_year" ON "public"."assets" USING "btree" ("acquisition_year");
+CREATE INDEX IF NOT EXISTS "idx_assets_acquisition_year" ON "public"."assets" USING "btree" ("acquisition_year");
 
 
 
-CREATE INDEX "idx_assets_assignment_type" ON "public"."assets" USING "btree" ("assignment_type");
+CREATE INDEX IF NOT EXISTS "idx_assets_assignment_type" ON "public"."assets" USING "btree" ("assignment_type");
 
 
 
-CREATE INDEX "idx_assets_created_by" ON "public"."assets" USING "btree" ("created_by");
+CREATE INDEX IF NOT EXISTS "idx_assets_created_by" ON "public"."assets" USING "btree" ("created_by");
 
 
 
-CREATE INDEX "idx_assets_department" ON "public"."assets" USING "btree" ("department");
+CREATE INDEX IF NOT EXISTS "idx_assets_department" ON "public"."assets" USING "btree" ("department");
 
 
 
-CREATE INDEX "idx_assets_office_location" ON "public"."assets" USING "btree" ("office_location");
+CREATE INDEX IF NOT EXISTS "idx_assets_office_location" ON "public"."assets" USING "btree" ("office_location");
 
 
 
-CREATE INDEX "idx_assets_status" ON "public"."assets" USING "btree" ("status");
+CREATE INDEX IF NOT EXISTS "idx_assets_status" ON "public"."assets" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_assets_type" ON "public"."assets" USING "btree" ("asset_type");
+CREATE INDEX IF NOT EXISTS "idx_assets_type" ON "public"."assets" USING "btree" ("asset_type");
 
 
 
-CREATE INDEX "idx_assets_unique_code" ON "public"."assets" USING "btree" ("unique_code");
+CREATE INDEX IF NOT EXISTS "idx_assets_unique_code" ON "public"."assets" USING "btree" ("unique_code");
 
 
 
-CREATE INDEX "idx_attendance_records_shift_id" ON "public"."attendance_records" USING "btree" ("shift_id");
+CREATE INDEX IF NOT EXISTS "idx_attendance_records_shift_id" ON "public"."attendance_records" USING "btree" ("shift_id");
 
 
 
-CREATE INDEX "idx_attendance_user_date" ON "public"."attendance_records" USING "btree" ("user_id", "date");
+CREATE INDEX IF NOT EXISTS "idx_attendance_user_date" ON "public"."attendance_records" USING "btree" ("user_id", "date");
 
 
 
-CREATE INDEX "idx_audit_logs_action" ON "public"."audit_logs" USING "btree" ("action");
+CREATE INDEX IF NOT EXISTS "idx_audit_logs_action" ON "public"."audit_logs" USING "btree" ("action");
 
 
 
-CREATE INDEX "idx_audit_logs_created_at" ON "public"."audit_logs" USING "btree" ("created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_audit_logs_created_at" ON "public"."audit_logs" USING "btree" ("created_at" DESC);
 
 
 
-CREATE INDEX "idx_audit_logs_dashboard" ON "public"."audit_logs" USING "btree" ("created_at" DESC, "entity_type", "action");
+CREATE INDEX IF NOT EXISTS "idx_audit_logs_dashboard" ON "public"."audit_logs" USING "btree" ("created_at" DESC, "entity_type", "action");
 
 
 
-CREATE INDEX "idx_audit_logs_department" ON "public"."audit_logs" USING "btree" ("department");
+CREATE INDEX IF NOT EXISTS "idx_audit_logs_department" ON "public"."audit_logs" USING "btree" ("department");
 
 
 
-CREATE INDEX "idx_audit_logs_entity_type" ON "public"."audit_logs" USING "btree" ("entity_type");
+CREATE INDEX IF NOT EXISTS "idx_audit_logs_entity_type" ON "public"."audit_logs" USING "btree" ("entity_type");
 
 
 
-CREATE INDEX "idx_audit_logs_operation" ON "public"."audit_logs" USING "btree" ("operation");
+CREATE INDEX IF NOT EXISTS "idx_audit_logs_operation" ON "public"."audit_logs" USING "btree" ("operation");
 
 
 
-CREATE INDEX "idx_audit_logs_user_id" ON "public"."audit_logs" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_audit_logs_user_id" ON "public"."audit_logs" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_consumption_data_meter_id" ON "public"."consumption_data" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_consumption_data_meter_id" ON "public"."consumption_data" USING "btree" ("meter_id");
 
 
 
-CREATE INDEX "idx_consumption_data_reading_date" ON "public"."consumption_data" USING "btree" ("reading_date" DESC);
+CREATE INDEX IF NOT EXISTS "idx_consumption_data_reading_date" ON "public"."consumption_data" USING "btree" ("reading_date" DESC);
 
 
 
-CREATE INDEX "idx_crm_activities_assigned_to" ON "public"."crm_activities" USING "btree" ("assigned_to");
+CREATE INDEX IF NOT EXISTS "idx_crm_activities_assigned_to" ON "public"."crm_activities" USING "btree" ("assigned_to");
 
 
 
-CREATE INDEX "idx_crm_activities_completed" ON "public"."crm_activities" USING "btree" ("completed");
+CREATE INDEX IF NOT EXISTS "idx_crm_activities_completed" ON "public"."crm_activities" USING "btree" ("completed");
 
 
 
-CREATE INDEX "idx_crm_activities_contact_id" ON "public"."crm_activities" USING "btree" ("contact_id");
+CREATE INDEX IF NOT EXISTS "idx_crm_activities_contact_id" ON "public"."crm_activities" USING "btree" ("contact_id");
 
 
 
-CREATE INDEX "idx_crm_activities_due_date" ON "public"."crm_activities" USING "btree" ("due_date");
+CREATE INDEX IF NOT EXISTS "idx_crm_activities_due_date" ON "public"."crm_activities" USING "btree" ("due_date");
 
 
 
-CREATE INDEX "idx_crm_activities_opportunity_id" ON "public"."crm_activities" USING "btree" ("opportunity_id");
+CREATE INDEX IF NOT EXISTS "idx_crm_activities_opportunity_id" ON "public"."crm_activities" USING "btree" ("opportunity_id");
 
 
 
-CREATE INDEX "idx_crm_activities_type" ON "public"."crm_activities" USING "btree" ("type");
+CREATE INDEX IF NOT EXISTS "idx_crm_activities_type" ON "public"."crm_activities" USING "btree" ("type");
 
 
 
-CREATE INDEX "idx_crm_contacts_assigned_to" ON "public"."crm_contacts" USING "btree" ("assigned_to");
+CREATE INDEX IF NOT EXISTS "idx_crm_contacts_assigned_to" ON "public"."crm_contacts" USING "btree" ("assigned_to");
 
 
 
-CREATE INDEX "idx_crm_contacts_created_at" ON "public"."crm_contacts" USING "btree" ("created_at");
+CREATE INDEX IF NOT EXISTS "idx_crm_contacts_created_at" ON "public"."crm_contacts" USING "btree" ("created_at");
 
 
 
-CREATE INDEX "idx_crm_contacts_meter_customer_id" ON "public"."crm_contacts" USING "btree" ("meter_customer_id");
+CREATE INDEX IF NOT EXISTS "idx_crm_contacts_meter_customer_id" ON "public"."crm_contacts" USING "btree" ("meter_customer_id");
 
 
 
-CREATE INDEX "idx_crm_contacts_pipeline_id" ON "public"."crm_contacts" USING "btree" ("pipeline_id");
+CREATE INDEX IF NOT EXISTS "idx_crm_contacts_pipeline_id" ON "public"."crm_contacts" USING "btree" ("pipeline_id");
 
 
 
-CREATE INDEX "idx_crm_contacts_stage" ON "public"."crm_contacts" USING "btree" ("stage");
+CREATE INDEX IF NOT EXISTS "idx_crm_contacts_stage" ON "public"."crm_contacts" USING "btree" ("stage");
 
 
 
-CREATE INDEX "idx_crm_contacts_tags" ON "public"."crm_contacts" USING "gin" ("tags");
+CREATE INDEX IF NOT EXISTS "idx_crm_contacts_tags" ON "public"."crm_contacts" USING "gin" ("tags");
 
 
 
-CREATE INDEX "idx_crm_contacts_type" ON "public"."crm_contacts" USING "btree" ("type");
+CREATE INDEX IF NOT EXISTS "idx_crm_contacts_type" ON "public"."crm_contacts" USING "btree" ("type");
 
 
 
-CREATE INDEX "idx_crm_opportunities_assigned_to" ON "public"."crm_opportunities" USING "btree" ("assigned_to");
+CREATE INDEX IF NOT EXISTS "idx_crm_opportunities_assigned_to" ON "public"."crm_opportunities" USING "btree" ("assigned_to");
 
 
 
-CREATE INDEX "idx_crm_opportunities_contact_id" ON "public"."crm_opportunities" USING "btree" ("contact_id");
+CREATE INDEX IF NOT EXISTS "idx_crm_opportunities_contact_id" ON "public"."crm_opportunities" USING "btree" ("contact_id");
 
 
 
-CREATE INDEX "idx_crm_opportunities_created_at" ON "public"."crm_opportunities" USING "btree" ("created_at");
+CREATE INDEX IF NOT EXISTS "idx_crm_opportunities_created_at" ON "public"."crm_opportunities" USING "btree" ("created_at");
 
 
 
-CREATE INDEX "idx_crm_opportunities_pipeline_id" ON "public"."crm_opportunities" USING "btree" ("pipeline_id");
+CREATE INDEX IF NOT EXISTS "idx_crm_opportunities_pipeline_id" ON "public"."crm_opportunities" USING "btree" ("pipeline_id");
 
 
 
-CREATE INDEX "idx_crm_opportunities_stage" ON "public"."crm_opportunities" USING "btree" ("stage");
+CREATE INDEX IF NOT EXISTS "idx_crm_opportunities_stage" ON "public"."crm_opportunities" USING "btree" ("stage");
 
 
 
-CREATE INDEX "idx_crm_opportunities_status" ON "public"."crm_opportunities" USING "btree" ("status");
+CREATE INDEX IF NOT EXISTS "idx_crm_opportunities_status" ON "public"."crm_opportunities" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_customers_crm_contact_id" ON "public"."customers" USING "btree" ("crm_contact_id");
+CREATE INDEX IF NOT EXISTS "idx_customers_crm_contact_id" ON "public"."customers" USING "btree" ("crm_contact_id");
 
 
 
-CREATE INDEX "idx_customers_customer_id" ON "public"."customers" USING "btree" ("customer_id");
+CREATE INDEX IF NOT EXISTS "idx_customers_customer_id" ON "public"."customers" USING "btree" ("customer_id");
 
 
 
-CREATE INDEX "idx_customers_email" ON "public"."customers" USING "btree" ("email");
+CREATE INDEX IF NOT EXISTS "idx_customers_email" ON "public"."customers" USING "btree" ("email");
 
 
 
-CREATE INDEX "idx_customers_site_id" ON "public"."customers" USING "btree" ("site_id");
+CREATE INDEX IF NOT EXISTS "idx_customers_site_id" ON "public"."customers" USING "btree" ("site_id");
 
 
 
-CREATE INDEX "idx_department_payments_invoice_number" ON "public"."department_payments" USING "btree" ("invoice_number");
+CREATE INDEX IF NOT EXISTS "idx_department_payments_invoice_number" ON "public"."department_payments" USING "btree" ("invoice_number");
 
 
 
-CREATE INDEX "idx_department_payments_site_id" ON "public"."department_payments" USING "btree" ("site_id");
+CREATE INDEX IF NOT EXISTS "idx_department_payments_site_id" ON "public"."department_payments" USING "btree" ("site_id");
 
 
 
-CREATE INDEX "idx_departments_active" ON "public"."departments" USING "btree" ("is_active");
+CREATE INDEX IF NOT EXISTS "idx_departments_active" ON "public"."departments" USING "btree" ("is_active");
 
 
 
-CREATE INDEX "idx_departments_head_id" ON "public"."departments" USING "btree" ("department_head_id");
+CREATE INDEX IF NOT EXISTS "idx_departments_head_id" ON "public"."departments" USING "btree" ("department_head_id");
 
 
 
-CREATE INDEX "idx_departments_name" ON "public"."departments" USING "btree" ("name");
+CREATE INDEX IF NOT EXISTS "idx_departments_name" ON "public"."departments" USING "btree" ("name");
 
 
 
-CREATE INDEX "idx_dept_payments_category" ON "public"."department_payments" USING "btree" ("category");
+CREATE INDEX IF NOT EXISTS "idx_dept_payments_category" ON "public"."department_payments" USING "btree" ("category");
 
 
 
-CREATE INDEX "idx_dept_payments_created_by" ON "public"."department_payments" USING "btree" ("created_by");
+CREATE INDEX IF NOT EXISTS "idx_dept_payments_created_by" ON "public"."department_payments" USING "btree" ("created_by");
 
 
 
-CREATE INDEX "idx_dept_payments_department" ON "public"."department_payments" USING "btree" ("department_id");
+CREATE INDEX IF NOT EXISTS "idx_dept_payments_department" ON "public"."department_payments" USING "btree" ("department_id");
 
 
 
-CREATE INDEX "idx_dept_payments_next_due" ON "public"."department_payments" USING "btree" ("next_payment_due");
+CREATE INDEX IF NOT EXISTS "idx_dept_payments_next_due" ON "public"."department_payments" USING "btree" ("next_payment_due");
 
 
 
-CREATE INDEX "idx_dept_payments_status" ON "public"."department_payments" USING "btree" ("status");
+CREATE INDEX IF NOT EXISTS "idx_dept_payments_status" ON "public"."department_payments" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_dept_payments_type" ON "public"."department_payments" USING "btree" ("payment_type");
+CREATE INDEX IF NOT EXISTS "idx_dept_payments_type" ON "public"."department_payments" USING "btree" ("payment_type");
 
 
 
-CREATE INDEX "idx_employee_salaries_user_id" ON "public"."employee_salaries" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_employee_salaries_user_id" ON "public"."employee_salaries" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_employee_suspensions_employee_id" ON "public"."employee_suspensions" USING "btree" ("employee_id");
+CREATE INDEX IF NOT EXISTS "idx_employee_suspensions_employee_id" ON "public"."employee_suspensions" USING "btree" ("employee_id");
 
 
 
-CREATE INDEX "idx_employee_suspensions_is_active" ON "public"."employee_suspensions" USING "btree" ("is_active");
+CREATE INDEX IF NOT EXISTS "idx_employee_suspensions_is_active" ON "public"."employee_suspensions" USING "btree" ("is_active");
 
 
 
-CREATE INDEX "idx_employee_suspensions_lifted_by" ON "public"."employee_suspensions" USING "btree" ("lifted_by");
+CREATE INDEX IF NOT EXISTS "idx_employee_suspensions_lifted_by" ON "public"."employee_suspensions" USING "btree" ("lifted_by");
 
 
 
-CREATE INDEX "idx_employee_suspensions_suspended_by" ON "public"."employee_suspensions" USING "btree" ("suspended_by");
+CREATE INDEX IF NOT EXISTS "idx_employee_suspensions_suspended_by" ON "public"."employee_suspensions" USING "btree" ("suspended_by");
 
 
 
-CREATE INDEX "idx_event_notifications_acknowledged_by" ON "public"."event_notifications" USING "btree" ("acknowledged_by");
+CREATE INDEX IF NOT EXISTS "idx_event_notifications_acknowledged_by" ON "public"."event_notifications" USING "btree" ("acknowledged_by");
 
 
 
-CREATE INDEX "idx_event_notifications_site_id" ON "public"."event_notifications" USING "btree" ("site_id");
+CREATE INDEX IF NOT EXISTS "idx_event_notifications_site_id" ON "public"."event_notifications" USING "btree" ("site_id");
 
 
 
-CREATE INDEX "idx_events_acknowledged" ON "public"."event_notifications" USING "btree" ("acknowledged");
+CREATE INDEX IF NOT EXISTS "idx_events_acknowledged" ON "public"."event_notifications" USING "btree" ("acknowledged");
 
 
 
-CREATE INDEX "idx_events_meter_id" ON "public"."event_notifications" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_events_meter_id" ON "public"."event_notifications" USING "btree" ("meter_id");
 
 
 
-CREATE INDEX "idx_events_severity" ON "public"."event_notifications" USING "btree" ("severity");
+CREATE INDEX IF NOT EXISTS "idx_events_severity" ON "public"."event_notifications" USING "btree" ("severity");
 
 
 
-CREATE INDEX "idx_events_timestamp" ON "public"."event_notifications" USING "btree" ("timestamp" DESC);
+CREATE INDEX IF NOT EXISTS "idx_events_timestamp" ON "public"."event_notifications" USING "btree" ("timestamp" DESC);
 
 
 
-CREATE INDEX "idx_feedback_user_id" ON "public"."feedback" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_feedback_user_id" ON "public"."feedback" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_firmware_tasks_firmware_id" ON "public"."firmware_tasks" USING "btree" ("firmware_id");
+CREATE INDEX IF NOT EXISTS "idx_firmware_tasks_firmware_id" ON "public"."firmware_tasks" USING "btree" ("firmware_id");
 
 
 
-CREATE INDEX "idx_firmware_tasks_meter_id" ON "public"."firmware_tasks" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_firmware_tasks_meter_id" ON "public"."firmware_tasks" USING "btree" ("meter_id");
 
 
 
-CREATE INDEX "idx_goals_objectives_cycle_id" ON "public"."goals_objectives" USING "btree" ("review_cycle_id");
+CREATE INDEX IF NOT EXISTS "idx_goals_objectives_cycle_id" ON "public"."goals_objectives" USING "btree" ("review_cycle_id");
 
 
 
-CREATE INDEX "idx_goals_objectives_user_id" ON "public"."goals_objectives" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_goals_objectives_user_id" ON "public"."goals_objectives" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_gprs_status_last_seen" ON "public"."gprs_status" USING "btree" ("last_seen" DESC);
+CREATE INDEX IF NOT EXISTS "idx_gprs_status_last_seen" ON "public"."gprs_status" USING "btree" ("last_seen" DESC);
 
 
 
-CREATE INDEX "idx_gprs_status_meter_id" ON "public"."gprs_status" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_gprs_status_meter_id" ON "public"."gprs_status" USING "btree" ("meter_id");
 
 
 
-CREATE INDEX "idx_gprs_status_online" ON "public"."gprs_status" USING "btree" ("is_online");
+CREATE INDEX IF NOT EXISTS "idx_gprs_status_online" ON "public"."gprs_status" USING "btree" ("is_online");
 
 
 
-CREATE INDEX "idx_gprs_tasks_meter_id" ON "public"."gprs_tasks" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_gprs_tasks_meter_id" ON "public"."gprs_tasks" USING "btree" ("meter_id");
 
 
 
-CREATE INDEX "idx_interviews_app_id" ON "public"."interviews" USING "btree" ("application_id");
+CREATE INDEX IF NOT EXISTS "idx_interviews_app_id" ON "public"."interviews" USING "btree" ("application_id");
 
 
 
-CREATE INDEX "idx_interviews_interviewer_id" ON "public"."interviews" USING "btree" ("interviewer_id");
+CREATE INDEX IF NOT EXISTS "idx_interviews_interviewer_id" ON "public"."interviews" USING "btree" ("interviewer_id");
 
 
 
-CREATE INDEX "idx_job_postings_posted_by" ON "public"."job_postings" USING "btree" ("posted_by");
+CREATE INDEX IF NOT EXISTS "idx_job_postings_posted_by" ON "public"."job_postings" USING "btree" ("posted_by");
 
 
 
-CREATE INDEX "idx_leave_approvals_appr_id" ON "public"."leave_approvals" USING "btree" ("approver_id");
+CREATE INDEX IF NOT EXISTS "idx_leave_approvals_appr_id" ON "public"."leave_approvals" USING "btree" ("approver_id");
 
 
 
-CREATE INDEX "idx_leave_balances_type_id" ON "public"."leave_balances" USING "btree" ("leave_type_id");
+CREATE INDEX IF NOT EXISTS "idx_leave_balances_type_id" ON "public"."leave_balances" USING "btree" ("leave_type_id");
 
 
 
-CREATE INDEX "idx_leave_requests_approved_by" ON "public"."leave_requests" USING "btree" ("approved_by");
+CREATE INDEX IF NOT EXISTS "idx_leave_requests_approved_by" ON "public"."leave_requests" USING "btree" ("approved_by");
 
 
 
-CREATE INDEX "idx_leave_requests_status" ON "public"."leave_requests" USING "btree" ("status");
+CREATE INDEX IF NOT EXISTS "idx_leave_requests_status" ON "public"."leave_requests" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_leave_requests_type_id" ON "public"."leave_requests" USING "btree" ("leave_type_id");
+CREATE INDEX IF NOT EXISTS "idx_leave_requests_type_id" ON "public"."leave_requests" USING "btree" ("leave_type_id");
 
 
 
-CREATE INDEX "idx_leave_requests_user" ON "public"."leave_requests" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_leave_requests_user" ON "public"."leave_requests" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_meter_readings_meter_id" ON "public"."meter_readings" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_meter_readings_meter_id" ON "public"."meter_readings" USING "btree" ("meter_id");
 
 
 
-CREATE INDEX "idx_meter_readings_meter_time" ON "public"."meter_readings" USING "btree" ("meter_id", "timestamp" DESC);
+CREATE INDEX IF NOT EXISTS "idx_meter_readings_meter_time" ON "public"."meter_readings" USING "btree" ("meter_id", "timestamp" DESC);
 
 
 
-CREATE UNIQUE INDEX "idx_meter_readings_odyssey_unique" ON "public"."meter_readings" USING "btree" ("odyssey_meter_id", "timestamp", "site_id") WHERE ("odyssey_meter_id" IS NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_meter_readings_odyssey_unique" ON "public"."meter_readings" USING "btree" ("odyssey_meter_id", "timestamp", "site_id") WHERE ("odyssey_meter_id" IS NOT NULL);
 
 
 
-CREATE INDEX "idx_meter_readings_site_id" ON "public"."meter_readings" USING "btree" ("site_id");
+CREATE INDEX IF NOT EXISTS "idx_meter_readings_site_id" ON "public"."meter_readings" USING "btree" ("site_id");
 
 
 
-CREATE INDEX "idx_meter_readings_timestamp" ON "public"."meter_readings" USING "btree" ("timestamp" DESC);
+CREATE INDEX IF NOT EXISTS "idx_meter_readings_timestamp" ON "public"."meter_readings" USING "btree" ("timestamp" DESC);
 
 
 
-CREATE INDEX "idx_meter_readings_type" ON "public"."meter_readings" USING "btree" ("reading_type");
+CREATE INDEX IF NOT EXISTS "idx_meter_readings_type" ON "public"."meter_readings" USING "btree" ("reading_type");
 
 
 
-CREATE INDEX "idx_meters_customer_id" ON "public"."meters" USING "btree" ("customer_id");
+CREATE INDEX IF NOT EXISTS "idx_meters_customer_id" ON "public"."meters" USING "btree" ("customer_id");
 
 
 
-CREATE INDEX "idx_meters_gateway_id" ON "public"."meters" USING "btree" ("gateway_id");
+CREATE INDEX IF NOT EXISTS "idx_meters_gateway_id" ON "public"."meters" USING "btree" ("gateway_id");
 
 
 
-CREATE INDEX "idx_meters_meter_id" ON "public"."meters" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_meters_meter_id" ON "public"."meters" USING "btree" ("meter_id");
 
 
 
-CREATE INDEX "idx_meters_odyssey_id" ON "public"."meters" USING "btree" ("odyssey_meter_id");
+CREATE INDEX IF NOT EXISTS "idx_meters_odyssey_id" ON "public"."meters" USING "btree" ("odyssey_meter_id");
 
 
 
-CREATE INDEX "idx_meters_site_id" ON "public"."meters" USING "btree" ("site_id");
+CREATE INDEX IF NOT EXISTS "idx_meters_site_id" ON "public"."meters" USING "btree" ("site_id");
 
 
 
-CREATE INDEX "idx_meters_status" ON "public"."meters" USING "btree" ("status");
+CREATE INDEX IF NOT EXISTS "idx_meters_status" ON "public"."meters" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_meters_tariff_id" ON "public"."meters" USING "btree" ("tariff_id");
+CREATE INDEX IF NOT EXISTS "idx_meters_tariff_id" ON "public"."meters" USING "btree" ("tariff_id");
 
 
 
-CREATE INDEX "idx_notifications_created_at" ON "public"."notifications" USING "btree" ("created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_notifications_created_at" ON "public"."notifications" USING "btree" ("created_at" DESC);
 
 
 
-CREATE INDEX "idx_notifications_priority" ON "public"."notifications" USING "btree" ("priority");
+CREATE INDEX IF NOT EXISTS "idx_notifications_priority" ON "public"."notifications" USING "btree" ("priority");
 
 
 
-CREATE INDEX "idx_notifications_read" ON "public"."notifications" USING "btree" ("read");
+CREATE INDEX IF NOT EXISTS "idx_notifications_read" ON "public"."notifications" USING "btree" ("read");
 
 
 
-CREATE INDEX "idx_notifications_type" ON "public"."notifications" USING "btree" ("type");
+CREATE INDEX IF NOT EXISTS "idx_notifications_type" ON "public"."notifications" USING "btree" ("type");
 
 
 
-CREATE INDEX "idx_notifications_user_id" ON "public"."notifications" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_notifications_user_id" ON "public"."notifications" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_offers_app_id" ON "public"."offers" USING "btree" ("application_id");
+CREATE INDEX IF NOT EXISTS "idx_offers_app_id" ON "public"."offers" USING "btree" ("application_id");
 
 
 
-CREATE INDEX "idx_office_locations_department" ON "public"."office_locations" USING "btree" ("department");
+CREATE INDEX IF NOT EXISTS "idx_office_locations_department" ON "public"."office_locations" USING "btree" ("department");
 
 
 
-CREATE INDEX "idx_office_locations_site" ON "public"."office_locations" USING "btree" ("site");
+CREATE INDEX IF NOT EXISTS "idx_office_locations_site" ON "public"."office_locations" USING "btree" ("site");
 
 
 
-CREATE INDEX "idx_office_locations_type" ON "public"."office_locations" USING "btree" ("type");
+CREATE INDEX IF NOT EXISTS "idx_office_locations_type" ON "public"."office_locations" USING "btree" ("type");
 
 
 
-CREATE INDEX "idx_overtime_requests_approved_by" ON "public"."overtime_requests" USING "btree" ("approved_by");
+CREATE INDEX IF NOT EXISTS "idx_overtime_requests_approved_by" ON "public"."overtime_requests" USING "btree" ("approved_by");
 
 
 
-CREATE INDEX "idx_overtime_requests_user_id" ON "public"."overtime_requests" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_overtime_requests_user_id" ON "public"."overtime_requests" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_payment_docs_payment" ON "public"."payment_documents" USING "btree" ("payment_id");
+CREATE INDEX IF NOT EXISTS "idx_payment_docs_payment" ON "public"."payment_documents" USING "btree" ("payment_id");
 
 
 
-CREATE INDEX "idx_payment_docs_replaced_by" ON "public"."payment_documents" USING "btree" ("replaced_by");
+CREATE INDEX IF NOT EXISTS "idx_payment_docs_replaced_by" ON "public"."payment_documents" USING "btree" ("replaced_by");
 
 
 
-CREATE INDEX "idx_payment_docs_uploaded_by" ON "public"."payment_documents" USING "btree" ("uploaded_by");
+CREATE INDEX IF NOT EXISTS "idx_payment_docs_uploaded_by" ON "public"."payment_documents" USING "btree" ("uploaded_by");
 
 
 
-CREATE INDEX "idx_payment_documents_archived" ON "public"."payment_documents" USING "btree" ("is_archived");
+CREATE INDEX IF NOT EXISTS "idx_payment_documents_archived" ON "public"."payment_documents" USING "btree" ("is_archived");
 
 
 
-CREATE INDEX "idx_payment_documents_date" ON "public"."payment_documents" USING "btree" ("applicable_date");
+CREATE INDEX IF NOT EXISTS "idx_payment_documents_date" ON "public"."payment_documents" USING "btree" ("applicable_date");
 
 
 
-CREATE INDEX "idx_payroll_entries_period" ON "public"."payroll_entries" USING "btree" ("payroll_period_id");
+CREATE INDEX IF NOT EXISTS "idx_payroll_entries_period" ON "public"."payroll_entries" USING "btree" ("payroll_period_id");
 
 
 
-CREATE INDEX "idx_payroll_entries_user" ON "public"."payroll_entries" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_payroll_entries_user" ON "public"."payroll_entries" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_payslips_entry_id" ON "public"."payslips" USING "btree" ("payroll_entry_id");
+CREATE INDEX IF NOT EXISTS "idx_payslips_entry_id" ON "public"."payslips" USING "btree" ("payroll_entry_id");
 
 
 
-CREATE INDEX "idx_payslips_period_id" ON "public"."payslips" USING "btree" ("payroll_period_id");
+CREATE INDEX IF NOT EXISTS "idx_payslips_period_id" ON "public"."payslips" USING "btree" ("payroll_period_id");
 
 
 
-CREATE INDEX "idx_payslips_user_id" ON "public"."payslips" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_payslips_user_id" ON "public"."payslips" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_perf_reviews_cycle_id" ON "public"."performance_reviews" USING "btree" ("review_cycle_id");
+CREATE INDEX IF NOT EXISTS "idx_perf_reviews_cycle_id" ON "public"."performance_reviews" USING "btree" ("review_cycle_id");
 
 
 
-CREATE INDEX "idx_perf_reviews_reviewer_id" ON "public"."performance_reviews" USING "btree" ("reviewer_id");
+CREATE INDEX IF NOT EXISTS "idx_perf_reviews_reviewer_id" ON "public"."performance_reviews" USING "btree" ("reviewer_id");
 
 
 
-CREATE INDEX "idx_performance_ratings_review_id" ON "public"."performance_ratings" USING "btree" ("performance_review_id");
+CREATE INDEX IF NOT EXISTS "idx_performance_ratings_review_id" ON "public"."performance_ratings" USING "btree" ("performance_review_id");
 
 
 
-CREATE INDEX "idx_performance_reviews_user" ON "public"."performance_reviews" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_performance_reviews_user" ON "public"."performance_reviews" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_profiles_department_id" ON "public"."profiles" USING "btree" ("department_id");
+CREATE INDEX IF NOT EXISTS "idx_profiles_department_id" ON "public"."profiles" USING "btree" ("department_id");
 
 
 
-CREATE INDEX "idx_profiles_employee_number" ON "public"."profiles" USING "btree" ("employee_number");
+CREATE INDEX IF NOT EXISTS "idx_profiles_employee_number" ON "public"."profiles" USING "btree" ("employee_number");
 
 
 
-CREATE INDEX "idx_profiles_employment_status" ON "public"."profiles" USING "btree" ("employment_status");
+CREATE INDEX IF NOT EXISTS "idx_profiles_employment_status" ON "public"."profiles" USING "btree" ("employment_status");
 
 
 
-CREATE INDEX "idx_profiles_full_name" ON "public"."profiles" USING "btree" ("full_name");
+CREATE INDEX IF NOT EXISTS "idx_profiles_full_name" ON "public"."profiles" USING "btree" ("full_name");
 
 
 
-CREATE INDEX "idx_profiles_lead_departments" ON "public"."profiles" USING "gin" ("lead_departments");
+CREATE INDEX IF NOT EXISTS "idx_profiles_lead_departments" ON "public"."profiles" USING "gin" ("lead_departments");
 
 
 
-CREATE INDEX "idx_profiles_office_location" ON "public"."profiles" USING "btree" ("office_location");
+CREATE INDEX IF NOT EXISTS "idx_profiles_office_location" ON "public"."profiles" USING "btree" ("office_location");
 
 
 
-CREATE INDEX "idx_profiles_status_changed_by" ON "public"."profiles" USING "btree" ("status_changed_by");
+CREATE INDEX IF NOT EXISTS "idx_profiles_status_changed_by" ON "public"."profiles" USING "btree" ("status_changed_by");
 
 
 
-CREATE INDEX "idx_project_items_created_by" ON "public"."project_items" USING "btree" ("created_by");
+CREATE INDEX IF NOT EXISTS "idx_project_items_created_by" ON "public"."project_items" USING "btree" ("created_by");
 
 
 
-CREATE INDEX "idx_project_items_project_id" ON "public"."project_items" USING "btree" ("project_id");
+CREATE INDEX IF NOT EXISTS "idx_project_items_project_id" ON "public"."project_items" USING "btree" ("project_id");
 
 
 
-CREATE INDEX "idx_project_members_assigned_by" ON "public"."project_members" USING "btree" ("assigned_by");
+CREATE INDEX IF NOT EXISTS "idx_project_members_assigned_by" ON "public"."project_members" USING "btree" ("assigned_by");
 
 
 
-CREATE INDEX "idx_project_members_is_active" ON "public"."project_members" USING "btree" ("is_active");
+CREATE INDEX IF NOT EXISTS "idx_project_members_is_active" ON "public"."project_members" USING "btree" ("is_active");
 
 
 
-CREATE INDEX "idx_project_members_project_id" ON "public"."project_members" USING "btree" ("project_id");
+CREATE INDEX IF NOT EXISTS "idx_project_members_project_id" ON "public"."project_members" USING "btree" ("project_id");
 
 
 
-CREATE INDEX "idx_project_members_user_id" ON "public"."project_members" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_project_members_user_id" ON "public"."project_members" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_project_updates_project_id" ON "public"."project_updates" USING "btree" ("project_id");
+CREATE INDEX IF NOT EXISTS "idx_project_updates_project_id" ON "public"."project_updates" USING "btree" ("project_id");
 
 
 
-CREATE INDEX "idx_project_updates_user_id" ON "public"."project_updates" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_project_updates_user_id" ON "public"."project_updates" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_projects_created_by" ON "public"."projects" USING "btree" ("created_by");
+CREATE INDEX IF NOT EXISTS "idx_projects_created_by" ON "public"."projects" USING "btree" ("created_by");
 
 
 
-CREATE INDEX "idx_projects_dates" ON "public"."projects" USING "btree" ("deployment_start_date", "deployment_end_date");
+CREATE INDEX IF NOT EXISTS "idx_projects_dates" ON "public"."projects" USING "btree" ("deployment_start_date", "deployment_end_date");
 
 
 
-CREATE INDEX "idx_projects_manager" ON "public"."projects" USING "btree" ("project_manager_id");
+CREATE INDEX IF NOT EXISTS "idx_projects_manager" ON "public"."projects" USING "btree" ("project_manager_id");
 
 
 
-CREATE INDEX "idx_projects_status" ON "public"."projects" USING "btree" ("status");
+CREATE INDEX IF NOT EXISTS "idx_projects_status" ON "public"."projects" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_remote_tasks_created_at" ON "public"."remote_tasks" USING "btree" ("created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_remote_tasks_created_at" ON "public"."remote_tasks" USING "btree" ("created_at" DESC);
 
 
 
-CREATE INDEX "idx_remote_tasks_created_by" ON "public"."remote_tasks" USING "btree" ("created_by");
+CREATE INDEX IF NOT EXISTS "idx_remote_tasks_created_by" ON "public"."remote_tasks" USING "btree" ("created_by");
 
 
 
-CREATE INDEX "idx_remote_tasks_meter_id" ON "public"."remote_tasks" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_remote_tasks_meter_id" ON "public"."remote_tasks" USING "btree" ("meter_id");
 
 
 
-CREATE INDEX "idx_remote_tasks_odyssey_id" ON "public"."remote_tasks" USING "btree" ("odyssey_task_id");
+CREATE INDEX IF NOT EXISTS "idx_remote_tasks_odyssey_id" ON "public"."remote_tasks" USING "btree" ("odyssey_task_id");
 
 
 
-CREATE INDEX "idx_remote_tasks_status" ON "public"."remote_tasks" USING "btree" ("status");
+CREATE INDEX IF NOT EXISTS "idx_remote_tasks_status" ON "public"."remote_tasks" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_remote_tasks_task_id" ON "public"."remote_tasks" USING "btree" ("task_id");
+CREATE INDEX IF NOT EXISTS "idx_remote_tasks_task_id" ON "public"."remote_tasks" USING "btree" ("task_id");
 
 
 
-CREATE INDEX "idx_salary_structures_comp_id" ON "public"."salary_structures" USING "btree" ("salary_component_id");
+CREATE INDEX IF NOT EXISTS "idx_salary_structures_comp_id" ON "public"."salary_structures" USING "btree" ("salary_component_id");
 
 
 
-CREATE INDEX "idx_starlink_documents_payment" ON "public"."starlink_documents" USING "btree" ("payment_id");
+CREATE INDEX IF NOT EXISTS "idx_starlink_documents_payment" ON "public"."starlink_documents" USING "btree" ("payment_id");
 
 
 
-CREATE INDEX "idx_starlink_documents_type" ON "public"."starlink_documents" USING "btree" ("document_type");
+CREATE INDEX IF NOT EXISTS "idx_starlink_documents_type" ON "public"."starlink_documents" USING "btree" ("document_type");
 
 
 
-CREATE INDEX "idx_starlink_documents_uploaded_by" ON "public"."starlink_documents" USING "btree" ("uploaded_by");
+CREATE INDEX IF NOT EXISTS "idx_starlink_documents_uploaded_by" ON "public"."starlink_documents" USING "btree" ("uploaded_by");
 
 
 
-CREATE INDEX "idx_starlink_payments_created_by" ON "public"."starlink_payments" USING "btree" ("created_by");
+CREATE INDEX IF NOT EXISTS "idx_starlink_payments_created_by" ON "public"."starlink_payments" USING "btree" ("created_by");
 
 
 
-CREATE INDEX "idx_starlink_payments_due_date" ON "public"."starlink_payments" USING "btree" ("next_payment_due");
+CREATE INDEX IF NOT EXISTS "idx_starlink_payments_due_date" ON "public"."starlink_payments" USING "btree" ("next_payment_due");
 
 
 
-CREATE INDEX "idx_starlink_payments_reminder" ON "public"."starlink_payments" USING "btree" ("reminder_sent", "next_payment_due");
+CREATE INDEX IF NOT EXISTS "idx_starlink_payments_reminder" ON "public"."starlink_payments" USING "btree" ("reminder_sent", "next_payment_due");
 
 
 
-CREATE INDEX "idx_starlink_payments_site" ON "public"."starlink_payments" USING "btree" ("site_id");
+CREATE INDEX IF NOT EXISTS "idx_starlink_payments_site" ON "public"."starlink_payments" USING "btree" ("site_id");
 
 
 
-CREATE INDEX "idx_starlink_payments_status" ON "public"."starlink_payments" USING "btree" ("payment_status");
+CREATE INDEX IF NOT EXISTS "idx_starlink_payments_status" ON "public"."starlink_payments" USING "btree" ("payment_status");
 
 
 
-CREATE INDEX "idx_starlink_sites_active" ON "public"."starlink_sites" USING "btree" ("is_active");
+CREATE INDEX IF NOT EXISTS "idx_starlink_sites_active" ON "public"."starlink_sites" USING "btree" ("is_active");
 
 
 
-CREATE INDEX "idx_starlink_sites_created_by" ON "public"."starlink_sites" USING "btree" ("created_by");
+CREATE INDEX IF NOT EXISTS "idx_starlink_sites_created_by" ON "public"."starlink_sites" USING "btree" ("created_by");
 
 
 
-CREATE INDEX "idx_starlink_sites_serial" ON "public"."starlink_sites" USING "btree" ("serial_number");
+CREATE INDEX IF NOT EXISTS "idx_starlink_sites_serial" ON "public"."starlink_sites" USING "btree" ("serial_number");
 
 
 
-CREATE INDEX "idx_starlink_sites_state" ON "public"."starlink_sites" USING "btree" ("state");
+CREATE INDEX IF NOT EXISTS "idx_starlink_sites_state" ON "public"."starlink_sites" USING "btree" ("state");
 
 
 
-CREATE INDEX "idx_sync_state_last_sync" ON "public"."sync_state" USING "btree" ("last_sync_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_sync_state_last_sync" ON "public"."sync_state" USING "btree" ("last_sync_at" DESC);
 
 
 
-CREATE INDEX "idx_sync_state_type" ON "public"."sync_state" USING "btree" ("sync_type");
+CREATE INDEX IF NOT EXISTS "idx_sync_state_type" ON "public"."sync_state" USING "btree" ("sync_type");
 
 
 
-CREATE INDEX "idx_system_settings_updated_by" ON "public"."system_settings" USING "btree" ("updated_by");
+CREATE INDEX IF NOT EXISTS "idx_system_settings_updated_by" ON "public"."system_settings" USING "btree" ("updated_by");
 
 
 
-CREATE INDEX "idx_task_assignments_task_id" ON "public"."task_assignments" USING "btree" ("task_id");
+CREATE INDEX IF NOT EXISTS "idx_task_assignments_task_id" ON "public"."task_assignments" USING "btree" ("task_id");
 
 
 
-CREATE INDEX "idx_task_assignments_user_id" ON "public"."task_assignments" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_task_assignments_user_id" ON "public"."task_assignments" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_task_updates_task_id" ON "public"."task_updates" USING "btree" ("task_id");
+CREATE INDEX IF NOT EXISTS "idx_task_updates_task_id" ON "public"."task_updates" USING "btree" ("task_id");
 
 
 
-CREATE INDEX "idx_task_updates_user_id_fk" ON "public"."task_updates" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_task_updates_user_id_fk" ON "public"."task_updates" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_task_user_completion_task_id" ON "public"."task_user_completion" USING "btree" ("task_id");
+CREATE INDEX IF NOT EXISTS "idx_task_user_completion_task_id" ON "public"."task_user_completion" USING "btree" ("task_id");
 
 
 
-CREATE INDEX "idx_task_user_completion_user_id" ON "public"."task_user_completion" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_task_user_completion_user_id" ON "public"."task_user_completion" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_tasks_assigned_by_fk" ON "public"."tasks" USING "btree" ("assigned_by");
+CREATE INDEX IF NOT EXISTS "idx_tasks_assigned_by_fk" ON "public"."tasks" USING "btree" ("assigned_by");
 
 
 
-CREATE INDEX "idx_tasks_assigned_to" ON "public"."tasks" USING "btree" ("assigned_to");
+CREATE INDEX IF NOT EXISTS "idx_tasks_assigned_to" ON "public"."tasks" USING "btree" ("assigned_to");
 
 
 
-CREATE INDEX "idx_tasks_assignment_type" ON "public"."tasks" USING "btree" ("assignment_type");
+CREATE INDEX IF NOT EXISTS "idx_tasks_assignment_type" ON "public"."tasks" USING "btree" ("assignment_type");
 
 
 
-CREATE INDEX "idx_tasks_category" ON "public"."tasks" USING "btree" ("category");
+CREATE INDEX IF NOT EXISTS "idx_tasks_category" ON "public"."tasks" USING "btree" ("category");
 
 
 
-CREATE INDEX "idx_tasks_department" ON "public"."tasks" USING "btree" ("department");
+CREATE INDEX IF NOT EXISTS "idx_tasks_department" ON "public"."tasks" USING "btree" ("department");
 
 
 
-CREATE INDEX "idx_tasks_project_id" ON "public"."tasks" USING "btree" ("project_id");
+CREATE INDEX IF NOT EXISTS "idx_tasks_project_id" ON "public"."tasks" USING "btree" ("project_id");
 
 
 
-CREATE INDEX "idx_tasks_status" ON "public"."tasks" USING "btree" ("status");
+CREATE INDEX IF NOT EXISTS "idx_tasks_status" ON "public"."tasks" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_tasks_week_year" ON "public"."tasks" USING "btree" ("year", "week_number");
+CREATE INDEX IF NOT EXISTS "idx_tasks_week_year" ON "public"."tasks" USING "btree" ("year", "week_number");
 
 
 
-CREATE INDEX "idx_timesheets_approved_by" ON "public"."timesheets" USING "btree" ("approved_by");
+CREATE INDEX IF NOT EXISTS "idx_timesheets_approved_by" ON "public"."timesheets" USING "btree" ("approved_by");
 
 
 
-CREATE INDEX "idx_timesheets_user_week" ON "public"."timesheets" USING "btree" ("user_id", "week_start_date");
+CREATE INDEX IF NOT EXISTS "idx_timesheets_user_week" ON "public"."timesheets" USING "btree" ("user_id", "week_start_date");
 
 
 
-CREATE INDEX "idx_token_records_created_at" ON "public"."token_records" USING "btree" ("created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_token_records_created_at" ON "public"."token_records" USING "btree" ("created_at" DESC);
 
 
 
-CREATE INDEX "idx_token_records_currency" ON "public"."token_records" USING "btree" ("currency");
+CREATE INDEX IF NOT EXISTS "idx_token_records_currency" ON "public"."token_records" USING "btree" ("currency");
 
 
 
-CREATE INDEX "idx_token_records_customer_id" ON "public"."token_records" USING "btree" ("customer_id");
+CREATE INDEX IF NOT EXISTS "idx_token_records_customer_id" ON "public"."token_records" USING "btree" ("customer_id");
 
 
 
-CREATE INDEX "idx_token_records_generated_at" ON "public"."token_records" USING "btree" ("generated_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_token_records_generated_at" ON "public"."token_records" USING "btree" ("generated_at" DESC);
 
 
 
-CREATE INDEX "idx_token_records_generated_by" ON "public"."token_records" USING "btree" ("generated_by");
+CREATE INDEX IF NOT EXISTS "idx_token_records_generated_by" ON "public"."token_records" USING "btree" ("generated_by");
 
 
 
-CREATE INDEX "idx_token_records_meter_id" ON "public"."token_records" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_token_records_meter_id" ON "public"."token_records" USING "btree" ("meter_id");
 
 
 
-CREATE INDEX "idx_token_records_odyssey_meter_id" ON "public"."token_records" USING "btree" ("odyssey_meter_id");
+CREATE INDEX IF NOT EXISTS "idx_token_records_odyssey_meter_id" ON "public"."token_records" USING "btree" ("odyssey_meter_id");
 
 
 
-CREATE INDEX "idx_token_records_site_id" ON "public"."token_records" USING "btree" ("site_id");
+CREATE INDEX IF NOT EXISTS "idx_token_records_site_id" ON "public"."token_records" USING "btree" ("site_id");
 
 
 
-CREATE INDEX "idx_token_records_source" ON "public"."token_records" USING "btree" ("source");
+CREATE INDEX IF NOT EXISTS "idx_token_records_source" ON "public"."token_records" USING "btree" ("source");
 
 
 
-CREATE INDEX "idx_token_records_token_type" ON "public"."token_records" USING "btree" ("token_type");
+CREATE INDEX IF NOT EXISTS "idx_token_records_token_type" ON "public"."token_records" USING "btree" ("token_type");
 
 
 
-CREATE INDEX "idx_token_records_transaction_type" ON "public"."token_records" USING "btree" ("transaction_type");
+CREATE INDEX IF NOT EXISTS "idx_token_records_transaction_type" ON "public"."token_records" USING "btree" ("transaction_type");
 
 
 
-CREATE INDEX "idx_token_sales_created_at" ON "public"."token_sales" USING "btree" ("created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_token_sales_created_at" ON "public"."token_sales" USING "btree" ("created_at" DESC);
 
 
 
-CREATE INDEX "idx_token_sales_customer_id" ON "public"."token_sales" USING "btree" ("customer_id");
+CREATE INDEX IF NOT EXISTS "idx_token_sales_customer_id" ON "public"."token_sales" USING "btree" ("customer_id");
 
 
 
-CREATE INDEX "idx_token_sales_generated_by" ON "public"."token_sales" USING "btree" ("generated_by");
+CREATE INDEX IF NOT EXISTS "idx_token_sales_generated_by" ON "public"."token_sales" USING "btree" ("generated_by");
 
 
 
-CREATE INDEX "idx_token_sales_meter_id" ON "public"."token_sales" USING "btree" ("meter_id");
+CREATE INDEX IF NOT EXISTS "idx_token_sales_meter_id" ON "public"."token_sales" USING "btree" ("meter_id");
 
 
 
-CREATE UNIQUE INDEX "idx_unique_meter_readings" ON "public"."meter_readings" USING "btree" ("meter_id", "timestamp");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_unique_meter_readings" ON "public"."meter_readings" USING "btree" ("meter_id", "timestamp");
 
 
 
-CREATE UNIQUE INDEX "idx_unique_remote_tasks" ON "public"."remote_tasks" USING "btree" ("odyssey_task_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_unique_remote_tasks" ON "public"."remote_tasks" USING "btree" ("odyssey_task_id");
 
 
 
-CREATE INDEX "idx_user_documentation_user_id" ON "public"."user_documentation" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_user_documentation_user_id" ON "public"."user_documentation" USING "btree" ("user_id");
 
 
 
-CREATE INDEX "idx_weekly_reports_user_id" ON "public"."weekly_reports" USING "btree" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_weekly_reports_user_id" ON "public"."weekly_reports" USING "btree" ("user_id");
 
 
 
-CREATE UNIQUE INDEX "unique_current_asset_assignment" ON "public"."asset_assignments" USING "btree" ("asset_id") WHERE (("is_current" = true) AND ("assigned_to" IS NOT NULL));
+CREATE UNIQUE INDEX IF NOT EXISTS "unique_current_asset_assignment" ON "public"."asset_assignments" USING "btree" ("asset_id") WHERE (("is_current" = true) AND ("assigned_to" IS NOT NULL));
 
 
 
@@ -5393,634 +5878,1099 @@ CREATE OR REPLACE TRIGGER "update_weekly_reports_updated_at" BEFORE UPDATE ON "p
 
 
 
-ALTER TABLE ONLY "public"."admin_logs"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."admin_logs"
     ADD CONSTRAINT "admin_logs_admin_id_fkey" FOREIGN KEY ("admin_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."admin_logs"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."admin_logs"
     ADD CONSTRAINT "admin_logs_target_user_id_fkey" FOREIGN KEY ("target_user_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."applications"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."applications"
     ADD CONSTRAINT "applications_job_posting_id_fkey" FOREIGN KEY ("job_posting_id") REFERENCES "public"."job_postings"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_assignments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_assignments"
     ADD CONSTRAINT "asset_assignments_asset_id_fkey" FOREIGN KEY ("asset_id") REFERENCES "public"."assets"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_assignments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_assignments"
     ADD CONSTRAINT "asset_assignments_assigned_by_fkey" FOREIGN KEY ("assigned_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_assignments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_assignments"
     ADD CONSTRAINT "asset_assignments_assigned_from_fkey" FOREIGN KEY ("assigned_from") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_assignments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_assignments"
     ADD CONSTRAINT "asset_assignments_assigned_to_fkey" FOREIGN KEY ("assigned_to") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_issues"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_issues"
     ADD CONSTRAINT "asset_issues_asset_id_fkey" FOREIGN KEY ("asset_id") REFERENCES "public"."assets"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_issues"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_issues"
     ADD CONSTRAINT "asset_issues_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_issues"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_issues"
     ADD CONSTRAINT "asset_issues_resolved_by_fkey" FOREIGN KEY ("resolved_by") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."asset_types"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."asset_types"
     ADD CONSTRAINT "asset_types_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."assets"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."assets"
     ADD CONSTRAINT "assets_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."attendance_records"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."attendance_records"
     ADD CONSTRAINT "attendance_records_shift_id_fkey" FOREIGN KEY ("shift_id") REFERENCES "public"."shifts"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."attendance_records"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."attendance_records"
     ADD CONSTRAINT "attendance_records_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."audit_logs"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."audit_logs"
     ADD CONSTRAINT "audit_logs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."consumption_data"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."consumption_data"
     ADD CONSTRAINT "consumption_data_meter_id_fkey" FOREIGN KEY ("meter_id") REFERENCES "public"."meters"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_activities"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_activities"
     ADD CONSTRAINT "crm_activities_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "public"."crm_contacts"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_activities"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_activities"
     ADD CONSTRAINT "crm_activities_opportunity_id_fkey" FOREIGN KEY ("opportunity_id") REFERENCES "public"."crm_opportunities"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_contacts"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_contacts"
     ADD CONSTRAINT "crm_contacts_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."crm_pipelines"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_opportunities"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_opportunities"
     ADD CONSTRAINT "crm_opportunities_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "public"."crm_contacts"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."crm_opportunities"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."crm_opportunities"
     ADD CONSTRAINT "crm_opportunities_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."crm_pipelines"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."department_payments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."department_payments"
     ADD CONSTRAINT "department_payments_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."department_payments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."department_payments"
     ADD CONSTRAINT "department_payments_department_id_fkey" FOREIGN KEY ("department_id") REFERENCES "public"."departments"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."department_payments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."department_payments"
     ADD CONSTRAINT "department_payments_site_id_fkey" FOREIGN KEY ("site_id") REFERENCES "public"."starlink_sites"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."departments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."departments"
     ADD CONSTRAINT "departments_department_head_id_fkey" FOREIGN KEY ("department_head_id") REFERENCES "public"."profiles"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."employee_salaries"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."employee_salaries"
     ADD CONSTRAINT "employee_salaries_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."employee_suspensions"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."employee_suspensions"
     ADD CONSTRAINT "employee_suspensions_employee_id_fkey" FOREIGN KEY ("employee_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."employee_suspensions"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."employee_suspensions"
     ADD CONSTRAINT "employee_suspensions_lifted_by_fkey" FOREIGN KEY ("lifted_by") REFERENCES "public"."profiles"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."employee_suspensions"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."employee_suspensions"
     ADD CONSTRAINT "employee_suspensions_suspended_by_fkey" FOREIGN KEY ("suspended_by") REFERENCES "public"."profiles"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."event_notifications"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."event_notifications"
     ADD CONSTRAINT "event_notifications_acknowledged_by_fkey" FOREIGN KEY ("acknowledged_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."event_notifications"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."event_notifications"
     ADD CONSTRAINT "event_notifications_meter_id_fkey" FOREIGN KEY ("meter_id") REFERENCES "public"."meters"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."feedback"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."feedback"
     ADD CONSTRAINT "feedback_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."firmware_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."firmware_tasks"
     ADD CONSTRAINT "firmware_tasks_firmware_id_fkey" FOREIGN KEY ("firmware_id") REFERENCES "public"."firmware_updates"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."firmware_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."firmware_tasks"
     ADD CONSTRAINT "firmware_tasks_meter_id_fkey" FOREIGN KEY ("meter_id") REFERENCES "public"."meters"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."goals_objectives"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."goals_objectives"
     ADD CONSTRAINT "goals_objectives_review_cycle_id_fkey" FOREIGN KEY ("review_cycle_id") REFERENCES "public"."review_cycles"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."goals_objectives"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."goals_objectives"
     ADD CONSTRAINT "goals_objectives_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."gprs_status"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."gprs_status"
     ADD CONSTRAINT "gprs_status_meter_id_fkey" FOREIGN KEY ("meter_id") REFERENCES "public"."meters"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."gprs_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."gprs_tasks"
     ADD CONSTRAINT "gprs_tasks_meter_id_fkey" FOREIGN KEY ("meter_id") REFERENCES "public"."meters"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."interviews"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."interviews"
     ADD CONSTRAINT "interviews_application_id_fkey" FOREIGN KEY ("application_id") REFERENCES "public"."applications"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."interviews"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."interviews"
     ADD CONSTRAINT "interviews_interviewer_id_fkey" FOREIGN KEY ("interviewer_id") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."job_postings"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."job_postings"
     ADD CONSTRAINT "job_postings_posted_by_fkey" FOREIGN KEY ("posted_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_approvals"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_approvals"
     ADD CONSTRAINT "leave_approvals_approver_id_fkey" FOREIGN KEY ("approver_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_approvals"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_approvals"
     ADD CONSTRAINT "leave_approvals_approver_id_profiles_fkey" FOREIGN KEY ("approver_id") REFERENCES "public"."profiles"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_approvals"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_approvals"
     ADD CONSTRAINT "leave_approvals_leave_request_id_fkey" FOREIGN KEY ("leave_request_id") REFERENCES "public"."leave_requests"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_balances"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_balances"
     ADD CONSTRAINT "leave_balances_leave_type_id_fkey" FOREIGN KEY ("leave_type_id") REFERENCES "public"."leave_types"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_balances"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_balances"
     ADD CONSTRAINT "leave_balances_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_requests"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_requests"
     ADD CONSTRAINT "leave_requests_approved_by_fkey" FOREIGN KEY ("approved_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_requests"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_requests"
     ADD CONSTRAINT "leave_requests_leave_type_id_fkey" FOREIGN KEY ("leave_type_id") REFERENCES "public"."leave_types"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_requests"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_requests"
     ADD CONSTRAINT "leave_requests_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."leave_requests"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."leave_requests"
     ADD CONSTRAINT "leave_requests_user_id_profiles_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."meter_readings"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."meter_readings"
     ADD CONSTRAINT "meter_readings_meter_id_fkey" FOREIGN KEY ("meter_id") REFERENCES "public"."meters"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."meters"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."meters"
     ADD CONSTRAINT "meters_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."meters"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."meters"
     ADD CONSTRAINT "meters_gateway_id_fkey" FOREIGN KEY ("gateway_id") REFERENCES "public"."gateways"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."meters"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."meters"
     ADD CONSTRAINT "meters_tariff_id_fkey" FOREIGN KEY ("tariff_id") REFERENCES "public"."tariffs"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."notification_preferences"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."notification_preferences"
     ADD CONSTRAINT "notification_preferences_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."notifications"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."notifications"
     ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."offers"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."offers"
     ADD CONSTRAINT "offers_application_id_fkey" FOREIGN KEY ("application_id") REFERENCES "public"."applications"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."overtime_requests"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."overtime_requests"
     ADD CONSTRAINT "overtime_requests_approved_by_fkey" FOREIGN KEY ("approved_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."overtime_requests"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."overtime_requests"
     ADD CONSTRAINT "overtime_requests_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payment_documents"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payment_documents"
     ADD CONSTRAINT "payment_documents_payment_id_fkey" FOREIGN KEY ("payment_id") REFERENCES "public"."department_payments"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payment_documents"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payment_documents"
     ADD CONSTRAINT "payment_documents_replaced_by_fkey" FOREIGN KEY ("replaced_by") REFERENCES "public"."payment_documents"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payment_documents"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payment_documents"
     ADD CONSTRAINT "payment_documents_uploaded_by_fkey" FOREIGN KEY ("uploaded_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payroll_entries"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payroll_entries"
     ADD CONSTRAINT "payroll_entries_payroll_period_id_fkey" FOREIGN KEY ("payroll_period_id") REFERENCES "public"."payroll_periods"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payroll_entries"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payroll_entries"
     ADD CONSTRAINT "payroll_entries_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payslips"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payslips"
     ADD CONSTRAINT "payslips_payroll_entry_id_fkey" FOREIGN KEY ("payroll_entry_id") REFERENCES "public"."payroll_entries"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payslips"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payslips"
     ADD CONSTRAINT "payslips_payroll_period_id_fkey" FOREIGN KEY ("payroll_period_id") REFERENCES "public"."payroll_periods"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."payslips"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."payslips"
     ADD CONSTRAINT "payslips_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."performance_ratings"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."performance_ratings"
     ADD CONSTRAINT "performance_ratings_performance_review_id_fkey" FOREIGN KEY ("performance_review_id") REFERENCES "public"."performance_reviews"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."performance_reviews"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."performance_reviews"
     ADD CONSTRAINT "performance_reviews_review_cycle_id_fkey" FOREIGN KEY ("review_cycle_id") REFERENCES "public"."review_cycles"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."performance_reviews"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."performance_reviews"
     ADD CONSTRAINT "performance_reviews_reviewer_id_fkey" FOREIGN KEY ("reviewer_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."performance_reviews"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."performance_reviews"
     ADD CONSTRAINT "performance_reviews_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."profiles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_department_id_fkey" FOREIGN KEY ("department_id") REFERENCES "public"."departments"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."profiles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."profiles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_status_changed_by_fkey" FOREIGN KEY ("status_changed_by") REFERENCES "public"."profiles"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_items"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_items"
     ADD CONSTRAINT "project_items_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_items"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_items"
     ADD CONSTRAINT "project_items_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_members"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_members"
     ADD CONSTRAINT "project_members_assigned_by_fkey" FOREIGN KEY ("assigned_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_members"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_members"
     ADD CONSTRAINT "project_members_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_members"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_members"
     ADD CONSTRAINT "project_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_updates"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_updates"
     ADD CONSTRAINT "project_updates_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."project_updates"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."project_updates"
     ADD CONSTRAINT "project_updates_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."projects"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."projects"
     ADD CONSTRAINT "projects_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."projects"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."projects"
     ADD CONSTRAINT "projects_project_manager_id_fkey" FOREIGN KEY ("project_manager_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."remote_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."remote_tasks"
     ADD CONSTRAINT "remote_tasks_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."remote_tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."remote_tasks"
     ADD CONSTRAINT "remote_tasks_meter_id_fkey" FOREIGN KEY ("meter_id") REFERENCES "public"."meters"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."salary_structures"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."salary_structures"
     ADD CONSTRAINT "salary_structures_employee_salary_id_fkey" FOREIGN KEY ("employee_salary_id") REFERENCES "public"."employee_salaries"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."salary_structures"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."salary_structures"
     ADD CONSTRAINT "salary_structures_salary_component_id_fkey" FOREIGN KEY ("salary_component_id") REFERENCES "public"."salary_components"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_documents"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_documents"
     ADD CONSTRAINT "starlink_documents_payment_id_fkey" FOREIGN KEY ("payment_id") REFERENCES "public"."starlink_payments"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_documents"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_documents"
     ADD CONSTRAINT "starlink_documents_uploaded_by_fkey" FOREIGN KEY ("uploaded_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_payments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_payments"
     ADD CONSTRAINT "starlink_payments_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_payments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_payments"
     ADD CONSTRAINT "starlink_payments_site_id_fkey" FOREIGN KEY ("site_id") REFERENCES "public"."starlink_sites"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."starlink_sites"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."starlink_sites"
     ADD CONSTRAINT "starlink_sites_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."system_settings"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."system_settings"
     ADD CONSTRAINT "system_settings_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_assignments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_assignments"
     ADD CONSTRAINT "task_assignments_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_assignments"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_assignments"
     ADD CONSTRAINT "task_assignments_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_updates"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_updates"
     ADD CONSTRAINT "task_updates_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_updates"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_updates"
     ADD CONSTRAINT "task_updates_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_user_completion"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_user_completion"
     ADD CONSTRAINT "task_user_completion_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "public"."tasks"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."task_user_completion"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."task_user_completion"
     ADD CONSTRAINT "task_user_completion_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."tasks"
     ADD CONSTRAINT "tasks_assigned_by_fkey" FOREIGN KEY ("assigned_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."tasks"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."tasks"
     ADD CONSTRAINT "tasks_assigned_to_fkey" FOREIGN KEY ("assigned_to") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."timesheets"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."timesheets"
     ADD CONSTRAINT "timesheets_approved_by_fkey" FOREIGN KEY ("approved_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."timesheets"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."timesheets"
     ADD CONSTRAINT "timesheets_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."token_records"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."token_records"
     ADD CONSTRAINT "token_records_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."token_records"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."token_records"
     ADD CONSTRAINT "token_records_generated_by_fkey" FOREIGN KEY ("generated_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."token_records"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."token_records"
     ADD CONSTRAINT "token_records_meter_id_fkey" FOREIGN KEY ("meter_id") REFERENCES "public"."meters"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."token_sales"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."token_sales"
     ADD CONSTRAINT "token_sales_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."token_sales"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."token_sales"
     ADD CONSTRAINT "token_sales_generated_by_fkey" FOREIGN KEY ("generated_by") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."token_sales"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."token_sales"
     ADD CONSTRAINT "token_sales_meter_id_fkey" FOREIGN KEY ("meter_id") REFERENCES "public"."meters"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."user_documentation"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."user_documentation"
     ADD CONSTRAINT "user_documentation_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."user_roles"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."user_roles"
     ADD CONSTRAINT "user_roles_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
-ALTER TABLE ONLY "public"."weekly_reports"
+DO $do$ BEGIN
+  ALTER TABLE ONLY "public"."weekly_reports"
     ADD CONSTRAINT "weekly_reports_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+EXCEPTION
+  WHEN invalid_table_definition OR duplicate_object OR duplicate_table THEN NULL;
+END $do$;
 
 
 
+DROP POLICY IF EXISTS "Admin logs insert policy" ON "public"."admin_logs";
 CREATE POLICY "Admin logs insert policy" ON "public"."admin_logs" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Admins can delete categories" ON "public"."payment_categories";
 CREATE POLICY "Admins can delete categories" ON "public"."payment_categories" FOR DELETE TO "authenticated" USING ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Admins can delete profiles" ON "public"."profiles";
 CREATE POLICY "Admins can delete profiles" ON "public"."profiles" FOR DELETE USING ("public"."is_admin"());
 
 
 
+DROP POLICY IF EXISTS "Admins can insert categories" ON "public"."payment_categories";
 CREATE POLICY "Admins can insert categories" ON "public"."payment_categories" FOR INSERT TO "authenticated" WITH CHECK ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Admins can manage roles" ON "public"."roles";
 CREATE POLICY "Admins can manage roles" ON "public"."roles" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = ( SELECT "auth"."uid"() AS "uid")) AND ("profiles"."role" = ANY (ARRAY['super_admin'::"public"."user_role", 'admin'::"public"."user_role"]))))));
+  WHERE (("profiles"."id" = ( SELECT "auth"."uid"() AS "uid")) AND ("profiles"."role" = ANY (ARRAY['super_admin'::text, 'admin'::text]))))));
 
 
 
+DROP POLICY IF EXISTS "Admins can manage system settings" ON "public"."system_settings";
 CREATE POLICY "Admins can manage system settings" ON "public"."system_settings" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = ( SELECT "auth"."uid"() AS "uid")) AND ("profiles"."role" = ANY (ARRAY['super_admin'::"public"."user_role", 'admin'::"public"."user_role"]))))));
+  WHERE (("profiles"."id" = ( SELECT "auth"."uid"() AS "uid")) AND ("profiles"."role" = ANY (ARRAY['super_admin'::text, 'admin'::text]))))));
 
 
 
+DROP POLICY IF EXISTS "Admins can update categories" ON "public"."payment_categories";
 CREATE POLICY "Admins can update categories" ON "public"."payment_categories" FOR UPDATE TO "authenticated" USING ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Admins can view admin logs" ON "public"."admin_logs";
 CREATE POLICY "Admins can view admin logs" ON "public"."admin_logs" FOR SELECT USING ("public"."is_admin"());
 
 
 
+DROP POLICY IF EXISTS "Anon can read system settings" ON "public"."system_settings";
 CREATE POLICY "Anon can read system settings" ON "public"."system_settings" FOR SELECT TO "anon" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Anyone can view active departments" ON "public"."departments";
 CREATE POLICY "Anyone can view active departments" ON "public"."departments" FOR SELECT USING (("is_active" = true));
 
 
 
+DROP POLICY IF EXISTS "Applications delete policy" ON "public"."applications";
 CREATE POLICY "Applications delete policy" ON "public"."applications" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Applications insert policy" ON "public"."applications";
 CREATE POLICY "Applications insert policy" ON "public"."applications" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
 
 
 
+DROP POLICY IF EXISTS "Applications select policy" ON "public"."applications";
 CREATE POLICY "Applications select policy" ON "public"."applications" FOR SELECT TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Applications update policy" ON "public"."applications";
 CREATE POLICY "Applications update policy" ON "public"."applications" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Asset assignments delete policy" ON "public"."asset_assignments";
 CREATE POLICY "Asset assignments delete policy" ON "public"."asset_assignments" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Asset assignments insert policy" ON "public"."asset_assignments";
 CREATE POLICY "Asset assignments insert policy" ON "public"."asset_assignments" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('lead'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Asset assignments select policy" ON "public"."asset_assignments";
 CREATE POLICY "Asset assignments select policy" ON "public"."asset_assignments" FOR SELECT TO "authenticated" USING ((("assigned_to" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "asset_assignments"."assigned_to") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6029,18 +6979,22 @@ CREATE POLICY "Asset assignments select policy" ON "public"."asset_assignments" 
 
 
 
+DROP POLICY IF EXISTS "Asset assignments update policy" ON "public"."asset_assignments";
 CREATE POLICY "Asset assignments update policy" ON "public"."asset_assignments" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('lead'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Asset issues delete policy" ON "public"."asset_issues";
 CREATE POLICY "Asset issues delete policy" ON "public"."asset_issues" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Asset issues insert policy" ON "public"."asset_issues";
 CREATE POLICY "Asset issues insert policy" ON "public"."asset_issues" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
 
 
 
+DROP POLICY IF EXISTS "Asset issues select policy" ON "public"."asset_issues";
 CREATE POLICY "Asset issues select policy" ON "public"."asset_issues" FOR SELECT TO "authenticated" USING ((("created_by" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "asset_issues"."created_by") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6049,34 +7003,42 @@ CREATE POLICY "Asset issues select policy" ON "public"."asset_issues" FOR SELECT
 
 
 
+DROP POLICY IF EXISTS "Asset issues update policy" ON "public"."asset_issues";
 CREATE POLICY "Asset issues update policy" ON "public"."asset_issues" FOR UPDATE TO "authenticated" USING ((("created_by" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Asset types delete policy" ON "public"."asset_types";
 CREATE POLICY "Asset types delete policy" ON "public"."asset_types" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Asset types insert policy" ON "public"."asset_types";
 CREATE POLICY "Asset types insert policy" ON "public"."asset_types" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Asset types select policy" ON "public"."asset_types";
 CREATE POLICY "Asset types select policy" ON "public"."asset_types" FOR SELECT TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Asset types update policy" ON "public"."asset_types";
 CREATE POLICY "Asset types update policy" ON "public"."asset_types" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Assets delete policy" ON "public"."assets";
 CREATE POLICY "Assets delete policy" ON "public"."assets" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Assets insert policy" ON "public"."assets";
 CREATE POLICY "Assets insert policy" ON "public"."assets" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Assets select policy" ON "public"."assets";
 CREATE POLICY "Assets select policy" ON "public"."assets" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND ("department" = ( SELECT "profiles"."department"
    FROM "public"."profiles"
   WHERE ("profiles"."id" = ( SELECT "auth"."uid"() AS "uid"))
@@ -6084,14 +7046,17 @@ CREATE POLICY "Assets select policy" ON "public"."assets" FOR SELECT TO "authent
 
 
 
+DROP POLICY IF EXISTS "Assets update policy" ON "public"."assets";
 CREATE POLICY "Assets update policy" ON "public"."assets" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Attendance delete policy" ON "public"."attendance_records";
 CREATE POLICY "Attendance delete policy" ON "public"."attendance_records" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Attendance select policy" ON "public"."attendance_records";
 CREATE POLICY "Attendance select policy" ON "public"."attendance_records" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "attendance_records"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6100,228 +7065,284 @@ CREATE POLICY "Attendance select policy" ON "public"."attendance_records" FOR SE
 
 
 
+DROP POLICY IF EXISTS "Audit logs insert policy" ON "public"."audit_logs";
 CREATE POLICY "Audit logs insert policy" ON "public"."audit_logs" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "auth"."uid"() AS "uid") IS NOT NULL));
 
 
 
+DROP POLICY IF EXISTS "Audit logs select policy" ON "public"."audit_logs";
 CREATE POLICY "Audit logs select policy" ON "public"."audit_logs" FOR SELECT TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Authenticated users can read system settings" ON "public"."system_settings";
 CREATE POLICY "Authenticated users can read system settings" ON "public"."system_settings" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Authenticated users can view roles" ON "public"."roles";
 CREATE POLICY "Authenticated users can view roles" ON "public"."roles" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "CRM tags select policy" ON "public"."crm_tags";
 CREATE POLICY "CRM tags select policy" ON "public"."crm_tags" FOR SELECT TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Categories view policy" ON "public"."payment_categories";
 CREATE POLICY "Categories view policy" ON "public"."payment_categories" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Consumption data delete" ON "public"."consumption_data";
 CREATE POLICY "Consumption data delete" ON "public"."consumption_data" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Consumption data insert" ON "public"."consumption_data";
 CREATE POLICY "Consumption data insert" ON "public"."consumption_data" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Consumption data update" ON "public"."consumption_data";
 CREATE POLICY "Consumption data update" ON "public"."consumption_data" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Customers delete policy" ON "public"."customers";
 CREATE POLICY "Customers delete policy" ON "public"."customers" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Customers insert policy" ON "public"."customers";
 CREATE POLICY "Customers insert policy" ON "public"."customers" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Customers select policy" ON "public"."customers";
 CREATE POLICY "Customers select policy" ON "public"."customers" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Customers update policy" ON "public"."customers";
 CREATE POLICY "Customers update policy" ON "public"."customers" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Department payments delete policy" ON "public"."department_payments";
 CREATE POLICY "Department payments delete policy" ON "public"."department_payments" FOR DELETE TO "authenticated" USING ((("created_by" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Department payments insert policy" ON "public"."department_payments";
 CREATE POLICY "Department payments insert policy" ON "public"."department_payments" FOR INSERT TO "authenticated" WITH CHECK (("public"."has_role"('admin'::"text") OR "public"."has_role"('lead'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Department payments select policy" ON "public"."department_payments";
 CREATE POLICY "Department payments select policy" ON "public"."department_payments" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles" "p1"
   WHERE (("p1"."id" = ( SELECT "auth"."uid"() AS "uid")) AND ("p1"."department_id" = "department_payments"."department_id")))))));
 
 
 
+DROP POLICY IF EXISTS "Department payments update policy" ON "public"."department_payments";
 CREATE POLICY "Department payments update policy" ON "public"."department_payments" FOR UPDATE TO "authenticated" USING (("public"."has_role"('admin'::"text") OR ("public"."has_role"('lead'::"text") AND ("created_by" = ( SELECT "auth"."uid"() AS "uid"))))) WITH CHECK (("public"."has_role"('admin'::"text") OR ("public"."has_role"('lead'::"text") AND ("created_by" = ( SELECT "auth"."uid"() AS "uid")))));
 
 
 
+DROP POLICY IF EXISTS "Departments delete policy" ON "public"."departments";
 CREATE POLICY "Departments delete policy" ON "public"."departments" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Departments insert policy" ON "public"."departments";
 CREATE POLICY "Departments insert policy" ON "public"."departments" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Departments update policy" ON "public"."departments";
 CREATE POLICY "Departments update policy" ON "public"."departments" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Employee salaries delete policy" ON "public"."employee_salaries";
 CREATE POLICY "Employee salaries delete policy" ON "public"."employee_salaries" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Employee salaries insert policy" ON "public"."employee_salaries";
 CREATE POLICY "Employee salaries insert policy" ON "public"."employee_salaries" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Employee salaries select policy" ON "public"."employee_salaries";
 CREATE POLICY "Employee salaries select policy" ON "public"."employee_salaries" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Employee salaries update policy" ON "public"."employee_salaries";
 CREATE POLICY "Employee salaries update policy" ON "public"."employee_salaries" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Employee suspensions insert policy" ON "public"."employee_suspensions";
 CREATE POLICY "Employee suspensions insert policy" ON "public"."employee_suspensions" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Employee suspensions select policy" ON "public"."employee_suspensions";
 CREATE POLICY "Employee suspensions select policy" ON "public"."employee_suspensions" FOR SELECT TO "authenticated" USING ((("employee_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Employee suspensions update policy" ON "public"."employee_suspensions";
 CREATE POLICY "Employee suspensions update policy" ON "public"."employee_suspensions" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Events delete policy" ON "public"."event_notifications";
 CREATE POLICY "Events delete policy" ON "public"."event_notifications" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Events insert policy" ON "public"."event_notifications";
 CREATE POLICY "Events insert policy" ON "public"."event_notifications" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Events select policy" ON "public"."event_notifications";
 CREATE POLICY "Events select policy" ON "public"."event_notifications" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Events employee acknowledge" ON "public"."event_notifications";
 CREATE POLICY "Events employee acknowledge" ON "public"."event_notifications" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") AND ("acknowledged" = false))) WITH CHECK ((("acknowledged" = true) AND ("acknowledged_by" = ( SELECT "auth"."uid"() AS "uid"))));
 
 
 
+DROP POLICY IF EXISTS "Events update policy" ON "public"."event_notifications";
 CREATE POLICY "Events update policy" ON "public"."event_notifications" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('employee'::"text") AS "has_role"))) WITH CHECK ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (("acknowledged" = true) AND ("acknowledged_by" = ( SELECT "auth"."uid"() AS "uid")))));
 
 
 
+DROP POLICY IF EXISTS "Everyone can view submitted reports" ON "public"."weekly_reports";
 CREATE POLICY "Everyone can view submitted reports" ON "public"."weekly_reports" FOR SELECT USING ((("status" = 'submitted'::"text") OR (( SELECT "auth"."uid"() AS "uid") = "user_id")));
 
 
 
+DROP POLICY IF EXISTS "Feedback delete policy" ON "public"."feedback";
 CREATE POLICY "Feedback delete policy" ON "public"."feedback" FOR DELETE TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Feedback insert policy" ON "public"."feedback";
 CREATE POLICY "Feedback insert policy" ON "public"."feedback" FOR INSERT TO "authenticated" WITH CHECK ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Feedback update policy" ON "public"."feedback";
 CREATE POLICY "Feedback update policy" ON "public"."feedback" FOR UPDATE TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Feedback view policy" ON "public"."feedback";
 CREATE POLICY "Feedback view policy" ON "public"."feedback" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Firmware tasks delete policy" ON "public"."firmware_tasks";
 CREATE POLICY "Firmware tasks delete policy" ON "public"."firmware_tasks" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Firmware tasks insert policy" ON "public"."firmware_tasks";
 CREATE POLICY "Firmware tasks insert policy" ON "public"."firmware_tasks" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Firmware tasks select policy" ON "public"."firmware_tasks";
 CREATE POLICY "Firmware tasks select policy" ON "public"."firmware_tasks" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Firmware tasks update policy" ON "public"."firmware_tasks";
 CREATE POLICY "Firmware tasks update policy" ON "public"."firmware_tasks" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Firmware updates delete policy" ON "public"."firmware_updates";
 CREATE POLICY "Firmware updates delete policy" ON "public"."firmware_updates" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Firmware updates insert policy" ON "public"."firmware_updates";
 CREATE POLICY "Firmware updates insert policy" ON "public"."firmware_updates" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Firmware updates select policy" ON "public"."firmware_updates";
 CREATE POLICY "Firmware updates select policy" ON "public"."firmware_updates" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Firmware updates update policy" ON "public"."firmware_updates";
 CREATE POLICY "Firmware updates update policy" ON "public"."firmware_updates" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "GPRS status delete policy" ON "public"."gprs_status";
 CREATE POLICY "GPRS status delete policy" ON "public"."gprs_status" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "GPRS status insert policy" ON "public"."gprs_status";
 CREATE POLICY "GPRS status insert policy" ON "public"."gprs_status" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "GPRS status select policy" ON "public"."gprs_status";
 CREATE POLICY "GPRS status select policy" ON "public"."gprs_status" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "GPRS status update policy" ON "public"."gprs_status";
 CREATE POLICY "GPRS status update policy" ON "public"."gprs_status" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "GPRS tasks select policy" ON "public"."gprs_tasks";
 CREATE POLICY "GPRS tasks select policy" ON "public"."gprs_tasks" FOR SELECT TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Gateways delete policy" ON "public"."gateways";
 CREATE POLICY "Gateways delete policy" ON "public"."gateways" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Gateways insert policy" ON "public"."gateways";
 CREATE POLICY "Gateways insert policy" ON "public"."gateways" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Gateways select policy" ON "public"."gateways";
 CREATE POLICY "Gateways select policy" ON "public"."gateways" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Gateways update policy" ON "public"."gateways";
 CREATE POLICY "Gateways update policy" ON "public"."gateways" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Goals delete policy" ON "public"."goals_objectives";
 CREATE POLICY "Goals delete policy" ON "public"."goals_objectives" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Goals insert policy" ON "public"."goals_objectives";
 CREATE POLICY "Goals insert policy" ON "public"."goals_objectives" FOR INSERT TO "authenticated" WITH CHECK ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "goals_objectives"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6330,6 +7351,7 @@ CREATE POLICY "Goals insert policy" ON "public"."goals_objectives" FOR INSERT TO
 
 
 
+DROP POLICY IF EXISTS "Goals select policy" ON "public"."goals_objectives";
 CREATE POLICY "Goals select policy" ON "public"."goals_objectives" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "goals_objectives"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6338,56 +7360,69 @@ CREATE POLICY "Goals select policy" ON "public"."goals_objectives" FOR SELECT TO
 
 
 
+DROP POLICY IF EXISTS "Goals update policy" ON "public"."goals_objectives";
 CREATE POLICY "Goals update policy" ON "public"."goals_objectives" FOR UPDATE TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Interviews delete policy" ON "public"."interviews";
 CREATE POLICY "Interviews delete policy" ON "public"."interviews" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Interviews insert policy" ON "public"."interviews";
 CREATE POLICY "Interviews insert policy" ON "public"."interviews" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Interviews select policy" ON "public"."interviews";
 CREATE POLICY "Interviews select policy" ON "public"."interviews" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ("interviewer_id" = ( SELECT "auth"."uid"() AS "uid"))));
 
 
 
+DROP POLICY IF EXISTS "Interviews update policy" ON "public"."interviews";
 CREATE POLICY "Interviews update policy" ON "public"."interviews" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ("interviewer_id" = ( SELECT "auth"."uid"() AS "uid"))));
 
 
 
+DROP POLICY IF EXISTS "Job postings delete policy" ON "public"."job_postings";
 CREATE POLICY "Job postings delete policy" ON "public"."job_postings" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Job postings insert policy" ON "public"."job_postings";
 CREATE POLICY "Job postings insert policy" ON "public"."job_postings" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Job postings select policy" ON "public"."job_postings";
 CREATE POLICY "Job postings select policy" ON "public"."job_postings" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Job postings update policy" ON "public"."job_postings";
 CREATE POLICY "Job postings update policy" ON "public"."job_postings" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leads can manage their own reports" ON "public"."weekly_reports";
 CREATE POLICY "Leads can manage their own reports" ON "public"."weekly_reports" TO "authenticated" USING (((( SELECT "auth"."uid"() AS "uid") = "user_id") OR (EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = ( SELECT "auth"."uid"() AS "uid")) AND ("profiles"."role" = ANY (ARRAY['admin'::"public"."user_role", 'super_admin'::"public"."user_role"])))))));
+  WHERE (("profiles"."id" = ( SELECT "auth"."uid"() AS "uid")) AND ("profiles"."role" = ANY (ARRAY['admin'::text, 'super_admin'::text])))))));
 
 
 
+DROP POLICY IF EXISTS "Leave approvals delete policy" ON "public"."leave_approvals";
 CREATE POLICY "Leave approvals delete policy" ON "public"."leave_approvals" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leave approvals insert policy" ON "public"."leave_approvals";
 CREATE POLICY "Leave approvals insert policy" ON "public"."leave_approvals" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leave approvals select policy" ON "public"."leave_approvals";
 CREATE POLICY "Leave approvals select policy" ON "public"."leave_approvals" FOR SELECT TO "authenticated" USING ((("approver_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "leave_approvals"."approver_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6398,18 +7433,22 @@ CREATE POLICY "Leave approvals select policy" ON "public"."leave_approvals" FOR 
 
 
 
+DROP POLICY IF EXISTS "Leave approvals update policy" ON "public"."leave_approvals";
 CREATE POLICY "Leave approvals update policy" ON "public"."leave_approvals" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leave balances delete policy" ON "public"."leave_balances";
 CREATE POLICY "Leave balances delete policy" ON "public"."leave_balances" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leave balances insert policy" ON "public"."leave_balances";
 CREATE POLICY "Leave balances insert policy" ON "public"."leave_balances" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leave balances select policy" ON "public"."leave_balances";
 CREATE POLICY "Leave balances select policy" ON "public"."leave_balances" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "leave_balances"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6418,18 +7457,22 @@ CREATE POLICY "Leave balances select policy" ON "public"."leave_balances" FOR SE
 
 
 
+DROP POLICY IF EXISTS "Leave balances update policy" ON "public"."leave_balances";
 CREATE POLICY "Leave balances update policy" ON "public"."leave_balances" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leave requests delete policy" ON "public"."leave_requests";
 CREATE POLICY "Leave requests delete policy" ON "public"."leave_requests" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leave requests insert policy" ON "public"."leave_requests";
 CREATE POLICY "Leave requests insert policy" ON "public"."leave_requests" FOR INSERT TO "authenticated" WITH CHECK (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "Leave requests select policy" ON "public"."leave_requests";
 CREATE POLICY "Leave requests select policy" ON "public"."leave_requests" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "leave_requests"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6438,6 +7481,7 @@ CREATE POLICY "Leave requests select policy" ON "public"."leave_requests" FOR SE
 
 
 
+DROP POLICY IF EXISTS "Leave requests update policy" ON "public"."leave_requests";
 CREATE POLICY "Leave requests update policy" ON "public"."leave_requests" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "leave_requests"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6446,110 +7490,137 @@ CREATE POLICY "Leave requests update policy" ON "public"."leave_requests" FOR UP
 
 
 
+DROP POLICY IF EXISTS "Leave types delete policy" ON "public"."leave_types";
 CREATE POLICY "Leave types delete policy" ON "public"."leave_types" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leave types insert policy" ON "public"."leave_types";
 CREATE POLICY "Leave types insert policy" ON "public"."leave_types" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Leave types select policy" ON "public"."leave_types";
 CREATE POLICY "Leave types select policy" ON "public"."leave_types" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Leave types update policy" ON "public"."leave_types";
 CREATE POLICY "Leave types update policy" ON "public"."leave_types" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Meter readings delete policy" ON "public"."meter_readings";
 CREATE POLICY "Meter readings delete policy" ON "public"."meter_readings" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Meter readings insert policy" ON "public"."meter_readings";
 CREATE POLICY "Meter readings insert policy" ON "public"."meter_readings" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Meter readings select policy" ON "public"."meter_readings";
 CREATE POLICY "Meter readings select policy" ON "public"."meter_readings" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Meter readings update policy" ON "public"."meter_readings";
 CREATE POLICY "Meter readings update policy" ON "public"."meter_readings" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Meters delete policy" ON "public"."meters";
 CREATE POLICY "Meters delete policy" ON "public"."meters" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Meters insert policy" ON "public"."meters";
 CREATE POLICY "Meters insert policy" ON "public"."meters" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Meters select policy" ON "public"."meters";
 CREATE POLICY "Meters select policy" ON "public"."meters" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Meters update policy" ON "public"."meters";
 CREATE POLICY "Meters update policy" ON "public"."meters" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Notification preferences insert" ON "public"."notification_preferences";
 CREATE POLICY "Notification preferences insert" ON "public"."notification_preferences" FOR INSERT TO "authenticated" WITH CHECK (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "Notification preferences select policy" ON "public"."notification_preferences";
 CREATE POLICY "Notification preferences select policy" ON "public"."notification_preferences" FOR SELECT TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "Notification preferences update" ON "public"."notification_preferences";
 CREATE POLICY "Notification preferences update" ON "public"."notification_preferences" FOR UPDATE TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "Notifications insert policy" ON "public"."notifications";
 CREATE POLICY "Notifications insert policy" ON "public"."notifications" FOR INSERT TO "authenticated" WITH CHECK (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text") OR (( SELECT "auth"."uid"() AS "uid") IS NOT NULL)));
 
 
 
+DROP POLICY IF EXISTS "Offers delete policy" ON "public"."offers";
 CREATE POLICY "Offers delete policy" ON "public"."offers" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Offers insert policy" ON "public"."offers";
 CREATE POLICY "Offers insert policy" ON "public"."offers" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Offers select policy" ON "public"."offers";
 CREATE POLICY "Offers select policy" ON "public"."offers" FOR SELECT TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Offers update policy" ON "public"."offers";
 CREATE POLICY "Offers update policy" ON "public"."offers" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Office locations delete policy" ON "public"."office_locations";
 CREATE POLICY "Office locations delete policy" ON "public"."office_locations" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('super_admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Office locations insert policy" ON "public"."office_locations";
 CREATE POLICY "Office locations insert policy" ON "public"."office_locations" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Office locations select policy" ON "public"."office_locations";
 CREATE POLICY "Office locations select policy" ON "public"."office_locations" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Office locations update policy" ON "public"."office_locations";
 CREATE POLICY "Office locations update policy" ON "public"."office_locations" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Overtime requests delete policy" ON "public"."overtime_requests";
 CREATE POLICY "Overtime requests delete policy" ON "public"."overtime_requests" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Overtime requests insert policy" ON "public"."overtime_requests";
 CREATE POLICY "Overtime requests insert policy" ON "public"."overtime_requests" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Overtime requests select policy" ON "public"."overtime_requests";
 CREATE POLICY "Overtime requests select policy" ON "public"."overtime_requests" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "overtime_requests"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6558,118 +7629,146 @@ CREATE POLICY "Overtime requests select policy" ON "public"."overtime_requests" 
 
 
 
+DROP POLICY IF EXISTS "Overtime requests update policy" ON "public"."overtime_requests";
 CREATE POLICY "Overtime requests update policy" ON "public"."overtime_requests" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Payment documents delete policy" ON "public"."payment_documents";
 CREATE POLICY "Payment documents delete policy" ON "public"."payment_documents" FOR DELETE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ("uploaded_by" = ( SELECT "auth"."uid"() AS "uid"))));
 
 
 
+DROP POLICY IF EXISTS "Payment documents insert policy" ON "public"."payment_documents";
 CREATE POLICY "Payment documents insert policy" ON "public"."payment_documents" FOR INSERT TO "authenticated" WITH CHECK (("public"."has_role"('admin'::"text") OR "public"."has_role"('lead'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Payment documents select policy" ON "public"."payment_documents";
 CREATE POLICY "Payment documents select policy" ON "public"."payment_documents" FOR SELECT TO "authenticated" USING (("public"."has_role"('admin'::"text") OR ("public"."has_role"('lead'::"text") AND (EXISTS ( SELECT 1
    FROM "public"."department_payments" "dp"
   WHERE ("dp"."id" = "payment_documents"."payment_id")))) OR ("uploaded_by" = ( SELECT "auth"."uid"() AS "uid"))));
 
 
 
+DROP POLICY IF EXISTS "Payment documents update policy" ON "public"."payment_documents";
 CREATE POLICY "Payment documents update policy" ON "public"."payment_documents" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ("uploaded_by" = ( SELECT "auth"."uid"() AS "uid")))) WITH CHECK ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ("uploaded_by" = ( SELECT "auth"."uid"() AS "uid"))));
 
 
 
+DROP POLICY IF EXISTS "Payroll entries delete policy" ON "public"."payroll_entries";
 CREATE POLICY "Payroll entries delete policy" ON "public"."payroll_entries" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Payroll entries insert policy" ON "public"."payroll_entries";
 CREATE POLICY "Payroll entries insert policy" ON "public"."payroll_entries" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Payroll entries select policy" ON "public"."payroll_entries";
 CREATE POLICY "Payroll entries select policy" ON "public"."payroll_entries" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Payroll entries update policy" ON "public"."payroll_entries";
 CREATE POLICY "Payroll entries update policy" ON "public"."payroll_entries" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Payroll periods delete policy" ON "public"."payroll_periods";
 CREATE POLICY "Payroll periods delete policy" ON "public"."payroll_periods" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Payroll periods insert policy" ON "public"."payroll_periods";
 CREATE POLICY "Payroll periods insert policy" ON "public"."payroll_periods" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Payroll periods select policy" ON "public"."payroll_periods";
 CREATE POLICY "Payroll periods select policy" ON "public"."payroll_periods" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Payroll periods update policy" ON "public"."payroll_periods";
 CREATE POLICY "Payroll periods update policy" ON "public"."payroll_periods" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Payslips delete policy" ON "public"."payslips";
 CREATE POLICY "Payslips delete policy" ON "public"."payslips" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Payslips insert policy" ON "public"."payslips";
 CREATE POLICY "Payslips insert policy" ON "public"."payslips" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Payslips select policy" ON "public"."payslips";
 CREATE POLICY "Payslips select policy" ON "public"."payslips" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Payslips update policy" ON "public"."payslips";
 CREATE POLICY "Payslips update policy" ON "public"."payslips" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Pending users delete policy" ON "public"."pending_users";
 CREATE POLICY "Pending users delete policy" ON "public"."pending_users" FOR DELETE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('super_admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Pending users insert policy" ON "public"."pending_users";
 CREATE POLICY "Pending users insert policy" ON "public"."pending_users" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('super_admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Pending users select policy" ON "public"."pending_users";
 CREATE POLICY "Pending users select policy" ON "public"."pending_users" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('super_admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Pending users update policy" ON "public"."pending_users";
 CREATE POLICY "Pending users update policy" ON "public"."pending_users" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('super_admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Performance ratings delete policy" ON "public"."performance_ratings";
 CREATE POLICY "Performance ratings delete policy" ON "public"."performance_ratings" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Performance ratings insert policy" ON "public"."performance_ratings";
 CREATE POLICY "Performance ratings insert policy" ON "public"."performance_ratings" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Performance ratings select policy" ON "public"."performance_ratings";
 CREATE POLICY "Performance ratings select policy" ON "public"."performance_ratings" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (EXISTS ( SELECT 1
    FROM "public"."performance_reviews" "pr"
   WHERE (("pr"."id" = "performance_ratings"."performance_review_id") AND (("pr"."user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ("pr"."reviewer_id" = ( SELECT "auth"."uid"() AS "uid"))))))));
 
 
 
+DROP POLICY IF EXISTS "Performance ratings update policy" ON "public"."performance_ratings";
 CREATE POLICY "Performance ratings update policy" ON "public"."performance_ratings" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Performance reviews delete" ON "public"."performance_reviews";
 CREATE POLICY "Performance reviews delete" ON "public"."performance_reviews" FOR DELETE TO "authenticated" USING ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Performance reviews insert" ON "public"."performance_reviews";
 CREATE POLICY "Performance reviews insert" ON "public"."performance_reviews" FOR INSERT TO "authenticated" WITH CHECK (("public"."has_role"('lead'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Performance reviews select" ON "public"."performance_reviews";
 CREATE POLICY "Performance reviews select" ON "public"."performance_reviews" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ("reviewer_id" = ( SELECT "auth"."uid"() AS "uid")) OR "public"."has_role"('admin'::"text") OR ("public"."has_role"('lead'::"text") AND ("user_id" IN ( SELECT "profiles"."id"
    FROM "public"."profiles"
   WHERE ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6678,282 +7777,347 @@ CREATE POLICY "Performance reviews select" ON "public"."performance_reviews" FOR
 
 
 
+DROP POLICY IF EXISTS "Performance reviews update" ON "public"."performance_reviews";
 CREATE POLICY "Performance reviews update" ON "public"."performance_reviews" FOR UPDATE TO "authenticated" USING ((("reviewer_id" = ( SELECT "auth"."uid"() AS "uid")) OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Profiles insert policy" ON "public"."profiles";
 CREATE POLICY "Profiles insert policy" ON "public"."profiles" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_roles"
   WHERE (("user_roles"."user_id" = ( SELECT "auth"."uid"() AS "uid")) AND (("user_roles"."role")::"text" = ANY ((ARRAY['admin'::character varying, 'super_admin'::character varying])::"text"[]))))));
 
 
 
+DROP POLICY IF EXISTS "Profiles select policy" ON "public"."profiles";
 CREATE POLICY "Profiles select policy" ON "public"."profiles" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Profiles update policy" ON "public"."profiles";
 CREATE POLICY "Profiles update policy" ON "public"."profiles" FOR UPDATE TO "authenticated" USING ((("id" = ( SELECT "auth"."uid"() AS "uid")) OR (EXISTS ( SELECT 1
    FROM "public"."user_roles"
   WHERE (("user_roles"."user_id" = ( SELECT "auth"."uid"() AS "uid")) AND (("user_roles"."role")::"text" = ANY ((ARRAY['admin'::character varying, 'super_admin'::character varying])::"text"[])))))));
 
 
 
+DROP POLICY IF EXISTS "Project items delete policy" ON "public"."project_items";
 CREATE POLICY "Project items delete policy" ON "public"."project_items" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Project items insert policy" ON "public"."project_items";
 CREATE POLICY "Project items insert policy" ON "public"."project_items" FOR INSERT TO "authenticated" WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."project_members"
   WHERE (("project_members"."project_id" = "project_items"."project_id") AND ("project_members"."user_id" = ( SELECT "auth"."uid"() AS "uid"))))) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Project items select policy" ON "public"."project_items";
 CREATE POLICY "Project items select policy" ON "public"."project_items" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Project items update policy" ON "public"."project_items";
 CREATE POLICY "Project items update policy" ON "public"."project_items" FOR UPDATE TO "authenticated" USING (((EXISTS ( SELECT 1
    FROM "public"."project_members"
   WHERE (("project_members"."project_id" = "project_items"."project_id") AND ("project_members"."user_id" = ( SELECT "auth"."uid"() AS "uid"))))) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Project members delete policy" ON "public"."project_members";
 CREATE POLICY "Project members delete policy" ON "public"."project_members" FOR DELETE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('lead'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Project members insert policy" ON "public"."project_members";
 CREATE POLICY "Project members insert policy" ON "public"."project_members" FOR INSERT TO "authenticated" WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."projects"
   WHERE (("projects"."id" = "project_members"."project_id") AND (("projects"."created_by" = ( SELECT "auth"."uid"() AS "uid")) OR ("projects"."project_manager_id" = ( SELECT "auth"."uid"() AS "uid")))))) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('lead'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Project members select policy" ON "public"."project_members";
 CREATE POLICY "Project members select policy" ON "public"."project_members" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Project members update policy" ON "public"."project_members";
 CREATE POLICY "Project members update policy" ON "public"."project_members" FOR UPDATE TO "authenticated" USING (((EXISTS ( SELECT 1
    FROM "public"."projects"
   WHERE (("projects"."id" = "project_members"."project_id") AND (("projects"."created_by" = ( SELECT "auth"."uid"() AS "uid")) OR ("projects"."project_manager_id" = ( SELECT "auth"."uid"() AS "uid")))))) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('lead'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Project updates delete policy" ON "public"."project_updates";
 CREATE POLICY "Project updates delete policy" ON "public"."project_updates" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Project updates insert policy" ON "public"."project_updates";
 CREATE POLICY "Project updates insert policy" ON "public"."project_updates" FOR INSERT TO "authenticated" WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."project_members"
   WHERE (("project_members"."project_id" = "project_updates"."project_id") AND ("project_members"."user_id" = ( SELECT "auth"."uid"() AS "uid"))))) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Project updates select policy" ON "public"."project_updates";
 CREATE POLICY "Project updates select policy" ON "public"."project_updates" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Project updates update policy" ON "public"."project_updates";
 CREATE POLICY "Project updates update policy" ON "public"."project_updates" FOR UPDATE TO "authenticated" USING (((EXISTS ( SELECT 1
    FROM "public"."project_members"
   WHERE (("project_members"."project_id" = "project_updates"."project_id") AND ("project_members"."user_id" = ( SELECT "auth"."uid"() AS "uid"))))) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Projects management policy" ON "public"."projects";
 CREATE POLICY "Projects management policy" ON "public"."projects" TO "authenticated" USING (("public"."has_role"('admin'::"text") OR ("project_manager_id" = ( SELECT "auth"."uid"() AS "uid")) OR (EXISTS ( SELECT 1
    FROM "public"."project_members"
   WHERE (("project_members"."project_id" = "projects"."id") AND ("project_members"."user_id" = ( SELECT "auth"."uid"() AS "uid")))))));
 
 
 
+DROP POLICY IF EXISTS "Remote tasks delete policy" ON "public"."remote_tasks";
 CREATE POLICY "Remote tasks delete policy" ON "public"."remote_tasks" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Remote tasks insert policy" ON "public"."remote_tasks";
 CREATE POLICY "Remote tasks insert policy" ON "public"."remote_tasks" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Remote tasks select policy" ON "public"."remote_tasks";
 CREATE POLICY "Remote tasks select policy" ON "public"."remote_tasks" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Remote tasks update policy" ON "public"."remote_tasks";
 CREATE POLICY "Remote tasks update policy" ON "public"."remote_tasks" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Review cycles admin delete" ON "public"."review_cycles";
 CREATE POLICY "Review cycles admin delete" ON "public"."review_cycles" FOR DELETE TO "authenticated" USING ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Review cycles admin insert" ON "public"."review_cycles";
 CREATE POLICY "Review cycles admin insert" ON "public"."review_cycles" FOR INSERT TO "authenticated" WITH CHECK ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Review cycles admin update" ON "public"."review_cycles";
 CREATE POLICY "Review cycles admin update" ON "public"."review_cycles" FOR UPDATE TO "authenticated" USING ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Review cycles select policy" ON "public"."review_cycles";
 CREATE POLICY "Review cycles select policy" ON "public"."review_cycles" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Salary components admin delete" ON "public"."salary_components";
 CREATE POLICY "Salary components admin delete" ON "public"."salary_components" FOR DELETE TO "authenticated" USING ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Salary components admin insert" ON "public"."salary_components";
 CREATE POLICY "Salary components admin insert" ON "public"."salary_components" FOR INSERT TO "authenticated" WITH CHECK ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Salary components admin update" ON "public"."salary_components";
 CREATE POLICY "Salary components admin update" ON "public"."salary_components" FOR UPDATE TO "authenticated" USING ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Salary components select policy" ON "public"."salary_components";
 CREATE POLICY "Salary components select policy" ON "public"."salary_components" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Salary structures delete policy" ON "public"."salary_structures";
 CREATE POLICY "Salary structures delete policy" ON "public"."salary_structures" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Salary structures insert policy" ON "public"."salary_structures";
 CREATE POLICY "Salary structures insert policy" ON "public"."salary_structures" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Salary structures select policy" ON "public"."salary_structures";
 CREATE POLICY "Salary structures select policy" ON "public"."salary_structures" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (EXISTS ( SELECT 1
    FROM "public"."employee_salaries" "es"
   WHERE (("es"."id" = "salary_structures"."employee_salary_id") AND ("es"."user_id" = ( SELECT "auth"."uid"() AS "uid")))))));
 
 
 
+DROP POLICY IF EXISTS "Salary structures update policy" ON "public"."salary_structures";
 CREATE POLICY "Salary structures update policy" ON "public"."salary_structures" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Shifts admin delete" ON "public"."shifts";
 CREATE POLICY "Shifts admin delete" ON "public"."shifts" FOR DELETE TO "authenticated" USING ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Shifts admin insert" ON "public"."shifts";
 CREATE POLICY "Shifts admin insert" ON "public"."shifts" FOR INSERT TO "authenticated" WITH CHECK ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Shifts admin update" ON "public"."shifts";
 CREATE POLICY "Shifts admin update" ON "public"."shifts" FOR UPDATE TO "authenticated" USING ("public"."has_role"('admin'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Shifts select policy" ON "public"."shifts";
 CREATE POLICY "Shifts select policy" ON "public"."shifts" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "employee can create contacts" ON "public"."crm_contacts";
 CREATE POLICY "employee can create contacts" ON "public"."crm_contacts" FOR INSERT TO "authenticated" WITH CHECK (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can create crm activities" ON "public"."crm_activities";
 CREATE POLICY "employee can create crm activities" ON "public"."crm_activities" FOR INSERT TO "authenticated" WITH CHECK (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can create notifications" ON "public"."notifications";
 CREATE POLICY "employee can create notifications" ON "public"."notifications" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "public"."has_role"('employee'::"text") AS "has_role") OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "employee can create opportunities" ON "public"."crm_opportunities";
 CREATE POLICY "employee can create opportunities" ON "public"."crm_opportunities" FOR INSERT TO "authenticated" WITH CHECK (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can create pipelines" ON "public"."crm_pipelines";
 CREATE POLICY "employee can create pipelines" ON "public"."crm_pipelines" FOR INSERT TO "authenticated" WITH CHECK (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can create tags" ON "public"."crm_tags";
 CREATE POLICY "employee can create tags" ON "public"."crm_tags" FOR INSERT TO "authenticated" WITH CHECK (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can delete activities" ON "public"."crm_activities";
 CREATE POLICY "employee can delete activities" ON "public"."crm_activities" FOR DELETE TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can delete contacts" ON "public"."crm_contacts";
 CREATE POLICY "employee can delete contacts" ON "public"."crm_contacts" FOR DELETE TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can delete opportunities" ON "public"."crm_opportunities";
 CREATE POLICY "employee can delete opportunities" ON "public"."crm_opportunities" FOR DELETE TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can update activities" ON "public"."crm_activities";
 CREATE POLICY "employee can update activities" ON "public"."crm_activities" FOR UPDATE TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can update contacts" ON "public"."crm_contacts";
 CREATE POLICY "employee can update contacts" ON "public"."crm_contacts" FOR UPDATE TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can update opportunities" ON "public"."crm_opportunities";
 CREATE POLICY "employee can update opportunities" ON "public"."crm_opportunities" FOR UPDATE TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can view all activities" ON "public"."crm_activities";
 CREATE POLICY "employee can view all activities" ON "public"."crm_activities" FOR SELECT TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can view consumption data" ON "public"."consumption_data";
 CREATE POLICY "employee can view consumption data" ON "public"."consumption_data" FOR SELECT TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('visitor'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can view contacts" ON "public"."crm_contacts";
 CREATE POLICY "employee can view contacts" ON "public"."crm_contacts" FOR SELECT TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee can view opportunities" ON "public"."crm_opportunities";
 CREATE POLICY "employee can view opportunities" ON "public"."crm_opportunities" FOR SELECT TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "employee create token sales" ON "public"."token_sales";
 CREATE POLICY "employee create token sales" ON "public"."token_sales" FOR INSERT WITH CHECK ("public"."has_role"('employee'::"text"));
 
 
 
+DROP POLICY IF EXISTS "Starlink documents management" ON "public"."starlink_documents";
 CREATE POLICY "Starlink documents management" ON "public"."starlink_documents" TO "authenticated" USING (("public"."has_role"('admin'::"text") OR "public"."has_role"('employee'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Starlink payments delete policy" ON "public"."starlink_payments";
 CREATE POLICY "Starlink payments delete policy" ON "public"."starlink_payments" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Starlink payments insert policy" ON "public"."starlink_payments";
 CREATE POLICY "Starlink payments insert policy" ON "public"."starlink_payments" FOR INSERT TO "authenticated" WITH CHECK (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Starlink payments select policy" ON "public"."starlink_payments";
 CREATE POLICY "Starlink payments select policy" ON "public"."starlink_payments" FOR SELECT TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('super_admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Starlink payments update policy" ON "public"."starlink_payments";
 CREATE POLICY "Starlink payments update policy" ON "public"."starlink_payments" FOR UPDATE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Starlink sites management" ON "public"."starlink_sites";
 CREATE POLICY "Starlink sites management" ON "public"."starlink_sites" TO "authenticated" USING (("public"."has_role"('admin'::"text") OR "public"."has_role"('employee'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Sync state select policy" ON "public"."sync_state";
 CREATE POLICY "Sync state select policy" ON "public"."sync_state" FOR SELECT TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('admin'::"text")));
 
 
 
+DROP POLICY IF EXISTS "Tariffs admin manage" ON "public"."tariffs";
 CREATE POLICY "Tariffs admin manage" ON "public"."tariffs" TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('super_admin'::"text") AS "has_role"))) WITH CHECK ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('super_admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Tariffs view policy" ON "public"."tariffs";
 CREATE POLICY "Tariffs view policy" ON "public"."tariffs" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Task assignments delete policy" ON "public"."task_assignments";
 CREATE POLICY "Task assignments delete policy" ON "public"."task_assignments" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Task assignments insert policy" ON "public"."task_assignments";
 CREATE POLICY "Task assignments insert policy" ON "public"."task_assignments" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "task_assignments"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6962,6 +8126,7 @@ CREATE POLICY "Task assignments insert policy" ON "public"."task_assignments" FO
 
 
 
+DROP POLICY IF EXISTS "Task assignments select policy" ON "public"."task_assignments";
 CREATE POLICY "Task assignments select policy" ON "public"."task_assignments" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "task_assignments"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6970,6 +8135,7 @@ CREATE POLICY "Task assignments select policy" ON "public"."task_assignments" FO
 
 
 
+DROP POLICY IF EXISTS "Task assignments update policy" ON "public"."task_assignments";
 CREATE POLICY "Task assignments update policy" ON "public"."task_assignments" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "task_assignments"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6978,10 +8144,12 @@ CREATE POLICY "Task assignments update policy" ON "public"."task_assignments" FO
 
 
 
+DROP POLICY IF EXISTS "Task updates insert policy" ON "public"."task_updates";
 CREATE POLICY "Task updates insert policy" ON "public"."task_updates" FOR INSERT TO "authenticated" WITH CHECK (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "Task updates select policy" ON "public"."task_updates";
 CREATE POLICY "Task updates select policy" ON "public"."task_updates" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "task_updates"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -6990,40 +8158,49 @@ CREATE POLICY "Task updates select policy" ON "public"."task_updates" FOR SELECT
 
 
 
+DROP POLICY IF EXISTS "Task user completion insert policy" ON "public"."task_user_completion";
 CREATE POLICY "Task user completion insert policy" ON "public"."task_user_completion" FOR INSERT TO "authenticated" WITH CHECK ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) AND (EXISTS ( SELECT 1
    FROM "public"."task_assignments"
   WHERE (("task_assignments"."task_id" = "task_user_completion"."task_id") AND ("task_assignments"."user_id" = ( SELECT "auth"."uid"() AS "uid")))))));
 
 
 
+DROP POLICY IF EXISTS "Task user completion select policy" ON "public"."task_user_completion";
 CREATE POLICY "Task user completion select policy" ON "public"."task_user_completion" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Tasks delete policy" ON "public"."tasks";
 CREATE POLICY "Tasks delete policy" ON "public"."tasks" FOR DELETE TO "authenticated" USING (( SELECT "public"."has_role"('admin'::"text") AS "has_role"));
 
 
 
+DROP POLICY IF EXISTS "Tasks insert policy" ON "public"."tasks";
 CREATE POLICY "Tasks insert policy" ON "public"."tasks" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('lead'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Tasks select policy" ON "public"."tasks";
 CREATE POLICY "Tasks select policy" ON "public"."tasks" FOR SELECT TO "authenticated" USING (true);
 
 
 
+DROP POLICY IF EXISTS "Tasks update policy" ON "public"."tasks";
 CREATE POLICY "Tasks update policy" ON "public"."tasks" FOR UPDATE TO "authenticated" USING ((( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('lead'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "Timesheets delete policy" ON "public"."timesheets";
 CREATE POLICY "Timesheets delete policy" ON "public"."timesheets" FOR DELETE TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "Timesheets insert policy" ON "public"."timesheets";
 CREATE POLICY "Timesheets insert policy" ON "public"."timesheets" FOR INSERT TO "authenticated" WITH CHECK (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "Timesheets select policy" ON "public"."timesheets";
 CREATE POLICY "Timesheets select policy" ON "public"."timesheets" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR (( SELECT "public"."has_role"('lead'::"text") AS "has_role") AND (EXISTS ( SELECT 1
    FROM "public"."profiles"
   WHERE (("profiles"."id" = "timesheets"."user_id") AND ("profiles"."department_id" = ( SELECT "profiles_1"."department_id"
@@ -7032,72 +8209,88 @@ CREATE POLICY "Timesheets select policy" ON "public"."timesheets" FOR SELECT TO 
 
 
 
+DROP POLICY IF EXISTS "Timesheets update policy" ON "public"."timesheets";
 CREATE POLICY "Timesheets update policy" ON "public"."timesheets" FOR UPDATE TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "Token records management" ON "public"."token_records";
 CREATE POLICY "Token records management" ON "public"."token_records" TO "authenticated" USING (("public"."has_role"('admin'::"text") OR "public"."has_role"('employee'::"text"))) WITH CHECK (("public"."has_role"('admin'::"text") OR "public"."has_role"('employee'::"text")));
 
 
 
+DROP POLICY IF EXISTS "User documentation delete policy" ON "public"."user_documentation";
 CREATE POLICY "User documentation delete policy" ON "public"."user_documentation" FOR DELETE TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "User documentation insert policy" ON "public"."user_documentation";
 CREATE POLICY "User documentation insert policy" ON "public"."user_documentation" FOR INSERT TO "authenticated" WITH CHECK (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "User documentation select policy" ON "public"."user_documentation";
 CREATE POLICY "User documentation select policy" ON "public"."user_documentation" FOR SELECT TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "User documentation update policy" ON "public"."user_documentation";
 CREATE POLICY "User documentation update policy" ON "public"."user_documentation" FOR UPDATE TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
 
 
 
+DROP POLICY IF EXISTS "User roles delete policy" ON "public"."user_roles";
 CREATE POLICY "User roles delete policy" ON "public"."user_roles" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_roles" "ur"
   WHERE (("ur"."user_id" = ( SELECT "auth"."uid"() AS "uid")) AND (("ur"."role")::"text" = ANY ((ARRAY['admin'::character varying, 'super_admin'::character varying])::"text"[]))))));
 
 
 
+DROP POLICY IF EXISTS "User roles insert policy" ON "public"."user_roles";
 CREATE POLICY "User roles insert policy" ON "public"."user_roles" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_roles" "ur"
   WHERE (("ur"."user_id" = ( SELECT "auth"."uid"() AS "uid")) AND (("ur"."role")::"text" = ANY ((ARRAY['admin'::character varying, 'super_admin'::character varying])::"text"[]))))));
 
 
 
+DROP POLICY IF EXISTS "User roles select (self or admin)" ON "public"."user_roles";
 CREATE POLICY "User roles select (self or admin)" ON "public"."user_roles" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR ( SELECT "public"."has_role"('admin'::"text") AS "has_role") OR ( SELECT "public"."has_role"('super_admin'::"text") AS "has_role")));
 
 
 
+DROP POLICY IF EXISTS "User roles update policy" ON "public"."user_roles";
 CREATE POLICY "User roles update policy" ON "public"."user_roles" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_roles" "ur"
   WHERE (("ur"."user_id" = ( SELECT "auth"."uid"() AS "uid")) AND (("ur"."role")::"text" = ANY ((ARRAY['admin'::character varying, 'super_admin'::character varying])::"text"[]))))));
 
 
 
+DROP POLICY IF EXISTS "Users can clock in" ON "public"."attendance_records";
 CREATE POLICY "Users can clock in" ON "public"."attendance_records" FOR INSERT TO "authenticated" WITH CHECK ((( SELECT "auth"."uid"() AS "uid") = "user_id"));
 
 
 
+DROP POLICY IF EXISTS "Users can clock out" ON "public"."attendance_records";
 CREATE POLICY "Users can clock out" ON "public"."attendance_records" FOR UPDATE TO "authenticated" USING (((( SELECT "auth"."uid"() AS "uid") = "user_id") AND ("clock_out" IS NULL))) WITH CHECK ((( SELECT "auth"."uid"() AS "uid") = "user_id"));
 
 
 
+DROP POLICY IF EXISTS "Users can update own notifications" ON "public"."notifications";
 CREATE POLICY "Users can update own notifications" ON "public"."notifications" FOR UPDATE TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") = "user_id"));
 
 
 
+DROP POLICY IF EXISTS "Users can view active pipelines" ON "public"."crm_pipelines";
 CREATE POLICY "Users can view active pipelines" ON "public"."crm_pipelines" FOR SELECT USING (("is_active" = true));
 
 
 
+DROP POLICY IF EXISTS "Users can view own notifications" ON "public"."notifications";
 CREATE POLICY "Users can view own notifications" ON "public"."notifications" FOR SELECT TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") = "user_id"));
 
 
 
+DROP POLICY IF EXISTS "Users with access can read token sales" ON "public"."token_sales";
 CREATE POLICY "Users with access can read token sales" ON "public"."token_sales" FOR SELECT TO "authenticated" USING (("public"."has_role"('employee'::"text") OR "public"."has_role"('visitor'::"text") OR "public"."has_role"('admin'::"text") OR "public"."has_role"('super_admin'::"text")));
 
 

@@ -49,11 +49,12 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_sync_lead_departments ON public.profiles;
-CREATE TRIGGER trg_sync_lead_departments
+CREATE OR REPLACE TRIGGER trg_sync_lead_departments
   AFTER INSERT OR UPDATE OF lead_departments ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.sync_user_lead_departments();
 
 ALTER TABLE public.user_lead_departments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "uld_select" ON public.user_lead_departments;
 CREATE POLICY "uld_select" ON public.user_lead_departments
   FOR SELECT TO authenticated USING (true);

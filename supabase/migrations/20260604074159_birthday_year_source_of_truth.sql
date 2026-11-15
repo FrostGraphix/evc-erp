@@ -62,7 +62,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_sync_profile_date_of_birth ON public.profiles;
-CREATE TRIGGER trg_sync_profile_date_of_birth
+CREATE OR REPLACE TRIGGER trg_sync_profile_date_of_birth
   BEFORE INSERT OR UPDATE OF birthday, birth_year, date_of_birth ON public.profiles
   FOR EACH ROW
   EXECUTE FUNCTION public.sync_profile_date_of_birth();

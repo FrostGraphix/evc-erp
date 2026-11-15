@@ -66,7 +66,7 @@ $$ LANGUAGE plpgsql;
 
 -- 4. Create the Trigger
 DROP TRIGGER IF EXISTS tr_sync_action_items_on_week_change ON public.weekly_reports;
-CREATE TRIGGER tr_sync_action_items_on_week_change
+CREATE OR REPLACE TRIGGER tr_sync_action_items_on_week_change
 AFTER UPDATE ON public.weekly_reports
 FOR EACH ROW
 EXECUTE FUNCTION public.fn_sync_action_items_on_week_change();
