@@ -13,7 +13,7 @@ export const size = { width: 1200, height: 630 }
 export const contentType = "image/png"
 export const dynamic = "force-dynamic"
 
-const BRAND_ORANGE = "#f26522"
+const BRAND_ORANGE = "#f57f25"
 const INK = "#111111"
 const MUTED = "#6b6b6b"
 const MAX_GROUPS = 3

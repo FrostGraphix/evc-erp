@@ -14,8 +14,8 @@ import { useEffect, useRef } from "react"
 type Mode = "dark" | "light"
 
 const ACCENT: Record<Mode, string> = {
-  dark: "74, 222, 128",
-  light: "22, 163, 74",
+  dark: "245, 127, 37",
+  light: "245, 127, 37",
 }
 
 type Direction = [number, number]

@@ -85,6 +85,7 @@ export const RELEASES: Release[] = [
       {
         area: "UI & Badges",
         items: [
+          "Updated brand styling and tokens across the workspace to match official EVC Orange (#f57f25) and unified branding across email templates, documents, and notifications",
           "Standardized status badges across Leave, Fleet, Reviews, Help Desk, Payroll, CBT, and Admin tables to use semantic status colors (green for approved/completed/active, amber for pending, purple for contract) rather than defaulting to uniform gold or dark primary badges",
           "Enhanced list views and side sheets across Impersonation, Payroll, Attendance, Stock Movements, Challenges, and Tasks with one-click actions, expandable details, and full record properties",
           "Adopted standardized department short codes in list views and card subtitles across Impersonation, User Settings, Challenges, CBT logs, and Leave Management to eliminate text truncation on mobile while retaining full department names in side sheets and search filters",

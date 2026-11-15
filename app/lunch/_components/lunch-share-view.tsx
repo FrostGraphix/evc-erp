@@ -32,8 +32,8 @@ export function lunchShareMetadata(preview: LunchSharePreview | null, path: stri
     return {
       metadataBase: new URL(SITE_URL),
       title: "Lunch poll",
-      description: "Vote for your lunch on Matrix.",
-      openGraph: { title: "Lunch poll | Matrix", description: "Vote for your lunch on Matrix.", siteName: "Matrix" },
+      description: "Vote for your lunch on EVC Ecosystem.",
+      openGraph: { title: "Lunch poll | EVC Ecosystem", description: "Vote for your lunch on EVC Ecosystem.", siteName: "EVC Ecosystem" },
     }
   }
 
@@ -44,7 +44,7 @@ export function lunchShareMetadata(preview: LunchSharePreview | null, path: stri
     metadataBase: new URL(SITE_URL),
     title,
     description,
-    openGraph: { title, description, type: "website", siteName: "Matrix", url: path, images: [image] },
+    openGraph: { title, description, type: "website", siteName: "EVC Ecosystem", url: path, images: [image] },
     twitter: { card: "summary_large_image", title, description, images: [image] },
   }
 }
@@ -95,7 +95,7 @@ export function LunchShareView({ preview }: { preview: LunchSharePreview | null 
             </CardHeader>
             <CardContent>
               <Button asChild className="w-full">
-                <Link href="/hr/lunch">Sign in to Matrix</Link>
+                <Link href="/hr/lunch">Sign in to EVC Ecosystem</Link>
               </Button>
             </CardContent>
           </>
