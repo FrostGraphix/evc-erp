@@ -90,7 +90,7 @@ async function getCommittedDays(
 
   const { data, error } = await query
   if (error) {
-    log.error({ userId, year, err: String(error) }, "Failed to load leave requests for entitlement")
+    log.error({ userId, year, err: error.message || String(error) }, "Failed to load leave requests for entitlement")
     throw new Error("Failed to load leave requests")
   }
 

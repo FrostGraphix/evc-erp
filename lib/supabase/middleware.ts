@@ -122,6 +122,7 @@ export async function updateSession(request: NextRequest) {
             const isDeletion = value === "" || options?.maxAge === 0
             const cookieOptions = {
               ...options,
+              secure: process.env.NODE_ENV === "production",
               maxAge: resolveCookieMaxAge(options?.maxAge, isDeletion),
             }
             refreshedCookies.push({ name, value, options: cookieOptions })
