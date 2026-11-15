@@ -1,4 +1,4 @@
-import { escapeHtml } from "./utils"
+import { escapeHtml, getERPThemeAwareStyles, getERPHeader, getERPFooter } from "./utils"
 
 const ACCOUNTS_EMAIL = process.env.ORG_ACCOUNTS_EMAIL || "accounts@evcng.com"
 
@@ -15,8 +15,7 @@ export interface PayslipEmailProps {
  *
  * Deliberately carries NO salary figures and NO literal password. The
  * breakdown lives in the attached PDF; the password (the recipient's own staff
- * ID) is something they already know, so the body only states the format —
- * printing the value again just gives a second place for it to leak from.
+ * ID) is something they already know, so the body only states the format.
  */
 export function renderPayslipEmail({
   fullName,
@@ -31,16 +30,16 @@ export function renderPayslipEmail({
 
   const passwordBlock = isProtected
     ? `
-        <div class="card">
-            <div class="card-header">Opening the attachment</div>
-            <table>
+        <div style="margin-top: 20px; border: 1px solid #FED7AA; border-radius: 10px; overflow: hidden; background: #FFF7ED;">
+            <div style="padding: 10px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; background: #FFEDD5; color: #EA580C; border-bottom: 1px solid #FED7AA;">Opening the attachment</div>
+            <table style="width: 100%; border-collapse: collapse;">
                 <tr>
-                    <td class="label">Password</td>
-                    <td class="value">Your Staff ID (as shown on your ID card / payslip)</td>
+                    <td style="width: 40%; color: #9A3412; font-weight: 500; border-right: 1px solid #FED7AA; padding: 10px 16px; font-size: 13px;">Document Password</td>
+                    <td style="color: #431407; font-weight: 700; padding: 10px 16px; font-size: 13px;">Your Staff ID (as shown on your ID card / payslip)</td>
                 </tr>
             </table>
         </div>
-        <p class="note">Enter it exactly as printed, including the slashes — e.g. EVC/2025/038.</p>`
+        <p style="font-size: 12px; color: #64748B; line-height: 1.5; margin-top: 10px;">Enter it exactly as printed, including the slashes — e.g. EVC/2025/038.</p>`
     : ""
 
   return `
@@ -50,66 +49,40 @@ export function renderPayslipEmail({
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Payslip - ${period}</title>
-    <style>
-        body { margin: 0; padding: 0; background: #fff; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; }
-        .email-shell { max-width: 600px; margin: 0 auto; overflow: hidden; }
-        .wrapper { max-width: 600px; margin: 0 auto; background: #fff; padding: 32px 28px; }
-        .title { font-size: 24px; font-weight: 700; color: #111827; margin-bottom: 14px; }
-        .text { font-size: 15px; color: #374151; line-height: 1.6; margin: 0 0 18px 0; }
-        .card { margin-top: 22px; border: 1px solid #d1d5db; overflow: hidden; background: #f9fafb; }
-        .card-header { padding: 12px 18px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; background: #eff6ff; color: #1e40af; border-bottom: 1px solid #bfdbfe; }
-        table { width: 100%; border-collapse: collapse; }
-        td { padding: 12px 18px; font-size: 14px; border-bottom: 1px solid #d1d5db; }
-        tr:last-child td { border-bottom: none; }
-        .label { width: 40%; color: #4b5563; font-weight: 500; border-right: 1px solid #d1d5db; }
-        .value { color: #111827; font-weight: 600; }
-        .note { font-size: 13px; color: #4b5563; line-height: 1.5; margin-top: 14px; }
-        .support { text-align: center; font-size: 14px; color: #4b5563; margin-top: 28px; line-height: 1.5; }
-        .support a { color: #f57f25; font-weight: 600; text-decoration: none; }
-        .footer { background: #000; padding: 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f57f25; border-bottom: 3px solid #f57f25; }
-        .footer strong { color: #fff; }
-        .footer-system { color: #f57f25; font-weight: 600; }
-        .footer-note { color: #9ca3af; font-style: italic; }
-    </style>
+    ${getERPThemeAwareStyles()}
 </head>
-<body>
-    <div class="email-shell">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
-      <tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">
-        <img src="https://evcng.com/images/evc-logo-dark.png" alt="EVC" height="65">
-      </td></tr>
-    </table>
-    <div class="wrapper">
-        <div class="title">Your Payslip is Ready</div>
-        <p class="text">Dear ${name},</p>
-        <p class="text">Please find attached your payslip for <strong>${period}</strong>. It sets out your earnings, statutory deductions and net pay for the period.</p>
+<body class="email-bg" style="margin: 0; padding: 24px 12px; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <div class="card-box" style="max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 18px; border: 1px solid #E2E8F0; box-shadow: 0 12px 36px rgba(10, 22, 40, 0.08); overflow: hidden;">
+    ${getERPHeader("Payroll & Accounts", "Your Payslip is Ready", `Confidential salary statement for ${period}`)}
+    
+    <div style="padding: 32px 28px;">
+        <p class="body-p" style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 16px 0;">Dear <strong class="body-strong" style="color: #0F172A;">${name}</strong>,</p>
+        <p class="body-p" style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 18px 0;">Please find attached your payslip for <strong class="body-strong" style="color: #0F172A;">${period}</strong>. It sets out your official earnings, statutory deductions, and net compensation for the cycle.</p>
 
-        <div class="card">
-            <div class="card-header">Payslip Details</div>
-            <table>
+        <div style="margin-top: 20px; border: 1px solid #E2E8F0; border-radius: 10px; overflow: hidden; background: #F8FAFC;">
+            <div style="padding: 10px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; background: #F1F5F9; color: #475569; border-bottom: 1px solid #E2E8F0;">Payslip Details</div>
+            <table style="width: 100%; border-collapse: collapse;">
                 <tr>
-                    <td class="label">Pay Period</td>
-                    <td class="value">${period}</td>
+                    <td style="width: 40%; color: #64748B; font-weight: 500; border-right: 1px solid #E2E8F0; padding: 12px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">Pay Period</td>
+                    <td style="color: #0F172A; font-weight: 600; padding: 12px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">${period}</td>
                 </tr>
                 <tr>
-                    <td class="label">Pay Date</td>
-                    <td class="value">${date}</td>
+                    <td style="width: 40%; color: #64748B; font-weight: 500; border-right: 1px solid #E2E8F0; padding: 12px 16px; font-size: 13px;">Disbursement Date</td>
+                    <td style="color: #0F172A; font-weight: 600; padding: 12px 16px; font-size: 13px;">${date}</td>
                 </tr>
             </table>
         </div>
         ${passwordBlock}
 
-        <p class="note">Please keep this document confidential. If any detail appears incorrect, contact Accounts within seven (7) working days of receipt.</p>
+        <p style="font-size: 12px; color: #64748B; line-height: 1.5; margin-top: 20px;">
+          Please treat this document with strict confidentiality. If any variance requires clarification, notify Finance within seven (7) business days.
+        </p>
 
-        <div class="support">
-            Questions about your payslip? Write to <a href="mailto:${accounts}">${accounts}</a>.
+        <div style="text-align: center; font-size: 13px; color: #64748B; margin-top: 24px; line-height: 1.5;">
+            Questions about your payslip? Reach Accounts at <a href="mailto:${accounts}" style="color: #F47C20; font-weight: 700; text-decoration: none;">${accounts}</a>.
         </div>
     </div>
-    <div class="footer">
-        <strong>EVC</strong><br>
-        <span class="footer-system">EVC ERP</span> &mdash; Enterprise Resource Platform<br>
-        <span class="footer-note">Replies to this message are routed to ${accounts}.</span>
-    </div>
+    ${getERPFooter("Payroll & Financial Operations", `Confidential employee correspondence. Direct questions to ${accounts}.`)}
     </div>
 </body>
 </html>`

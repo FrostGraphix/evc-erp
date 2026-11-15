@@ -1,4 +1,4 @@
-import { escapeHtml } from "./utils"
+import { escapeHtml, getERPThemeAwareStyles, getERPHeader, getERPFooter } from "./utils"
 
 export interface SystemAlertTable {
   heading?: string
@@ -13,46 +13,35 @@ interface SystemAlertEmailProps {
   tables?: SystemAlertTable[]
 }
 
-const DARK_LOCK =
-  "background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;"
-
-function bar(content: string, padding: string): string {
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${DARK_LOCK}border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;"><tr><td align="center" style="padding:${padding};${DARK_LOCK}font-size:11px;color:#d1d5db;">${content}</td></tr></table>`
-}
-
 function renderTable(table: SystemAlertTable): string {
-  const cell = "padding:6px 8px;border:1px solid #e5e7eb;font-size:12px;vertical-align:top;text-align:left;"
-  const head = table.headers.map((h) => `<th style="${cell}background:#f3f4f6;">${escapeHtml(h)}</th>`).join("")
+  const cell = "padding:8px 12px;border:1px solid #E2E8F0;font-size:12px;vertical-align:top;text-align:left;"
+  const head = table.headers.map((h) => `<th style="${cell}background:#F1F5F9;color:#0F172A;font-weight:700;">${escapeHtml(h)}</th>`).join("")
   const body = table.rows
-    .map((row) => `<tr>${row.map((value) => `<td style="${cell}">${escapeHtml(value)}</td>`).join("")}</tr>`)
+    .map((row) => `<tr>${row.map((value) => `<td style="${cell}color:#334155;">${escapeHtml(value)}</td>`).join("")}</tr>`)
     .join("")
   const heading = table.heading
-    ? `<div style="font-size:14px;font-weight:600;color:#111827;margin:20px 0 8px;">${escapeHtml(table.heading)}</div>`
+    ? `<div style="font-size:14px;font-weight:700;color:#0F172A;margin:20px 0 8px;">${escapeHtml(table.heading)}</div>`
     : ""
-  return `${heading}<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+  return `${heading}<div style="overflow-x:auto;margin-top:10px;border-radius:8px;border:1px solid #E2E8F0;"><table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
 }
 
-/** Branded operational alert: a red title, a few paragraphs and optional data tables. */
+/** Branded operational alert: a red/accent title, paragraphs and optional data tables. */
 export function renderSystemAlertEmail({ title, paragraphs, tables = [] }: SystemAlertEmailProps): string {
   return (
-    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"></head>' +
-    '<body style="margin:0;padding:0;background:#fff;font-family:Segoe UI, Tahoma, Geneva, Verdana, sans-serif;">' +
-    '<div style="max-width:720px;margin:0 auto;">' +
-    bar(
-      '<img src="https://evcng.com/images/evc-logo-dark.png" height="60" alt="EVC">',
-      "20px 0"
-    ) +
+    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+    `<title>${escapeHtml(title)}</title>` +
+    getERPThemeAwareStyles() +
+    '</head><body class="email-bg" style="margin:0;padding:24px 12px;background:#F8FAFC;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;">' +
+    '<div class="card-box" style="max-width:720px;margin:0 auto;background:#FFFFFF;border-radius:18px;border:1px solid #E2E8F0;box-shadow:0 12px 36px rgba(10,22,40,0.08);overflow:hidden;">' +
+    getERPHeader("System Alert", title, "Critical operational alert from EVC Nig. Ltd. ERP") +
     '<div style="padding:28px 24px;">' +
-    `<div style="font-size:20px;font-weight:700;color:#991b1b;margin:0 0 12px;">${escapeHtml(title)}</div>` +
     paragraphs
-      .map((p) => `<p style="font-size:14px;color:#374151;line-height:1.6;margin:0 0 10px;">${escapeHtml(p)}</p>`)
+      .map((p) => `<p class="body-p" style="font-size:14px;color:#334155;line-height:1.6;margin:0 0 12px;">${escapeHtml(p)}</p>`)
       .join("") +
     tables.map(renderTable).join("") +
-    "</div>" +
-    bar(
-      '<strong style="color:#fff;">EVC</strong><br><span style="color:#f57f25;font-weight:600;">IT &amp; Communications</span><br><br><i style="color:#9ca3af;">This is an automated notification.</i>',
-      "20px"
-    ) +
-    "</div></body></html>"
+    '</div>' +
+    getERPFooter("IT Operations & System Infrastructure", "Automated operational dispatch. Urgent issues should be escalated directly to ICT.") +
+    '</div></body></html>'
   )
 }

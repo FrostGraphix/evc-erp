@@ -1,23 +1,20 @@
-import { escapeHtml } from "./utils"
+import { escapeHtml, getERPThemeAwareStyles, getERPHeader, getERPFooter } from "./utils"
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://erp.evcng.com"
 
-const BAND =
-  'bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;"'
-
 function detailRow(label: string, value: string, last: boolean): string {
-  const border = last ? "" : "border-bottom: 1px solid #e5e7eb;"
+  const border = last ? "" : "border-bottom: 1px solid #E2E8F0;"
   return (
     "<tr>" +
-    `<td style="width: 35%; color: #64748b; font-weight: 500; border-right: 1px solid #e5e7eb; padding: 12px 18px; font-size: 13px; ${border}">${escapeHtml(label)}</td>` +
-    `<td style="color: #0f172a; font-weight: 600; padding: 12px 18px; font-size: 13px; ${border}">${escapeHtml(value)}</td>` +
+    `<td style="width: 35%; color: #64748B; font-weight: 500; border-right: 1px solid #E2E8F0; padding: 12px 18px; font-size: 13px; ${border}">${escapeHtml(label)}</td>` +
+    `<td style="color: #0F172A; font-weight: 600; padding: 12px 18px; font-size: 13px; ${border}">${escapeHtml(value)}</td>` +
     "</tr>"
   )
 }
 
 /**
  * The house email for "something needs you": heading, greeting, one paragraph,
- * a details table and one button. Same look as the task emails.
+ * a details table and one button. Theme-aware across Light and Dark mode.
  */
 export function renderActionEmail(params: {
   recipientFirstName: string
@@ -37,31 +34,21 @@ export function renderActionEmail(params: {
     '<html lang="en"><head><meta charset="UTF-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
     `<title>${escapeHtml(params.heading)}</title>` +
-    '<style>body { margin: 0; padding: 0; background: #fff; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; }</style>' +
-    "</head><body>" +
-    '<div style="max-width: 600px; margin: 0 auto; overflow: hidden;">' +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ${BAND}>` +
-    '<tr><td align="center" style="padding:20px 0;">' +
-    '<img src="https://evcng.com/images/evc-logo-dark.png" height="65" alt="EVC">' +
-    "</td></tr></table>" +
-    '<div style="max-width: 600px; margin: 0 auto; background: #fff; padding: 32px 28px;">' +
-    `<div style="font-size: 20px; font-weight: 700; color: #111827; margin-bottom: 20px;">${escapeHtml(params.heading)}</div>` +
-    `<p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 18px 0;">Hi ${escapeHtml(params.recipientFirstName || "there")},</p>` +
-    `<p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 18px 0;">${escapeHtml(params.intro)}</p>` +
-    '<div style="margin-top: 22px; border: 1px solid #e5e7eb; overflow: hidden; background: #fbfbfb; border-radius: 6px;">' +
-    `<div style="padding: 12px 18px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid #e5e7eb; background: #f8fafc; color: #64748b;">${escapeHtml(params.detailsTitle)}</div>` +
+    getERPThemeAwareStyles() +
+    "</head><body class=\"email-bg\" style=\"margin: 0; padding: 24px 12px; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;\">" +
+    '<div class="card-box" style="max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 18px; border: 1px solid #E2E8F0; box-shadow: 0 12px 36px rgba(10, 22, 40, 0.08); overflow: hidden;">' +
+    getERPHeader("Action Required", params.heading) +
+    '<div style="padding: 32px 28px;">' +
+    `<p class="body-p" style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 16px 0;">Hi <strong class="body-strong" style="color: #0F172A;">${escapeHtml(params.recipientFirstName || "there")}</strong>,</p>` +
+    `<p class="body-p" style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 18px 0;">${escapeHtml(params.intro)}</p>` +
+    '<div style="margin-top: 22px; border: 1px solid #E2E8F0; overflow: hidden; background: #F8FAFC; border-radius: 10px;">' +
+    `<div style="padding: 12px 18px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid #E2E8F0; background: #FFF7ED; color: #EA580C;">${escapeHtml(params.detailsTitle)}</div>` +
     `<table style="width: 100%; border-collapse: collapse;">${rows.join("")}</table>` +
     "</div>" +
     '<div style="text-align: center; margin: 28px 0;">' +
-    `<a href="${SITE_URL}${params.ctaPath}" style="display: inline-block; background: #f57f25; color: #fff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; font-size: 14px;">${escapeHtml(params.ctaLabel)}</a>` +
+    `<a href="${SITE_URL}${params.ctaPath}" style="display: inline-block; background-color: #F47C20; background: linear-gradient(135deg, #F47C20 0%, #FF9A4D 100%); color: #FFFFFF !important; text-decoration: none; padding: 14px 34px; border-radius: 12px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 16px rgba(244, 124, 32, 0.3);">${escapeHtml(params.ctaLabel)} &rarr;</a>` +
     "</div></div>" +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ${BAND}>` +
-    '<tr><td align="center" style="padding:20px;font-size:11px;color:#d1d5db;">' +
-    '<strong style="color:#fff;">EVC</strong><br>' +
-    `<span style="color:#f57f25;font-weight:600;">${escapeHtml(params.footerLabel)}</span>` +
-    "<br><br>" +
-    '<i style="color:#9ca3af;">This is an automated notification.</i>' +
-    "</td></tr></table>" +
+    getERPFooter(params.footerLabel || "Operations & Workflow System", "This action request was automatically generated by EVC Nig. Ltd. ERP.") +
     "</div></body></html>"
   )
 }

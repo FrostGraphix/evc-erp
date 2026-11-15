@@ -1,8 +1,8 @@
-import { escapeHtml } from "./utils"
+import { escapeHtml, getERPThemeAwareStyles, getERPHeader, getERPFooter } from "./utils"
 
 const ICT_SUPPORT_EMAIL = process.env.ICT_SUPPORT_EMAIL || "contact@evcng.com"
 const WEBMAIL_LOGIN_URL = "https://webmail-p21.web-hosting.com/"
-const MATRIX_PORTAL_URL = process.env.NEXT_PUBLIC_PORTAL_URL || "https://evcng.com"
+const MATRIX_PORTAL_URL = process.env.NEXT_PUBLIC_PORTAL_URL || "https://erp.evcng.com"
 
 export interface PendingUser {
   first_name: string
@@ -60,173 +60,110 @@ export function renderWelcomeEmail({
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to EVC - Account Onboarding</title>
-    <style>
-        body { margin: 0; padding: 0; background: #f3f4f6; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; }
-        .email-shell { max-width: 620px; margin: 20px auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-        .wrapper { padding: 32px 28px; }
-        .title { font-size: 22px; font-weight: 700; color: #111827; margin-bottom: 12px; }
-        .text { font-size: 14px; color: #374151; line-height: 1.6; margin: 0 0 16px 0; }
-        
-        .card { margin-top: 18px; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; background: #ffffff; }
-        .card-header { padding: 10px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-        .card-header-neutral { background: #f8fafc; color: #475569; border-bottom: 1px solid #e2e8f0; }
-        .card-header-step1 { background: #eff6ff; color: #1e40af; border-bottom: 1px solid #bfdbfe; }
-        .card-header-step2 { background: #f0fdf4; color: #166534; border-bottom: 1px solid #bbf7d0; }
-        
-        table { width: 100%; border-collapse: collapse; }
-        td { padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
-        tr:last-child td { border-bottom: none; }
-        .label { width: 38%; color: #64748b; font-weight: 500; border-right: 1px solid #f1f5f9; }
-        .value { color: #0f172a; font-weight: 600; }
-        .credential { background: #f1f5f9; padding: 3px 8px; border-radius: 4px; font-family: monospace; font-size: 13px; border: 1px solid #cbd5e1; color: #0f172a; }
-        
-        .step-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-right: 6px; }
-        .tag-blue { background: #dbeafe; color: #1e40af; }
-        .tag-green { background: #dcfce7; color: #15803d; }
-        
-        .cta-btn { display: inline-block; background: #f57f25; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 6px; font-weight: 600; font-size: 13px; margin-top: 10px; }
-        .cta-btn-dark { display: inline-block; background: #0f172a; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 6px; font-weight: 600; font-size: 13px; margin-top: 10px; }
-        
-        .instruction-list { margin: 10px 0; padding-left: 20px; font-size: 13px; color: #334155; line-height: 1.6; }
-        .instruction-list li { margin-bottom: 6px; }
-        
-        .quick-links { margin-top: 24px; padding: 16px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; }
-        .quick-links-title { font-size: 12px; font-weight: 700; color: #0f172a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
-        .links-grid { font-size: 12px; color: #475569; line-height: 1.8; }
-        .links-grid a { color: #f57f25; text-decoration: none; font-weight: 600; }
-        
-        .support { text-align: center; font-size: 13px; color: #64748b; margin-top: 24px; line-height: 1.5; }
-        .support a { color: #f57f25; font-weight: 600; text-decoration: none; }
-        
-        .footer { background: #000000; padding: 22px 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f57f25; }
-        .footer strong { color: #ffffff; }
-        .footer-system { color: #f57f25; font-weight: 600; }
-        .footer-note { color: #9ca3af; font-style: italic; margin-top: 10px; display: block; }
-    </style>
+    <title>Welcome to EVC Nig. Ltd. - Account Onboarding</title>
+    ${getERPThemeAwareStyles()}
 </head>
-<body>
-    <div class="email-shell">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;">
-          <tr><td align="center" style="padding:22px 0;background:#000000 !important;">
-            <img src="https://evcng.com/images/evc-logo-dark.png" alt="EVC" height="60">
-          </td></tr>
-        </table>
+<body class="email-bg" style="margin: 0; padding: 24px 12px; background: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <div class="card-box" style="max-width: 620px; margin: 0 auto; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 18px; overflow: hidden; box-shadow: 0 12px 36px rgba(10, 22, 40, 0.08);">
+        ${getERPHeader("Staff Onboarding", "Welcome to the Team!", "Official corporate email and EVC ERP account credentials")}
 
-        <div class="wrapper">
-            <div class="title">Welcome to the Team!</div>
-            <p class="text">Dear <strong>${firstName}</strong>,</p>
-            <p class="text">We are excited to welcome you to <strong>EVC</strong>. Your official company profile has been created.</p>
-            <p class="text">Please follow the <strong>two steps below</strong> in order to access your company email and activate your EVC ERP account.</p>
+        <div style="padding: 32px 28px;">
+            <p class="body-p" style="font-size: 15px; color: #334155; line-height: 1.6; margin: 0 0 16px 0;">Dear <strong class="body-strong" style="color: #0F172A;">${firstName}</strong>,</p>
+            <p class="body-p" style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 16px 0;">We are excited to welcome you to <strong>EVC Nig. Ltd.</strong>. Your official company profile and corporate email mailbox have been provisioned.</p>
+            <p class="body-p" style="font-size: 14px; color: #334155; line-height: 1.6; margin: 0 0 20px 0;">Please follow the <strong>two steps below</strong> to access your company email and activate your EVC ERP account.</p>
             
             <!-- Employee Profile Summary -->
-            <div class="card">
-                <div class="card-header card-header-neutral">Employee Profile</div>
-                <table>
+            <div style="margin-top: 18px; border: 1px solid #E2E8F0; border-radius: 10px; overflow: hidden; background: #F8FAFC;">
+                <div style="padding: 10px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; background: #F1F5F9; color: #475569; border-bottom: 1px solid #E2E8F0;">Employee Profile</div>
+                <table style="width: 100%; border-collapse: collapse;">
                     <tr>
-                        <td class="label">Full Name</td>
-                        <td class="value">${firstName} ${lastName}</td>
+                        <td style="width: 38%; color: #64748B; font-weight: 500; border-right: 1px solid #E2E8F0; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">Full Name</td>
+                        <td style="color: #0F172A; font-weight: 600; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">${firstName} ${lastName}</td>
                     </tr>
-                    ${staffId ? `<tr><td class="label">Staff ID</td><td class="value">${staffId}</td></tr>` : ""}
+                    ${staffId ? `<tr><td style="width: 38%; color: #64748B; font-weight: 500; border-right: 1px solid #E2E8F0; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">Staff ID</td><td style="color: #0F172A; font-weight: 600; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">${staffId}</td></tr>` : ""}
                     <tr>
-                        <td class="label">Department</td>
-                        <td class="value">${dept}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Designation</td>
-                        <td class="value">${role}</td>
+                        <td style="width: 38%; color: #64748B; font-weight: 500; border-right: 1px solid #E2E8F0; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">Department</td>
+                        <td style="color: #0F172A; font-weight: 600; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">${dept}</td>
                     </tr>
                     <tr>
-                        <td class="label">Office / Room</td>
-                        <td class="value">${officeLoc}</td>
+                        <td style="width: 38%; color: #64748B; font-weight: 500; border-right: 1px solid #E2E8F0; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">Designation</td>
+                        <td style="color: #0F172A; font-weight: 600; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #E2E8F0;">${role}</td>
+                    </tr>
+                    <tr>
+                        <td style="width: 38%; color: #64748B; font-weight: 500; border-right: 1px solid #E2E8F0; padding: 10px 16px; font-size: 13px;">Office / Station</td>
+                        <td style="color: #0F172A; font-weight: 600; padding: 10px 16px; font-size: 13px;">${officeLoc}</td>
                     </tr>
                 </table>
             </div>
 
             <!-- STEP 1: Webmail Login -->
-            <div class="card" style="margin-top: 20px; border-color: #bfdbfe;">
-                <div class="card-header card-header-step1">
-                    <span class="step-tag tag-blue">Step 1</span> Access Your Official Company Webmail (Do this first)
+            <div style="margin-top: 22px; border: 1px solid #BFDBFE; border-radius: 12px; overflow: hidden; background: #FFFFFF;">
+                <div style="padding: 12px 18px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; background: #EFF6FF; color: #1E40AF; border-bottom: 1px solid #BFDBFE;">
+                    <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #DBEAFE; color: #1E40AF; margin-right: 6px;">Step 1</span> Access Official Company Webmail (Do this first)
                 </div>
-                <div style="padding: 14px 16px;">
+                <div style="padding: 16px 18px;">
                     <p style="margin: 0 0 12px 0; font-size: 13px; color: #334155; line-height: 1.5;">
-                        Your official corporate mailbox has been provisioned. <strong>Log in here first</strong>, then use the EVC Ecosystem activation link below to create your own EVC Ecosystem password.
+                        Your official corporate mailbox has been provisioned. <strong>Log in here first</strong>, then use the EVC ERP activation link below to create your permanent password.
                     </p>
-                    <table>
+                    <table style="width: 100%; border-collapse: collapse;">
                         <tr>
-                            <td class="label">Webmail URL</td>
-                            <td class="value"><a href="${safeWebmailUrl}" style="color: #1e40af; text-decoration: none;">${safeWebmailUrl}</a></td>
+                            <td style="width: 38%; color: #64748B; font-weight: 500; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #F1F5F9;">Webmail URL</td>
+                            <td style="color: #1E40AF; font-weight: 600; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #F1F5F9;"><a href="${safeWebmailUrl}" style="color: #1E40AF; text-decoration: none;">${safeWebmailUrl}</a></td>
                         </tr>
                         <tr>
-                            <td class="label">Company Email</td>
-                            <td class="value"><span class="credential">${email}</span></td>
+                            <td style="width: 38%; color: #64748B; font-weight: 500; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #F1F5F9;">Company Email</td>
+                            <td style="color: #0F172A; font-weight: 700; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #F1F5F9;"><code style="background: #F1F5F9; padding: 3px 8px; border-radius: 4px; font-family: monospace;">${email}</code></td>
                         </tr>
                         <tr>
-                            <td class="label">Initial Password</td>
-                            <td class="value"><span class="credential">${safeTempPassword}</span></td>
+                            <td style="width: 38%; color: #64748B; font-weight: 500; padding: 8px 12px; font-size: 13px;">Temporary Password</td>
+                            <td style="color: #EA580C; font-weight: 700; padding: 8px 12px; font-size: 13px;"><code style="background: #FFF7ED; border: 1px solid #FED7AA; padding: 3px 8px; border-radius: 4px; font-family: monospace;">${safeTempPassword}</code></td>
                         </tr>
                     </table>
-                    <div style="text-align: center; margin-top: 14px;">
-                        <a href="${safeWebmailUrl}" class="cta-btn-dark">👉 Log into Webmail</a>
+                    <div style="text-align: center; margin-top: 16px;">
+                        <a href="${safeWebmailUrl}" style="display: inline-block; background-color: #0F172A; color: #FFFFFF !important; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 700; font-size: 13px;">👉 Log into Webmail</a>
                     </div>
-                    <p style="margin: 10px 0 0 0; font-size: 11px; color: #64748b; font-style: italic; text-align: center;">
-                        * Please update your Webmail password upon your initial login.
-                    </p>
                 </div>
             </div>
 
-            <!-- STEP 2: Matrix ERP Activation -->
-            <div class="card" style="margin-top: 20px; border-color: #bbf7d0;">
-                <div class="card-header card-header-step2">
-                    <span class="step-tag tag-green">Step 2</span> Activate Your EVC Ecosystem Account
+            <!-- STEP 2: ERP Activation -->
+            <div style="margin-top: 22px; border: 1px solid #BBF7D0; border-radius: 12px; overflow: hidden; background: #FFFFFF;">
+                <div style="padding: 12px 18px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; background: #F0FDF4; color: #166534; border-bottom: 1px solid #BBF7D0;">
+                    <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #DCFCE7; color: #15803D; margin-right: 6px;">Step 2</span> Activate Your EVC ERP Account
                 </div>
-                <div style="padding: 14px 16px;">
+                <div style="padding: 16px 18px;">
                     <p style="margin: 0 0 10px 0; font-size: 13px; color: #334155; line-height: 1.5;">
-                        Once you have accessed your Webmail, activate your account on EVC Ecosystem:
+                        Once you have accessed your Webmail, activate your account on EVC ERP:
                     </p>
-                    <ol class="instruction-list">
+                    <ol style="margin: 10px 0; padding-left: 20px; font-size: 13px; color: #334155; line-height: 1.6;">
                         <li>Open the secure activation link below.</li>
-                        <li>Create a strong EVC Ecosystem password for <code style="background: #f1f5f9; padding: 1px 5px; border-radius: 3px;">${email}</code>.</li>
-                        <li>Sign in to EVC Ecosystem using your company email and new password.</li>
-                        <li>Log in to EVC Ecosystem anytime at <a href="${safeLoginUrl}" style="color: #f57f25; text-decoration: none;">${safeLoginUrl}</a>.</li>
+                        <li>Create a strong password for <code style="background: #F1F5F9; padding: 1px 5px; border-radius: 3px;">${email}</code>.</li>
+                        <li>Sign in to EVC ERP using your company email and new password.</li>
+                        <li>Access EVC ERP anytime at <a href="${safeLoginUrl}" style="color: #F47C20; text-decoration: none; font-weight: 600;">${safeLoginUrl}</a>.</li>
                     </ol>
-                    <div style="text-align: center; margin-top: 14px;">
-                        <a href="${safeActivationUrl}" class="cta-btn">Activate your EVC Ecosystem account</a>
+                    <div style="text-align: center; margin-top: 16px;">
+                        <a href="${safeActivationUrl}" style="display: inline-block; background-color: #F47C20; background: linear-gradient(135deg, #F47C20 0%, #FF9A4D 100%); color: #FFFFFF !important; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 700; font-size: 13px; box-shadow: 0 4px 14px rgba(244, 124, 32, 0.3);">Activate your EVC ERP account &rarr;</a>
                     </div>
                 </div>
             </div>
 
             <!-- Quick Access Links -->
-            <div class="quick-links">
-                <div class="quick-links-title">📌 Quick Access: Key Routes</div>
-                <div class="links-grid">
-                    • <strong>EVC Ecosystem Guide (start here):</strong> <a href="${safePortalUrl}/guide">${safePortalUrl}/guide</a><br>
-                    • <strong>Biometric Attendance Logs:</strong> <a href="${safePortalUrl}/attendance">${safePortalUrl}/attendance</a><br>
-                    • <strong>Leave Management:</strong> <a href="${safePortalUrl}/leave">${safePortalUrl}/leave</a><br>
-                    • <strong>Task Board:</strong> <a href="${safePortalUrl}/tasks">${safePortalUrl}/tasks</a><br>
-                    • <strong>Weekly Reports:</strong> <a href="${safePortalUrl}/reports/weekly-reports">${safePortalUrl}/reports/weekly-reports</a><br>
-                    • <strong>Knowledge Sharing Session (KSS):</strong> <a href="${safePortalUrl}/reports/general-meeting/kss">${safePortalUrl}/reports/general-meeting/kss</a>
+            <div style="margin-top: 24px; padding: 18px; background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 10px;">
+                <div style="font-size: 12px; font-weight: 700; color: #0F172A; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">📌 Key ERP Modules</div>
+                <div style="font-size: 12px; color: #475569; line-height: 1.8;">
+                    • <strong>Biometric Attendance Logs:</strong> <a href="${safePortalUrl}/attendance" style="color: #F47C20; text-decoration: none; font-weight: 600;">${safePortalUrl}/attendance</a><br>
+                    • <strong>Leave Requests & Approvals:</strong> <a href="${safePortalUrl}/leave" style="color: #F47C20; text-decoration: none; font-weight: 600;">${safePortalUrl}/leave</a><br>
+                    • <strong>Task & Objective Board:</strong> <a href="${safePortalUrl}/tasks" style="color: #F47C20; text-decoration: none; font-weight: 600;">${safePortalUrl}/tasks</a><br>
+                    • <strong>Weekly Reports:</strong> <a href="${safePortalUrl}/reports/weekly-reports" style="color: #F47C20; text-decoration: none; font-weight: 600;">${safePortalUrl}/reports/weekly-reports</a>
                 </div>
             </div>
 
-            <div class="support">
-                If you experience any difficulties setting up your account, contact ICT Support at <a href="mailto:${ICT_SUPPORT_EMAIL}">${ICT_SUPPORT_EMAIL}</a>.
+            <div style="text-align: center; font-size: 13px; color: #64748B; margin-top: 24px; line-height: 1.5;">
+                If you experience any difficulties setting up your account, contact ICT Support at <a href="mailto:${ICT_SUPPORT_EMAIL}" style="color: #F47C20; font-weight: 700; text-decoration: none;">${ICT_SUPPORT_EMAIL}</a>.
             </div>
         </div>
 
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;border-top:3px solid #f57f25;">
-          <tr><td align="center" style="padding:20px;background:#000000 !important;font-size:11px;color:#d1d5db;">
-            <span style="color:#f3f4f6;">Dispatched by ${preparedByName}</span><br>
-            ${preparedByDesignation ? `${preparedByDesignation}<br>` : ""}
-            ${preparedByDepartment}<br>
-            <strong style="color:#fff;">EVC</strong><br>
-            <span style="color:#f57f25;font-weight:600;">EVC ERP</span>
-            <br>
-            <span class="footer-note">This is an automated notification, but replies are read — reply to this email to reach the ICT team.</span>
-          </td></tr>
-        </table>
+        ${getERPFooter("Human Capital & IT Administration", `Dispatched by ${preparedByName} ${preparedByDesignation ? "(" + preparedByDesignation + ")" : ""} — ${preparedByDepartment}`)}
     </div>
 </body>
-</html>
-  `
+</html>`
 }
