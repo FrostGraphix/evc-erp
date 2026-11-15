@@ -239,7 +239,7 @@ function renderResetEmail(firstName: string, code: string): string {
     '<div style="max-width:600px;margin:0 auto;padding:32px 28px;">' +
     '<div style="font-size:20px;font-weight:700;color:#111827;margin-bottom:20px;">Reset your approval PIN</div>' +
     `<p style="font-size:14px;color:#4b5563;line-height:1.6;">Hi ${escapeHtml(firstName || "there")},</p>` +
-    '<p style="font-size:14px;color:#4b5563;line-height:1.6;">Use this code to set a new approval PIN on ACOB Matrix:</p>' +
+    '<p style="font-size:14px;color:#4b5563;line-height:1.6;">Use this code to set a new approval PIN on EVC Ecosystem:</p>' +
     `<div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;margin:24px 0;">${escapeHtml(code)}</div>` +
     `<p style="font-size:14px;color:#4b5563;line-height:1.6;">It expires in ${RESET_CODE_TTL_MINUTES} minutes and works once.</p>` +
     '<p style="font-size:13px;color:#9ca3af;line-height:1.6;">If you did not ask for this, ignore this email and tell IT. Your PIN has not changed.</p>' +

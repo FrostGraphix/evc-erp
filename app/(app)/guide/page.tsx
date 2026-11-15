@@ -8,12 +8,12 @@ import type { Database } from "@/types/database"
 import { GuideContent, type GuideExtraModule } from "./guide-content"
 
 export const metadata: Metadata = {
-  title: "Matrix Guide",
-  description: "What Matrix is, the modules you can use, and how to get started.",
+  title: "EVC Ecosystem Guide",
+  description: "What EVC Ecosystem is, the modules you can use, and how to get started.",
 }
 
 /**
- * The in-app guide to Matrix. Replaces the old public /launch page, which now
+ * The in-app guide to EVC Ecosystem. Replaces the old public /launch page, which now
  * redirects here. Everything staff can open is listed for every viewer; the
  * admin shell, department consoles and MD's Desk are added only for viewers
  * who can actually enter them, so the guide never links to a dead end.

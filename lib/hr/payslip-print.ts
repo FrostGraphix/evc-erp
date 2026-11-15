@@ -108,7 +108,7 @@ export function buildPayslipHtml(data: PayslipPrintData, origin: string): string
             <div style="font-size:9px;color:#6b7280;">Email: contact@evcng.com &nbsp;|&nbsp; Web: evcng.com</div>
           </td>
           <td style="vertical-align:top;text-align:right;white-space:nowrap;">
-            <div style="font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#f26522;">Payslip</div>
+            <div style="font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#f57f25;">Payslip</div>
             <div style="font-size:9px;color:#6b7280;">Period: <span style="font-weight:600;color:#374151;">${esc(
               data.periodName
             )}</span></div>
@@ -139,7 +139,7 @@ export function buildPayslipHtml(data: PayslipPrintData, origin: string): string
         <tr>
           ${column(
             "Earnings",
-            "#f26522",
+            "#f57f25",
             amountRows(data.earnings, "#1f2937") + totalRow(data.grossLabel, data.gross, "#111827")
           )}
           ${column(
@@ -151,7 +151,7 @@ export function buildPayslipHtml(data: PayslipPrintData, origin: string): string
       </table>
 
       <!-- Net pay -->
-      <table style="width:100%;margin-top:18px;background:#f26522;border-radius:6px;">
+      <table style="width:100%;margin-top:18px;background:#f57f25;border-radius:6px;">
         <tr>
           <td style="padding:12px 18px;color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Net Pay (Take Home)</td>
           <td style="padding:12px 18px;color:#ffffff;font-size:17px;font-weight:800;text-align:right;white-space:nowrap;">${formatNaira(

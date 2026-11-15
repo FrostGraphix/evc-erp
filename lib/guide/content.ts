@@ -218,13 +218,13 @@ export const firstWeekSteps: GuideStep[] = [
   },
   {
     title: "Clock in every working day",
-    body: "Attendance is recorded in Matrix and feeds payroll and your performance score, so lateness and missed days count.",
+    body: "Attendance is recorded in EVC Ecosystem and feeds payroll and your performance score, so lateness and missed days count.",
     href: "/hr/attendance",
     cta: "Go to attendance",
   },
   {
     title: "Turn on notifications",
-    body: "Choose which alerts reach you by email and push. On iPhone, add Matrix to your Home Screen first to receive push alerts.",
+    body: "Choose which alerts reach you by email and push. On iPhone, add EVC Ecosystem to your Home Screen first to receive push alerts.",
     href: "/settings/notifications",
     cta: "Notification settings",
   },
@@ -245,7 +245,7 @@ export const guideFaqGroups: GuideFaqGroup[] = [
     title: "Account & access",
     items: [
       {
-        q: "Who can use Matrix?",
+        q: "Who can use EVC Ecosystem?",
         a: "Every EVC staff member with a company email address (@evcng.com or @org.evcng.com). New staff activate their account once at /auth/setup-account with a code sent to their email.",
       },
       {
@@ -282,7 +282,7 @@ export const guideFaqGroups: GuideFaqGroup[] = [
     items: [
       {
         q: "What is AcoBot?",
-        a: "The assistant behind the round button in the bottom-right corner. Ask it how to do something in Matrix and it will point you to the right page.",
+        a: "The assistant behind the round button in the bottom-right corner. Ask it how to do something in EVC Ecosystem and it will point you to the right page.",
       },
       {
         q: "Something is broken. Who do I tell?",

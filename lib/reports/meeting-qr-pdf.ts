@@ -257,7 +257,7 @@ export async function generateMeetingAttendancePdf(data: MeetingSheetData): Prom
   doc.setFont("helvetica", "normal")
   doc.setFontSize(8.5)
   doc.setTextColor(100, 116, 139)
-  doc.text("Enter code in Matrix General Meeting Attendance.", pageWidth / 2, card2Y + card2H - 6.5, {
+  doc.text("Enter code in EVC Ecosystem General Meeting Attendance.", pageWidth / 2, card2Y + card2H - 6.5, {
     align: "center",
   })
 

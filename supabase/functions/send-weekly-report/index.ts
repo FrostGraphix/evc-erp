@@ -23,7 +23,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
-const GREEN = rgb(0.949, 0.396, 0.133) // Brand Orange #f26522
+const GREEN = rgb(0.961, 0.498, 0.145) // Brand Orange #f57f25
 const DARK = rgb(0.08, 0.08, 0.08)
 const WHITE = rgb(1, 1, 1)
 const SLATE = rgb(0.2, 0.255, 0.333)
@@ -916,20 +916,20 @@ function buildEmailHtml(
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { margin: 0; padding: 0; background: #fff; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; }
     .email-shell { max-width: 600px; margin: 0 auto; overflow: hidden; }
-    .outer-header { background: #000; padding: 20px 0; text-align: center; border-top: 3px solid #f26522; border-bottom: 3px solid #f26522; }
+    .outer-header { background: #000; padding: 20px 0; text-align: center; border-top: 3px solid #f57f25; border-bottom: 3px solid #f57f25; }
     .wrapper { max-width: 600px; margin: 0 auto; background: #fff; padding: 32px 28px; }
     .week-badge { display: inline-block; background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; margin-bottom: 16px; }
     .title { font-size: 24px; font-weight: 700; color: #111827; margin-bottom: 14px; }
     .text { font-size: 15px; color: #374151; line-height: 1.6; margin: 0 0 18px 0; }
-    .footer { background: #000; padding: 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f26522; border-bottom: 3px solid #f26522; }
+    .footer { background: #000; padding: 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f57f25; border-bottom: 3px solid #f57f25; }
     .footer strong { color: #fff; }
-    .footer-system { color: #f26522; font-weight: 600; }
+    .footer-system { color: #f57f25; font-weight: 600; }
     .footer-note { color: #9ca3af; font-style: italic; }
   </style>
 </head>
 <body>
   <div class="email-shell">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
     <tr><td align="center" bgcolor="#000000" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">
       <img src="https://evcng.com/images/evc-logo-dark.png" height="65" alt="EVC">
     </td></tr>
@@ -940,12 +940,12 @@ function buildEmailHtml(
     <p class="text">Dear All,</p>
 ${bodyHtml}
   </div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
     <tr><td align="center" bgcolor="#000000" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">
       <span style="color:#f3f4f6;">Prepared by ${safePreparedBy}</span><br>
       ${safeDesignation ? `${safeDesignation}<br>` : ""}${safeDepartment}<br>
       <strong style="color:#fff;">EVC</strong><br>
-      <span style="color:#f26522;font-weight:600;">Reports Management System</span>
+      <span style="color:#f57f25;font-weight:600;">Reports Management System</span>
       <br><br>
       <i style="color:#9ca3af;">This is an automated notification, but replies are read — reply to this email and it reaches the team that sent it.</i>
     </td></tr>

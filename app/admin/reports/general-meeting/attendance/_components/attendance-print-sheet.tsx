@@ -93,7 +93,7 @@ export function AttendancePrintSheetDialog({
     // after PDF generation is commonly blocked by browser pop-up protection.
     const printWindow = window.open("", "_blank")
     if (!printWindow) {
-      toast.error("Allow pop-ups for Matrix to open the print sheet")
+      toast.error("Allow pop-ups for EVC Ecosystem to open the print sheet")
       return
     }
     printWindow.opener = null

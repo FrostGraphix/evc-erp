@@ -255,7 +255,7 @@ function buildMeetingReminderHtml(
       '<tr><td style="padding: 10px 18px; font-size: 14px; color: #374151; border-bottom: 1px solid #e5e7eb;">' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>' +
       '<td valign="top" style="width: 36px; padding: 0 12px 0 0;">' +
-      '<span style="display: inline-block; background: #000; color: #f26522; font-weight: 700; width: 24px; height: 24px; border-radius: 50%; text-align: center; line-height: 24px; font-size: 12px;">' +
+      '<span style="display: inline-block; background: #000; color: #f57f25; font-weight: 700; width: 24px; height: 24px; border-radius: 50%; text-align: center; line-height: 24px; font-size: 12px;">' +
       (i + 1) +
       "</span>" +
       "</td>" +
@@ -276,7 +276,7 @@ function buildMeetingReminderHtml(
     "<style>" +
     'body { margin: 0; padding: 0; background: #fff; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; }' +
     ".email-shell { max-width: 600px; margin: 0 auto; overflow: hidden; }" +
-    ".outer-header { background: #000; padding: 20px 0; text-align: center; border-top: 3px solid #f26522; border-bottom: 3px solid #f26522; }" +
+    ".outer-header { background: #000; padding: 20px 0; text-align: center; border-top: 3px solid #f57f25; border-bottom: 3px solid #f57f25; }" +
     ".wrapper { max-width: 600px; margin: 0 auto; background: #fff; padding: 32px 28px; }" +
     ".title { font-size: 22px; font-weight: 700; color: #111827; margin-bottom: 14px; }" +
     ".text { font-size: 15px; color: #374151; line-height: 1.7; margin: 0 0 18px 0; }" +
@@ -285,15 +285,15 @@ function buildMeetingReminderHtml(
     ".cta { text-align: center; margin: 28px 0; }" +
     ".button { display: inline-block; background: #1e40af; color: #fff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }" +
     ".note-box { background: #fefce8; border: 1px solid #fde68a; border-radius: 8px; padding: 16px 20px; font-size: 14px; color: #92400e; margin: 20px 0; line-height: 1.6; }" +
-    ".footer { background: #000; padding: 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f26522; border-bottom: 3px solid #f26522; }" +
+    ".footer { background: #000; padding: 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f57f25; border-bottom: 3px solid #f57f25; }" +
     ".footer strong { color: #fff; }" +
-    ".footer-system { color: #f26522; font-weight: 600; }" +
+    ".footer-system { color: #f57f25; font-weight: 600; }" +
     ".footer-note { color: #9ca3af; font-style: italic; }" +
     "</style>" +
     "</head>" +
     "<body>" +
     '<div class="email-shell">' +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">' +
     '<img src="https://evcng.com/images/evc-logo-dark.png" height="65" alt="EVC">' +
     "</td></tr></table>" +
@@ -326,15 +326,15 @@ function buildMeetingReminderHtml(
     "<strong>Note:</strong> Your attendance is crucial to ensure we're all on the same page and can collaborate effectively. " +
     `Please join on time, and feel free to reach out to <a href="mailto:${MEETING_CONTACT_EMAIL}" style="color:#1e40af;font-weight:600;text-decoration:none;">Admin &amp; HR</a> or any team member if you have questions or concerns.` +
     "</div>" +
-    '<p class="text" style="text-align: center; font-weight: 600; color: #f26522;">Looking forward to seeing you there.</p>' +
+    '<p class="text" style="text-align: center; font-weight: 600; color: #f57f25;">Looking forward to seeing you there.</p>' +
     "</div>" +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">' +
     // Signed by the department, never a person, so it cannot go stale when someone
     // leaves. Prepared-by values still stored in saved schedules are ignored.
     '<span style="color:#f3f4f6;">Admin &amp; HR Department</span><br>' +
     '<strong style="color:#fff;">EVC</strong><br>' +
-    '<span style="color:#f26522;font-weight:600;">Meeting Management System</span>' +
+    '<span style="color:#f57f25;font-weight:600;">Meeting Management System</span>' +
     "<br><br>" +
     '<i style="color:#9ca3af;">This is an automated notification, but replies are read — reply to this email and it reaches the team that sent it.</i>' +
     "</td></tr></table>" +
@@ -374,21 +374,21 @@ function buildKnowledgeSharingHtml(sessionDate: string, sessionTime: string, dur
     "<style>" +
     'body { margin: 0; padding: 0; background: #fff; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; }' +
     ".email-shell { max-width: 600px; margin: 0 auto; overflow: hidden; }" +
-    ".outer-header { background: #000; padding: 20px 0; text-align: center; border-top: 3px solid #f26522; border-bottom: 3px solid #f26522; }" +
+    ".outer-header { background: #000; padding: 20px 0; text-align: center; border-top: 3px solid #f57f25; border-bottom: 3px solid #f57f25; }" +
     ".wrapper { max-width: 600px; margin: 0 auto; background: #fff; padding: 32px 28px; }" +
     ".title { font-size: 22px; font-weight: 700; color: #111827; margin-bottom: 14px; }" +
     ".text { font-size: 15px; color: #374151; line-height: 1.7; margin: 0 0 18px 0; }" +
     ".note-box { background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 16px 20px; font-size: 14px; color: #92400e; margin: 20px 0; line-height: 1.6; text-align: center; }" +
     ".alert-badge { display: inline-block; background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; }" +
-    ".footer { background: #000; padding: 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f26522; border-bottom: 3px solid #f26522; }" +
+    ".footer { background: #000; padding: 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f57f25; border-bottom: 3px solid #f57f25; }" +
     ".footer strong { color: #fff; }" +
-    ".footer-system { color: #f26522; font-weight: 600; }" +
+    ".footer-system { color: #f57f25; font-weight: 600; }" +
     ".footer-note { color: #9ca3af; font-style: italic; }" +
     "</style>" +
     "</head>" +
     "<body>" +
     '<div class="email-shell">' +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">' +
     '<img src="https://evcng.com/images/evc-logo-dark.png" height="65" alt="EVC">' +
     "</td></tr></table>" +
@@ -413,13 +413,13 @@ function buildKnowledgeSharingHtml(sessionDate: string, sessionTime: string, dur
     "Attendance is mandatory for all team members." +
     "</div>" +
     "</div>" +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">' +
     '<span style="color:#f3f4f6;">Prepared by Admin &amp; HR</span><br>' +
     "Administrative Team<br>" +
     "Admin &amp; HR Department<br>" +
     '<strong style="color:#fff;">EVC</strong><br>' +
-    '<span style="color:#f26522;font-weight:600;">Meeting Management System</span>' +
+    '<span style="color:#f57f25;font-weight:600;">Meeting Management System</span>' +
     "<br><br>" +
     '<i style="color:#9ca3af;">This is an automated notification, but replies are read — reply to this email and it reaches the team that sent it.</i>' +
     "</td></tr></table>" +

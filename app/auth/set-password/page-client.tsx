@@ -41,7 +41,7 @@ export default function SetPasswordPage() {
     const { error } = await supabase.auth.updateUser({ password })
     if (error) throw error
     setIsSuccess(true)
-    toast.success("Password set successfully! Welcome to Matrix.")
+    toast.success("Password set successfully! Welcome to EVC Ecosystem.")
     setTimeout(() => {
       router.replace("/profile")
     }, 2000)
@@ -61,7 +61,7 @@ export default function SetPasswordPage() {
           <CardDescription className="text-sm">
             {isSuccess
               ? "Redirecting to your dashboard..."
-              : "Create a secure password to activate your Matrix account"}
+              : "Create a secure password to activate your EVC Ecosystem account"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 pb-8">

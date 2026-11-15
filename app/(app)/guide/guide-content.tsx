@@ -193,7 +193,7 @@ export function GuideContent({ firstName, extras }: { firstName: string | null; 
           className="absolute inset-0 -z-10 [background-image:linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_at_top_right,black,transparent_70%)] [background-size:48px_48px] opacity-40"
         />
         <Reveal y={12}>
-          <Eyebrow>{firstName ? `Welcome, ${firstName}` : "Matrix guide"}</Eyebrow>
+          <Eyebrow>{firstName ? `Welcome, ${firstName}` : "EVC Ecosystem guide"}</Eyebrow>
         </Reveal>
         <MaskText
           as="h1"
@@ -237,10 +237,10 @@ export function GuideContent({ firstName, extras }: { firstName: string | null; 
         </dl>
       </Reveal>
 
-      {/* Why Matrix */}
+      {/* Why EVC Ecosystem */}
       <section className="py-16 sm:py-24">
         <Reveal>
-          <Eyebrow>Why Matrix</Eyebrow>
+          <Eyebrow>Why EVC Ecosystem</Eyebrow>
         </Reveal>
         <MaskText text="From scattered, to one." className="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl" />
         <Stagger className="mt-10 grid gap-4 md:grid-cols-3" stagger={0.1}>
@@ -337,7 +337,7 @@ export function GuideContent({ firstName, extras }: { firstName: string | null; 
           <Eyebrow>Start here</Eyebrow>
         </Reveal>
         <MaskText
-          text="Your first week in Matrix."
+          text="Your first week in EVC Ecosystem."
           className="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl"
         />
         <Stagger className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.1}>

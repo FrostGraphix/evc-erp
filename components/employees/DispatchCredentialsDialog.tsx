@@ -146,7 +146,7 @@ export function DispatchCredentialsDialog({ employee, open, onOpenChange, onSucc
             Dispatch Webmail Credentials
           </DialogTitle>
           <DialogDescription>
-            Send official company webmail login details and Matrix setup instructions to the employee&apos;s personal
+            Send official company webmail login details and EVC Ecosystem setup instructions to the employee&apos;s personal
             inbox.
           </DialogDescription>
         </DialogHeader>
@@ -198,8 +198,8 @@ export function DispatchCredentialsDialog({ employee, open, onOpenChange, onSucc
               </Label>
               <p className="text-muted-foreground text-xs">
                 {manual
-                  ? "Matrix will not touch the mailbox — enter the password you chose."
-                  : "Matrix creates the mailbox on cPanel (or resets its password if it exists) with a strong generated password."}
+                  ? "EVC Ecosystem will not touch the mailbox — enter the password you chose."
+                  : "EVC Ecosystem creates the mailbox on cPanel (or resets its password if it exists) with a strong generated password."}
               </p>
             </div>
             <Switch id="dispatch-manual" checked={manual} onCheckedChange={setManual} disabled={isSubmitting} />

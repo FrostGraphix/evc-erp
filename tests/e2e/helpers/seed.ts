@@ -57,7 +57,7 @@ function readEnv(name: string, fallback: string) {
 function buildSeedUser(prefix: string, fallbackEmail: string): SeedUser {
   return {
     email: readEnv(`PLAYWRIGHT_${prefix}_EMAIL`, fallbackEmail),
-    password: readEnv(`PLAYWRIGHT_${prefix}_PASSWORD`, "Password123!"),
+    password: readEnv(`PLAYWRIGHT_${prefix}_PASSWORD`, process.env.PLAYWRIGHT_DEFAULT_PASSWORD || ""),
   }
 }
 

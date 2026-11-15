@@ -13,7 +13,7 @@ import { join } from "node:path"
 import { normalizeDepartmentName } from "@/shared/departments"
 
 // ─── Colour palette (mirrors edge function) ────────────────────────────────
-const GREEN = rgb(0.949, 0.396, 0.133) // EVC Orange #f26522
+const GREEN = rgb(0.961, 0.498, 0.145) // EVC Orange #f57f25
 const DARK = rgb(0.08, 0.08, 0.08)
 const WHITE = rgb(1, 1, 1)
 const SLATE = rgb(0.2, 0.255, 0.333)

@@ -107,12 +107,12 @@ export function Navbar({ user, avatarUrl, canAccessAdmin = false, isAdminMode = 
     <Tooltip>
       <TooltipTrigger asChild>
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/guide" aria-label="Matrix guide">
+          <Link href="/guide" aria-label="EVC Ecosystem guide">
             <CircleHelp className="h-[1.2rem] w-[1.2rem]" />
           </Link>
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">Matrix guide</TooltipContent>
+      <TooltipContent side="bottom">EVC Ecosystem guide</TooltipContent>
     </Tooltip>
   )
 
@@ -190,7 +190,7 @@ export function Navbar({ user, avatarUrl, canAccessAdmin = false, isAdminMode = 
             <DropdownMenuItem asChild>
               <Link href="/guide" className="cursor-pointer">
                 <CircleHelp className="mr-2 h-4 w-4" />
-                Matrix guide
+                EVC Ecosystem guide
               </Link>
             </DropdownMenuItem>
             {canAccessAdmin && (

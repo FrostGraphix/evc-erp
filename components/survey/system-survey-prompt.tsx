@@ -45,7 +45,7 @@ export function SystemSurveyPrompt({ hasCompletedSurvey = false }: SystemSurveyP
 
             <div className="space-y-1">
               <DialogTitle className="text-foreground text-lg font-bold tracking-tight">
-                How is your Matrix experience?
+                How is your EVC Ecosystem experience?
               </DialogTitle>
               <DialogDescription className="text-sm leading-5">
                 Your feedback helps us prioritise improvements to the tools you use every day.

@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized. Please sign in to Matrix." }, { status: 401 })
+    return NextResponse.json({ error: "Unauthorized. Please sign in to EVC Ecosystem." }, { status: 401 })
   }
 
   const parsed = CheckInSchema.safeParse(await request.json().catch(() => null))

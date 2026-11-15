@@ -36,7 +36,7 @@ export function buildArtifactEmailHtml(params: {
   const recordingBlock = params.recordingUrl
     ? '<div style="text-align:center;margin:24px 0;">' +
       `<a href="${escapeHtml(params.recordingUrl)}" ` +
-      'style="display:inline-block;background:#f26522;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:6px;font-size:14px;font-weight:600;">' +
+      'style="display:inline-block;background:#f57f25;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:6px;font-size:14px;font-weight:600;">' +
       "▶ Download meeting recording</a>" +
       '<div style="font-size:12px;color:#6b7280;margin-top:8px;">Opens in the ERP — sign in to start the download.</div>' +
       "</div>"
@@ -57,7 +57,7 @@ export function buildArtifactEmailHtml(params: {
     '<div style="background:#f3f4f6;padding:24px 0;">' +
     // Header — background-color + linear-gradient(color,color) + mso-line-height-rule
     // together stop Gmail/Outlook dark mode from inverting this to a white bar.
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">' +
     '<img src="https://evcng.com/images/evc-logo-dark.png" height="60" alt="EVC">' +
     "</td></tr></table>" +
@@ -74,10 +74,10 @@ export function buildArtifactEmailHtml(params: {
     '<p class="text" style="color:#6b7280;font-size:13px;">These documents are also stored in the ERP under Reports &rsaquo; General Meeting &rsaquo; Meeting Records.</p>' +
     "</div>" +
     // Footer — same dark-mode lock as the header
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">' +
     '<strong style="color:#fff;">EVC</strong><br>' +
-    '<span style="color:#f26522;font-weight:600;">Meeting Records System</span><br><br>' +
+    '<span style="color:#f57f25;font-weight:600;">Meeting Records System</span><br><br>' +
     '<i style="color:#9ca3af;">This is an automated notification, but replies are read — reply to this email and it reaches the team that sent it.</i>' +
     "</td></tr></table>" +
     "</div></body></html>"

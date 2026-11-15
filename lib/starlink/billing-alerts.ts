@@ -119,7 +119,7 @@ export function renderStarlinkAlertEmail(params: {
 </head>
 <body style="margin:0;padding:0;background:#fff;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
     <div style="max-width: 600px; margin: 0 auto; overflow: hidden;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${bar}border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${bar}border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
         <tr><td align="center" style="padding:20px 0;${bar}">
             <img src="https://evcng.com/images/evc-logo-dark.png" alt="EVC" height="65">
         </td></tr>
@@ -133,14 +133,14 @@ export function renderStarlinkAlertEmail(params: {
             </table>
         </div>
         <p style="margin: 26px 0 0 0;">
-            <a href="${escapeHtml(params.actionUrl)}" style="display:inline-block;background:#f26522;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 18px;border-radius:6px;">Open the payment</a>
+            <a href="${escapeHtml(params.actionUrl)}" style="display:inline-block;background:#f57f25;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 18px;border-radius:6px;">Open the payment</a>
         </p>
     </div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${bar}border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${bar}border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
         <tr><td align="center" style="padding:20px;${bar}font-size:11px;color:#d1d5db;">
             <span style="color:#d1d5db;">IT &amp; Communications</span><br>
             <strong style="color:#fff;">EVC</strong><br>
-            <span style="color:#f26522; font-weight:600;">EVC ERP · Starlink Billing</span>
+            <span style="color:#f57f25; font-weight:600;">EVC ERP · Starlink Billing</span>
             <br><br>
             <i style="color:#9ca3af; font-style:italic;">This is an automated notification, but replies are read — reply to this email and it reaches the accounts team.</i>
         </td></tr>

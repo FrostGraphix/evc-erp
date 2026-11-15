@@ -85,7 +85,7 @@ export function renderWelcomeEmail({
         .tag-blue { background: #dbeafe; color: #1e40af; }
         .tag-green { background: #dcfce7; color: #15803d; }
         
-        .cta-btn { display: inline-block; background: #f26522; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 6px; font-weight: 600; font-size: 13px; margin-top: 10px; }
+        .cta-btn { display: inline-block; background: #f57f25; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 6px; font-weight: 600; font-size: 13px; margin-top: 10px; }
         .cta-btn-dark { display: inline-block; background: #0f172a; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 6px; font-weight: 600; font-size: 13px; margin-top: 10px; }
         
         .instruction-list { margin: 10px 0; padding-left: 20px; font-size: 13px; color: #334155; line-height: 1.6; }
@@ -94,20 +94,20 @@ export function renderWelcomeEmail({
         .quick-links { margin-top: 24px; padding: 16px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; }
         .quick-links-title { font-size: 12px; font-weight: 700; color: #0f172a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
         .links-grid { font-size: 12px; color: #475569; line-height: 1.8; }
-        .links-grid a { color: #f26522; text-decoration: none; font-weight: 600; }
+        .links-grid a { color: #f57f25; text-decoration: none; font-weight: 600; }
         
         .support { text-align: center; font-size: 13px; color: #64748b; margin-top: 24px; line-height: 1.5; }
-        .support a { color: #f26522; font-weight: 600; text-decoration: none; }
+        .support a { color: #f57f25; font-weight: 600; text-decoration: none; }
         
-        .footer { background: #000000; padding: 22px 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f26522; }
+        .footer { background: #000000; padding: 22px 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f57f25; }
         .footer strong { color: #ffffff; }
-        .footer-system { color: #f26522; font-weight: 600; }
+        .footer-system { color: #f57f25; font-weight: 600; }
         .footer-note { color: #9ca3af; font-style: italic; margin-top: 10px; display: block; }
     </style>
 </head>
 <body>
     <div class="email-shell">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;">
           <tr><td align="center" style="padding:22px 0;background:#000000 !important;">
             <img src="https://evcng.com/images/evc-logo-dark.png" alt="EVC" height="60">
           </td></tr>
@@ -150,7 +150,7 @@ export function renderWelcomeEmail({
                 </div>
                 <div style="padding: 14px 16px;">
                     <p style="margin: 0 0 12px 0; font-size: 13px; color: #334155; line-height: 1.5;">
-                        Your official corporate mailbox has been provisioned. <strong>Log in here first</strong>, then use the Matrix activation link below to create your own Matrix password.
+                        Your official corporate mailbox has been provisioned. <strong>Log in here first</strong>, then use the EVC Ecosystem activation link below to create your own EVC Ecosystem password.
                     </p>
                     <table>
                         <tr>
@@ -178,20 +178,20 @@ export function renderWelcomeEmail({
             <!-- STEP 2: Matrix ERP Activation -->
             <div class="card" style="margin-top: 20px; border-color: #bbf7d0;">
                 <div class="card-header card-header-step2">
-                    <span class="step-tag tag-green">Step 2</span> Activate Your Matrix ERP Account
+                    <span class="step-tag tag-green">Step 2</span> Activate Your EVC Ecosystem Account
                 </div>
                 <div style="padding: 14px 16px;">
                     <p style="margin: 0 0 10px 0; font-size: 13px; color: #334155; line-height: 1.5;">
-                        Once you have accessed your Webmail, activate your account on Matrix:
+                        Once you have accessed your Webmail, activate your account on EVC Ecosystem:
                     </p>
                     <ol class="instruction-list">
                         <li>Open the secure activation link below.</li>
-                        <li>Create a strong Matrix password for <code style="background: #f1f5f9; padding: 1px 5px; border-radius: 3px;">${email}</code>.</li>
-                        <li>Sign in to Matrix using your company email and new password.</li>
-                        <li>Log in to Matrix anytime at <a href="${safeLoginUrl}" style="color: #f26522; text-decoration: none;">${safeLoginUrl}</a>.</li>
+                        <li>Create a strong EVC Ecosystem password for <code style="background: #f1f5f9; padding: 1px 5px; border-radius: 3px;">${email}</code>.</li>
+                        <li>Sign in to EVC Ecosystem using your company email and new password.</li>
+                        <li>Log in to EVC Ecosystem anytime at <a href="${safeLoginUrl}" style="color: #f57f25; text-decoration: none;">${safeLoginUrl}</a>.</li>
                     </ol>
                     <div style="text-align: center; margin-top: 14px;">
-                        <a href="${safeActivationUrl}" class="cta-btn">Activate your Matrix account</a>
+                        <a href="${safeActivationUrl}" class="cta-btn">Activate your EVC Ecosystem account</a>
                     </div>
                 </div>
             </div>
@@ -200,7 +200,7 @@ export function renderWelcomeEmail({
             <div class="quick-links">
                 <div class="quick-links-title">📌 Quick Access: Key Routes</div>
                 <div class="links-grid">
-                    • <strong>Matrix Guide (start here):</strong> <a href="${safePortalUrl}/guide">${safePortalUrl}/guide</a><br>
+                    • <strong>EVC Ecosystem Guide (start here):</strong> <a href="${safePortalUrl}/guide">${safePortalUrl}/guide</a><br>
                     • <strong>Biometric Attendance Logs:</strong> <a href="${safePortalUrl}/attendance">${safePortalUrl}/attendance</a><br>
                     • <strong>Leave Management:</strong> <a href="${safePortalUrl}/leave">${safePortalUrl}/leave</a><br>
                     • <strong>Task Board:</strong> <a href="${safePortalUrl}/tasks">${safePortalUrl}/tasks</a><br>
@@ -214,13 +214,13 @@ export function renderWelcomeEmail({
             </div>
         </div>
 
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;border-top:3px solid #f26522;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;border-top:3px solid #f57f25;">
           <tr><td align="center" style="padding:20px;background:#000000 !important;font-size:11px;color:#d1d5db;">
             <span style="color:#f3f4f6;">Dispatched by ${preparedByName}</span><br>
             ${preparedByDesignation ? `${preparedByDesignation}<br>` : ""}
             ${preparedByDepartment}<br>
             <strong style="color:#fff;">EVC</strong><br>
-            <span style="color:#f26522;font-weight:600;">EVC ERP</span>
+            <span style="color:#f57f25;font-weight:600;">EVC ERP</span>
             <br>
             <span class="footer-note">This is an automated notification, but replies are read — reply to this email to reach the ICT team.</span>
           </td></tr>

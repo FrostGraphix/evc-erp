@@ -48,7 +48,7 @@ export function renderOnboardingSubmissionEmail({ applicant, reviewUrl }: Onboar
 </head>
 <body>
     <div style="max-width: 600px; margin: 0 auto; overflow: hidden;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
         <tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">
             <img src="https://evcng.com/images/evc-logo-dark.png" alt="EVC" height="65">
         </td></tr>
@@ -95,11 +95,11 @@ export function renderOnboardingSubmissionEmail({ applicant, reviewUrl }: Onboar
             </a>
         </div>
     </div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
         <tr><td align="center" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">
             <span style="color:#d1d5db;">Admin &amp; HR Department</span><br>
             <strong style="color:#fff;">EVC</strong><br>
-            <span style="color:#f26522; font-weight:600;">Employee Management System</span>
+            <span style="color:#f57f25; font-weight:600;">Employee Management System</span>
             <br><br>
             <i style="color:#9ca3af; font-style:italic;">This is an automated notification, but replies are read — reply to this email to reach the HR team.</i>
         </td></tr>

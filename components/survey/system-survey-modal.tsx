@@ -187,7 +187,7 @@ export function SystemSurveyModal({ isOpen, onClose, onSnooze, existingSurvey, o
           </div>
           <div className="space-y-1">
             <DialogTitle className="text-lg font-semibold tracking-tight">
-              {existingSurvey ? "Update your Matrix feedback" : "Share your Matrix feedback"}
+              {existingSurvey ? "Update your EVC Ecosystem feedback" : "Share your EVC Ecosystem feedback"}
             </DialogTitle>
             <DialogDescription className="text-sm leading-5">
               A short check-in to help us prioritise the right improvements.
@@ -208,7 +208,7 @@ export function SystemSurveyModal({ isOpen, onClose, onSnooze, existingSurvey, o
               <div className="py-4 first:pt-0">
                 <StarPicker
                   label="Overall experience"
-                  description="How satisfied are you with Matrix overall?"
+                  description="How satisfied are you with EVC Ecosystem overall?"
                   value={overallRating}
                   onChange={setOverallRating}
                 />
@@ -217,7 +217,7 @@ export function SystemSurveyModal({ isOpen, onClose, onSnooze, existingSurvey, o
               <div className="py-4">
                 <StarPicker
                   label="Speed and responsiveness"
-                  description="How quickly Matrix loads, searches, and saves your work."
+                  description="How quickly EVC Ecosystem loads, searches, and saves your work."
                   value={speedRating}
                   onChange={setSpeedRating}
                 />
@@ -241,7 +241,7 @@ export function SystemSurveyModal({ isOpen, onClose, onSnooze, existingSurvey, o
               </h3>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                 <p className="text-muted-foreground">
-                  Choose up to three Matrix areas you would most like us to improve.
+                  Choose up to three EVC Ecosystem areas you would most like us to improve.
                 </p>
                 <span className="text-muted-foreground font-medium" aria-live="polite">
                   {modulesUsed.length} of 3 selected
@@ -282,7 +282,7 @@ export function SystemSurveyModal({ isOpen, onClose, onSnooze, existingSurvey, o
 
             <div className="space-y-2">
               <Label htmlFor="desired-features" className="text-sm font-medium">
-                What single change would make Matrix work better for you?
+                What single change would make EVC Ecosystem work better for you?
               </Label>
               <Textarea
                 id="desired-features"

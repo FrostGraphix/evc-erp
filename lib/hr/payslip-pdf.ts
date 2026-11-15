@@ -34,7 +34,7 @@ import {
 
 type RGB = [number, number, number]
 
-const GREEN: RGB = [242, 101, 34] // EVC Orange #f26522
+const GREEN: RGB = [245, 127, 37] // EVC Orange #f57f25
 const GREEN_DARK: RGB = [217, 83, 23]
 const RED: RGB = [220, 38, 38]
 const INK: RGB = [31, 41, 55]

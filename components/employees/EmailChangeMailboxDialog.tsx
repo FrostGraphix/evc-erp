@@ -51,7 +51,7 @@ export function EmailChangeMailboxDialog({
             Company email is changing
           </DialogTitle>
           <DialogDescription>
-            cPanel cannot rename a mailbox. Choose whether Matrix sets up a mailbox for the new address.
+            cPanel cannot rename a mailbox. Choose whether EVC Ecosystem sets up a mailbox for the new address.
           </DialogDescription>
         </DialogHeader>
 
@@ -138,7 +138,7 @@ export function NewMailboxPasswordDialog({
             New mailbox password
           </DialogTitle>
           <DialogDescription>
-            Give this to the employee securely. It is not stored in Matrix and will not be shown again.
+            Give this to the employee securely. It is not stored in EVC Ecosystem and will not be shown again.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">

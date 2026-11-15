@@ -85,7 +85,7 @@ export async function subscribeToPush(vapidPublicKey: string): Promise<PushSubsc
   if (permission !== "granted") {
     throw new Error(
       permission === "denied"
-        ? "Notifications are blocked for Matrix. Re-enable them in your device settings to continue."
+        ? "Notifications are blocked for EVC Ecosystem. Re-enable them in your device settings to continue."
         : "Notification permission was dismissed."
     )
   }

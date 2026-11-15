@@ -76,21 +76,21 @@ export function PushNotificationToggle({ vapidPublicKey }: PushNotificationToggl
           <div className="space-y-1">
             <Label className="text-base font-semibold">Push Notifications</Label>
             <p className="text-muted-foreground text-sm">
-              To get alerts on your iPhone, add Matrix to your Home Screen first. iOS only allows notifications from
+              To get alerts on your iPhone, add EVC Ecosystem to your Home Screen first. iOS only allows notifications from
               installed apps.
             </p>
           </div>
         </div>
         <ol className="text-muted-foreground ml-8 list-decimal space-y-1 text-sm">
           <li className="flex items-center gap-1.5">
-            <span>Open Matrix in Safari, then tap Share</span>
+            <span>Open EVC Ecosystem in Safari, then tap Share</span>
             <Share className="inline h-3.5 w-3.5" aria-hidden />
           </li>
           <li className="flex items-center gap-1.5">
             <span>Tap &ldquo;Add to Home Screen&rdquo;</span>
             <SquarePlus className="inline h-3.5 w-3.5" aria-hidden />
           </li>
-          <li>Open Matrix from your Home Screen, then return here to enable</li>
+          <li>Open EVC Ecosystem from your Home Screen, then return here to enable</li>
         </ol>
       </div>
     )
@@ -120,7 +120,7 @@ export function PushNotificationToggle({ vapidPublicKey }: PushNotificationToggl
             Push Notifications
           </Label>
           <p className="text-muted-foreground text-sm">
-            Get alerts on this device even when Matrix is closed. Enable this on each device you use.
+            Get alerts on this device even when EVC Ecosystem is closed. Enable this on each device you use.
           </p>
         </div>
       </div>

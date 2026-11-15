@@ -179,7 +179,7 @@ export function EmailSetupDialog({
             <Steps
               items={[
                 <>
-                  Open this page in <strong>Safari</strong> on your iPhone (not Chrome, and not the Matrix home-screen
+                  Open this page in <strong>Safari</strong> on your iPhone (not Chrome, and not the EVC Ecosystem home-screen
                   icon) and tap the button above → <strong>Allow</strong>.
                 </>,
                 <>

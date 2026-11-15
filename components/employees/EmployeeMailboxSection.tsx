@@ -119,7 +119,7 @@ export function EmployeeMailboxSection({
           Could not reach cPanel ({mailbox.error}). The status will still change; update the mailbox in cPanel.
         </p>
       ) : !mailbox.managed ? (
-        <p className="text-muted-foreground">Not a cPanel mailbox, so Matrix cannot change it.</p>
+        <p className="text-muted-foreground">Not a cPanel mailbox, so EVC Ecosystem cannot change it.</p>
       ) : !mailbox.exists ? (
         <p className="text-muted-foreground">No mailbox exists on cPanel for this address.</p>
       ) : returning ? (

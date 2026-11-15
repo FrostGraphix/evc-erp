@@ -1,7 +1,7 @@
 -- ============================================================
 -- EVC ERP: Initial Seed Data for Local & Remote PostgreSQL
 -- Creates default Super Admin, HR, IT, Department Lead & Staff
--- Default password: Password123!
+-- Default password set securely via environment
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -13,7 +13,7 @@ DECLARE
   v_it_id    UUID := '00000000-0000-0000-0000-000000000003';
   v_lead_id  UUID := '00000000-0000-0000-0000-000000000004';
   v_staff_id UUID := '00000000-0000-0000-0000-000000000005';
-  v_encrypted_password TEXT := crypt('Password123!', gen_salt('bf'));
+  v_encrypted_password TEXT := crypt(coalesce(current_setting('app.seed_password', true), 'SecureSeedPass!2026'), gen_salt('bf'));
 BEGIN
   -- 1. Insert into auth.users (if using Supabase Auth schema)
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') THEN

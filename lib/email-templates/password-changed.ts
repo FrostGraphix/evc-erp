@@ -23,7 +23,7 @@ export function renderPasswordChangedEmail({ userName, userEmail, changeTime, ip
 </head>
 <body style="margin: 0; padding: 0; background: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
     <div style="max-width: 600px; margin: 0 auto; overflow: hidden; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 20px; margin-bottom: 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#000000; border-top:3px solid #f26522; border-bottom:3px solid #f26522;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#000000; border-top:3px solid #f57f25; border-bottom:3px solid #f57f25;">
             <tr>
                 <td align="center" style="padding: 20px 0;">
                     <img src="https://evcng.com/images/evc-logo-dark.png" alt="EVC" height="50" style="display: block;">

@@ -71,7 +71,7 @@ export function ViewPayslipDialog({
                 </p>
               </div>
               <div className="min-w-[130px] text-right">
-                <p className="text-xs font-bold text-[#f26522] uppercase">Payslip</p>
+                <p className="text-xs font-bold text-[#f57f25] uppercase">Payslip</p>
                 <p className="text-xs text-gray-500">
                   Period: <span className="font-semibold whitespace-nowrap text-gray-700">{period.name}</span>
                 </p>

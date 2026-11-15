@@ -128,7 +128,7 @@ function renderAlertHtml(title: string, lines: string[]): string {
   const darkLock =
     "background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;"
   const bar = (content: string, padding: string) =>
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${darkLock}border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;"><tr><td align="center" style="padding:${padding};${darkLock}font-size:11px;color:#d1d5db;">${content}</td></tr></table>`
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${darkLock}border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;"><tr><td align="center" style="padding:${padding};${darkLock}font-size:11px;color:#d1d5db;">${content}</td></tr></table>`
   return (
     '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"></head>' +
     '<body style="margin:0;padding:0;background:#fff;font-family:Segoe UI, Tahoma, Geneva, Verdana, sans-serif;">' +

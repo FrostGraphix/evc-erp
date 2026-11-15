@@ -7,7 +7,7 @@ import { RELEASES, releaseMonthLabel } from "@/lib/version-history"
 
 export const metadata: Metadata = {
   title: "Version History",
-  description: "What changed in Matrix, month by month.",
+  description: "What changed in EVC Ecosystem, month by month.",
 }
 
 export default function AdminVersionHistoryPage() {
@@ -15,7 +15,7 @@ export default function AdminVersionHistoryPage() {
     <PageWrapper maxWidth="content" background="gradient">
       <PageHeader
         title="Version History"
-        description="What changed in Matrix, month by month, since it began as the Signature Creator."
+        description="What changed in EVC Ecosystem, month by month, since it began as the Signature Creator."
         icon={History}
         backLink={{ href: "/admin", label: "Back to Admin" }}
       />

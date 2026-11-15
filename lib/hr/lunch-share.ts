@@ -109,11 +109,11 @@ export function buildLunchWhatsAppMessage(input: {
   const url = `${input.origin}${lunchSharePath(input.date)}`
   const body = input.votingOpen
     ? [
-        `${dayPossessive(input.date, input.today)} lunch menu has been posted on Matrix. Kindly vote before ${formatLunchDeadline(input.deadline)}.`,
+        `${dayPossessive(input.date, input.today)} lunch menu has been posted on EVC Ecosystem. Kindly vote before ${formatLunchDeadline(input.deadline)}.`,
         "Please find the quick-access link below:",
       ]
     : [
-        `Here is the lunch menu for ${formatLunchDay(input.date)} on Matrix. Voting for this menu has closed.`,
+        `Here is the lunch menu for ${formatLunchDay(input.date)} on EVC Ecosystem. Voting for this menu has closed.`,
         "Please find the link below:",
       ]
   return [greeting(input.now ?? new Date()), "", ...body, "", url].join("\n")

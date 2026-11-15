@@ -87,7 +87,7 @@ function buildHtml(params: { department: string; meetingDateLabel: string; recip
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
     "</head><body style=\"margin:0;padding:0;background:#fff;font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\">" +
     '<div style="background:#f3f4f6;padding:24px 0;">' +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${darkLock}border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${darkLock}border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">` +
     `<tr><td align="center" style="padding:20px 0;${darkLock}">` +
     '<img src="https://evcng.com/images/evc-logo-dark.png" height="60" alt="EVC">' +
     "</td></tr></table>" +
@@ -97,10 +97,10 @@ function buildHtml(params: { department: string; meetingDateLabel: string; recip
     `<p style="font-size:14px;color:#374151;line-height:1.6;margin:0 0 16px;">The <strong>${department}</strong> department is scheduled to present the Knowledge Sharing Session at the General Weekly Meeting on <strong>${dateLabel}</strong> at <strong>${MEETING_TIME}</strong>.</p>` +
     '<p style="font-size:13px;color:#6b7280;line-height:1.6;margin:0;">You are receiving this because you are in the presenting department or on the management team.</p>' +
     "</div>" +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${darkLock}border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${darkLock}border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">` +
     `<tr><td align="center" style="padding:20px;${darkLock}font-size:11px;color:#d1d5db;">` +
     '<strong style="color:#fff;">EVC</strong><br>' +
-    '<span style="color:#f26522;font-weight:600;">Admin &amp; HR Department</span><br><br>' +
+    '<span style="color:#f57f25;font-weight:600;">Admin &amp; HR Department</span><br><br>' +
     '<i style="color:#9ca3af;">This is an automated notification, but replies are read — reply to this email and it reaches the team that sent it.</i>' +
     "</td></tr></table>" +
     "</div></body></html>"

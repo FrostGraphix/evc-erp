@@ -46,7 +46,7 @@ export function renderOnboardingIctSetupEmail({
   const approvedByDesignation = escapeHtml((approvedBy?.designation || "").trim())
   const approvedByDepartment = escapeHtml((approvedBy?.department || "Admin and HR").trim())
   const failureNote = automationFailure
-    ? `<div style="margin: 0 0 20px 0; padding: 12px 16px; border: 1px solid #fecaca; background: #fef2f2; border-radius: 6px; font-size: 13px; color: #991b1b; line-height: 1.5;">Matrix tried to create this mailbox automatically, but cPanel said: <strong>${escapeHtml(automationFailure)}</strong>. Fix the cause and use <strong>Send Webmail Credentials</strong> to retry automatically, or create the mailbox by hand.</div>`
+    ? `<div style="margin: 0 0 20px 0; padding: 12px 16px; border: 1px solid #fecaca; background: #fef2f2; border-radius: 6px; font-size: 13px; color: #991b1b; line-height: 1.5;">EVC Ecosystem tried to create this mailbox automatically, but cPanel said: <strong>${escapeHtml(automationFailure)}</strong>. Fix the cause and use <strong>Send Webmail Credentials</strong> to retry automatically, or create the mailbox by hand.</div>`
     : ""
   const actionUrl = escapeHtml(
     employeesUrl || `${process.env.NEXT_PUBLIC_PORTAL_URL || "https://evcng.com"}/admin/hr/employees`
@@ -65,7 +65,7 @@ export function renderOnboardingIctSetupEmail({
 </head>
 <body>
     <div style="max-width: 600px; margin: 0 auto; overflow: hidden;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
         <tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">
             <img src="https://evcng.com/images/evc-logo-dark.png" alt="EVC" height="65">
         </td></tr>
@@ -75,7 +75,7 @@ export function renderOnboardingIctSetupEmail({
         <p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 16px 0;">Dear ICT Team,</p>
         <p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 16px 0;">The onboarding application for <strong>${name}</strong> has been approved. Please create their official company mailbox on webmail.</p>
         ${failureNote}
-        <p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">Once the mailbox exists, open the employee in Matrix and use <strong>Send Webmail Credentials</strong> with the password you set. That sends the employee their onboarding email and notifies HCS, Admin &amp; HR and their department lead.</p>
+        <p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">Once the mailbox exists, open the employee in EVC Ecosystem and use <strong>Send Webmail Credentials</strong> with the password you set. That sends the employee their onboarding email and notifies HCS, Admin &amp; HR and their department lead.</p>
 
         <div style="margin-top: 20px; border: 1px solid #e5e7eb; overflow: hidden; background: #fbfbfb; border-radius: 6px;">
             <div style="padding: 12px 18px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid #e5e7eb; background: #f8fafc; color: #64748b;">Mailbox Details</div>
@@ -97,13 +97,13 @@ export function renderOnboardingIctSetupEmail({
             </a>
         </div>
     </div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
         <tr><td align="center" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">
             <span style="color:#f3f4f6;">Approved by ${approvedByName}</span><br>
             ${approvedByDesignation ? `<span style="color:#d1d5db;">${approvedByDesignation}</span><br>` : ""}
             <span style="color:#d1d5db;">${approvedByDepartment}</span><br>
             <strong style="color:#fff;">EVC</strong><br>
-            <span style="color:#f26522; font-weight:600;">Employee Management System</span>
+            <span style="color:#f57f25; font-weight:600;">Employee Management System</span>
             <br><br>
             <i style="color:#9ca3af; font-style:italic;">This is an automated notification, but replies are read — reply to this email to reach the HR team.</i>
         </td></tr>

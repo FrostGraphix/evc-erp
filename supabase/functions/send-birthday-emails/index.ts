@@ -63,12 +63,12 @@ function buildBirthdayHtml(firstName: string): string {
     ".email-shell{max-width:600px;margin:0 auto;overflow:hidden}" +
     ".wrapper{max-width:600px;margin:0 auto;background:#fff;padding:36px 28px;text-align:center}" +
     ".title{font-size:26px;font-weight:700;color:#111827;margin:0 0 4px 0}" +
-    ".subtitle{font-size:15px;color:#f26522;font-weight:600;margin:0 0 22px 0;letter-spacing:.04em;text-transform:uppercase}" +
+    ".subtitle{font-size:15px;color:#f57f25;font-weight:600;margin:0 0 22px 0;letter-spacing:.04em;text-transform:uppercase}" +
     ".text{font-size:15px;color:#374151;line-height:1.7;margin:0 0 18px 0;text-align:left}" +
     ".card{margin-top:8px;border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;padding:22px 24px}" +
     ".card .text{margin:0;color:#c2410c;text-align:center;font-size:16px;font-style:italic;line-height:1.6}" +
     '</style></head><body><div class="email-shell">' +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">' +
     '<img src="https://evcng.com/images/evc-logo-dark.png" alt="EVC" height="65"></td></tr></table>' +
     '<div class="wrapper">' +
@@ -79,11 +79,11 @@ function buildBirthdayHtml(firstName: string): string {
     '<p class="text">Thank you for the energy, dedication, and spirit you bring to our team every single day. We are grateful to have you with us, and we look forward to celebrating many more milestones together.</p>' +
     '<div class="card"><p class="text">Wishing you a year ahead full of good health, happiness, and success. Enjoy your special day!</p></div>' +
     "</div>" +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">' +
     '<span style="color:#f3f4f6;">Admin &amp; HR Department</span><br>' +
     '<strong style="color:#fff;">EVC</strong><br>' +
-    '<span style="color:#f26522;font-weight:600;">Employee Management System</span><br><br>' +
+    '<span style="color:#f57f25;font-weight:600;">Employee Management System</span><br><br>' +
     '<i style="color:#9ca3af;font-style:italic;">This is an automated notification, but replies are read — reply to this email and it reaches the team that sent it.</i>' +
     "</td></tr></table></div></body></html>"
   )

@@ -70,20 +70,20 @@ function SetupAccountContent() {
       tagline="Secure onboarding for authorized employees to access operations, reporting, and administrative tools."
       highlights={[
         "Use the secure activation link in your onboarding email.",
-        "Set a Matrix password that only you know.",
+        "Set an EVC Ecosystem password that only you know.",
         "Create a strong password to activate your account.",
       ]}
     >
       <Card className={authCardClassName}>
         <CardHeader className="pb-4">
           <CardTitle className="text-2xl font-semibold tracking-tight">
-            {isSuccess ? "Account activated" : token ? "Create your Matrix password" : "Activation link required"}
+            {isSuccess ? "Account activated" : token ? "Create your EVC Ecosystem password" : "Activation link required"}
           </CardTitle>
           <CardDescription className="text-sm">
             {isSuccess
               ? "Your account is now active. Redirecting to login..."
               : token
-                ? "Create a secure password to activate your Matrix account."
+                ? "Create a secure password to activate your EVC Ecosystem account."
                 : "Open the secure activation link sent with your onboarding instructions."}
           </CardDescription>
         </CardHeader>
@@ -129,7 +129,7 @@ function SetupAccountContent() {
             </form>
           ) : (
             <AuthNotice>
-              For your security, Matrix activation links are issued only with your onboarding email. Contact HR or ICT
+              For your security, EVC Ecosystem activation links are issued only with your onboarding email. Contact HR or ICT
               Support if you need a new link.
             </AuthNotice>
           )}

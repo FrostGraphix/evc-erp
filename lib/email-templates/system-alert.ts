@@ -17,7 +17,7 @@ const DARK_LOCK =
   "background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;"
 
 function bar(content: string, padding: string): string {
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${DARK_LOCK}border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;"><tr><td align="center" style="padding:${padding};${DARK_LOCK}font-size:11px;color:#d1d5db;">${content}</td></tr></table>`
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="${DARK_LOCK}border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;"><tr><td align="center" style="padding:${padding};${DARK_LOCK}font-size:11px;color:#d1d5db;">${content}</td></tr></table>`
 }
 
 function renderTable(table: SystemAlertTable): string {
@@ -50,7 +50,7 @@ export function renderSystemAlertEmail({ title, paragraphs, tables = [] }: Syste
     tables.map(renderTable).join("") +
     "</div>" +
     bar(
-      '<strong style="color:#fff;">EVC</strong><br><span style="color:#f26522;font-weight:600;">IT &amp; Communications</span><br><br><i style="color:#9ca3af;">This is an automated notification.</i>',
+      '<strong style="color:#fff;">EVC</strong><br><span style="color:#f57f25;font-weight:600;">IT &amp; Communications</span><br><br><i style="color:#9ca3af;">This is an automated notification.</i>',
       "20px"
     ) +
     "</div></body></html>"

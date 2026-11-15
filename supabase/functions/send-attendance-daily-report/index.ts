@@ -252,7 +252,7 @@ function renderReportHtml(dateIso: string, rows: ReportRow[], summary: Record<st
     '<div style="background:#f3f4f6;padding:24px 0;">' +
     // Header — background-color + linear-gradient(color,color) + mso-line-height-rule
     // together stop Gmail/Outlook dark mode from inverting this to a white bar.
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">' +
     '<img src="https://evcng.com/images/evc-logo-dark.png" height="60" alt="EVC">' +
     "</td></tr></table>" +
@@ -277,10 +277,10 @@ function renderReportHtml(dateIso: string, rows: ReportRow[], summary: Record<st
     "</table></div>" +
     "</div>" +
     // Footer — same dark-mode lock as the header
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">' +
     '<strong style="color:#fff;">EVC</strong><br>' +
-    '<span style="color:#f26522;font-weight:600;">Attendance Reports System</span><br><br>' +
+    '<span style="color:#f57f25;font-weight:600;">Attendance Reports System</span><br><br>' +
     '<i style="color:#9ca3af;">This is an automated notification, but replies are read — reply to this email and it reaches the team that sent it.</i>' +
     "</td></tr></table>" +
     "</div></body></html>"

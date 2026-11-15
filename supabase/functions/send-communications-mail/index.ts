@@ -235,8 +235,8 @@ function buildAdminBroadcastHtml(
     "<style>" +
     'body { margin: 0; padding: 0; background: #fff; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; }' +
     ".email-shell { max-width: 600px; margin: 0 auto; overflow: hidden; }" +
-    ".outer-header { background:#000 !important; background-color:#000 !important; background-image:linear-gradient(#000,#000) !important; border-top:3px solid #f26522; border-bottom:3px solid #f26522; }" +
-    ".outer-footer { background:#000 !important; background-color:#000 !important; background-image:linear-gradient(#000,#000) !important; border-top:3px solid #f26522; border-bottom:3px solid #f26522; }" +
+    ".outer-header { background:#000 !important; background-color:#000 !important; background-image:linear-gradient(#000,#000) !important; border-top:3px solid #f57f25; border-bottom:3px solid #f57f25; }" +
+    ".outer-footer { background:#000 !important; background-color:#000 !important; background-image:linear-gradient(#000,#000) !important; border-top:3px solid #f57f25; border-bottom:3px solid #f57f25; }" +
     ".wrapper { max-width: 600px; margin: 0 auto; background: #fff; padding: 32px 28px; }" +
     ".title { font-size: 22px; font-weight: 700; color: #111827; margin-bottom: 14px; }" +
     ".body-content { font-size: 15px; color: #374151; line-height: 1.7; }" +
@@ -247,7 +247,7 @@ function buildAdminBroadcastHtml(
     "</head>" +
     "<body>" +
     '<div class="email-shell">' +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" class="outer-header" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" class="outer-header" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" bgcolor="#000000" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">' +
     '<img src="https://evcng.com/images/evc-logo-dark.png" height="65" alt="EVC">' +
     "</td></tr></table>" +
@@ -259,7 +259,7 @@ function buildAdminBroadcastHtml(
     bodyHtml +
     "</div>" +
     "</div>" +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" class="outer-footer" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" class="outer-footer" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">' +
     '<tr><td align="center" bgcolor="#000000" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">' +
     '<span style="color:#f3f4f6;">Prepared by ' +
     safePreparedBy +
@@ -269,7 +269,7 @@ function buildAdminBroadcastHtml(
     safeDepartment +
     "</span><br>" +
     '<strong style="color:#fff;">EVC</strong><br>' +
-    '<span style="color:#f26522;font-weight:600;">Communications Management System</span>' +
+    '<span style="color:#f57f25;font-weight:600;">Communications Management System</span>' +
     "<br><br>" +
     '<i style="color:#9ca3af;">This is an automated notification, but replies are read — reply to this email and it reaches the team that sent it.</i>' +
     "</td></tr></table>" +

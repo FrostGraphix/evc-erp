@@ -65,16 +65,16 @@ export function renderPayslipEmail({
         .value { color: #111827; font-weight: 600; }
         .note { font-size: 13px; color: #4b5563; line-height: 1.5; margin-top: 14px; }
         .support { text-align: center; font-size: 14px; color: #4b5563; margin-top: 28px; line-height: 1.5; }
-        .support a { color: #f26522; font-weight: 600; text-decoration: none; }
-        .footer { background: #000; padding: 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f26522; border-bottom: 3px solid #f26522; }
+        .support a { color: #f57f25; font-weight: 600; text-decoration: none; }
+        .footer { background: #000; padding: 20px; text-align: center; font-size: 11px; color: #d1d5db; border-top: 3px solid #f57f25; border-bottom: 3px solid #f57f25; }
         .footer strong { color: #fff; }
-        .footer-system { color: #f26522; font-weight: 600; }
+        .footer-system { color: #f57f25; font-weight: 600; }
         .footer-note { color: #9ca3af; font-style: italic; }
     </style>
 </head>
 <body>
     <div class="email-shell">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
       <tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">
         <img src="https://evcng.com/images/evc-logo-dark.png" alt="EVC" height="65">
       </td></tr>

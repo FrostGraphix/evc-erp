@@ -374,12 +374,12 @@ serve(async (req) => {
         .cta { text-align: center; margin-top: 32px; }
         .button { display: inline-block; background: #000; color: #fff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
         .support { text-align: center; font-size: 14px; color: #4b5563; margin-top: 24px; line-height: 1.5; }
-        .support a { color: #f26522; font-weight: 600; text-decoration: none; }
+        .support a { color: #f57f25; font-weight: 600; text-decoration: none; }
     </style>
 </head>
 <body>
     <div class="email-shell">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
         <tr><td align="center" style="padding:20px 0;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;">
             <img src="${EMAIL_HEADER_LOGO_SRC}" height="65" alt="EVC">
         </td></tr>
@@ -399,13 +399,13 @@ serve(async (req) => {
 
         <div class="support">${supportText}</div>
     </div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f26522;border-bottom:3px solid #f26522;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;border-top:3px solid #f57f25;border-bottom:3px solid #f57f25;mso-line-height-rule:exactly;">
         <tr><td align="center" style="padding:20px;background:#000000 !important;background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;font-size:11px;color:#d1d5db;">
             <span style="color:#f3f4f6;">Prepared by IT &amp; Communications</span><br>
             ICT Support Team<br>
             IT &amp; Communications Department<br>
             <strong style="color:#fff;">EVC</strong><br>
-            <span style="color:#f26522;font-weight:600;">Asset Management System</span>
+            <span style="color:#f57f25;font-weight:600;">Asset Management System</span>
             <br><br>
             <i style="color:#9ca3af;">This is an automated notification, but replies are read — reply to this email and it reaches the team that sent it.</i>
         </td></tr>
